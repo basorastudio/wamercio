@@ -134,3 +134,7 @@ Consulta [`docs/DOKPLOY.md`](docs/DOKPLOY.md) para el procedimiento completo pas
 - [`docs/IDENTIDAD.md`](docs/IDENTIDAD.md)
 - [`docs/GEO_RD_MAP.md`](docs/GEO_RD_MAP.md)
 - [`docs/RENOMBRADO_WAMERCIO.md`](docs/RENOMBRADO_WAMERCIO.md)
+
+## Nota de build en Dokploy
+
+El Dockerfile del API resuelve el grafo de módulos después de copiar el código (`go mod tidy`) y compila con `-mod=mod`. Esto evita el error `missing go.sum entry` en exportaciones del repositorio que todavía no contienen un `go.sum` completo. Para máxima reproducibilidad se recomienda ejecutar `go mod tidy` en desarrollo y versionar el `go.sum` resultante.
