@@ -122,6 +122,15 @@ Se utiliza para Provincia → Ciudad → Barrio, autocomplete, reverse geocoding
 
 El backend ejecuta automáticamente las migraciones embebidas al iniciar. La migración `007_wamercio_brand.sql` actualiza el nombre de plataforma en instalaciones que ya hubieran aplicado versiones anteriores.
 
+## Correcciones de despliegue recientes
+
+- Build Go reproducible en Dokploy aunque el repositorio aún no incluya `go.sum`.
+- Corregida la migración `007_wamercio_brand.sql`: ahora utiliza `system_settings` (la tabla real) y no `platform_settings`.
+- Logs de arranque del API mejorados para PostgreSQL, migraciones y Redis.
+- Healthcheck interno con timeout explícito.
+
+Ver `docs/CORRECCION_DOKPLOY_API_UNHEALTHY.md`.
+
 ## Despliegue
 
 Consulta [`docs/DOKPLOY.md`](docs/DOKPLOY.md) para el procedimiento completo paso a paso.

@@ -40,8 +40,13 @@ type app struct {
 func main() {
 	cfg := config.Load()
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		resp, err := http.Get("http://127.0.0.1:8080/healthz")
-		if err != nil || resp.StatusCode != 200 {
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get("http://127.0.0.1:8080/healthz")
+		if err != nil {
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}
 		return
@@ -59,17 +64,21 @@ func main() {
 	}
 	defer db.Close()
 	if err := waitDB(ctx, db); err != nil {
-		log.Fatal(err)
+		log.Fatalf("postgresql no disponible: %v", err)
 	}
+	log.Printf("postgresql listo")
 	if err := migrate.Run(ctx, db); err != nil {
-		log.Fatal(err)
+		log.Fatalf("migraciones fallaron: %v", err)
 	}
+	log.Printf("migraciones aplicadas correctamente")
 	var rdb *redis.Client
 	ropt, err := redis.ParseURL(cfg.RedisURL)
 	if err == nil {
 		rdb = redis.NewClient(ropt)
 		if pingErr := rdb.Ping(ctx).Err(); pingErr != nil {
 			log.Printf("redis no disponible: %v", pingErr)
+		} else {
+			log.Printf("redis listo")
 		}
 		defer rdb.Close()
 	}
