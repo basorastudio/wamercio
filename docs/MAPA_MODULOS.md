@@ -1,0 +1,29 @@
+# Mapa de módulos: original → reconstrucción
+
+- `/conheca` → `/` landing SaaS
+- `/comece` → onboarding/registro (arquitectura prevista)
+- `/login` → `/login`
+- `/administracao` → `/admin`
+- `/painel` → `/panel`
+- `/afiliado` → módulo de afiliados
+- `/app/estabelecimento` → `/t/[slug]` o subdominio wildcard
+- `/app/cidade` → marketplace local por slug
+- `categorias` → categorías
+- `produtos` → productos + imágenes + opciones
+- `sacola` → Redux cart
+- `pedido_delivery` → checkout `delivery`
+- `pedido_balcao` → checkout `pickup`
+- `pedido_mesa` → checkout `table`
+- `pedido_outros` → checkout `other`
+- `frete` → delivery_zones
+- `agendamentos/horarios` → opening_hours
+- `cupons` → coupons
+- `banners` → banners
+- `planos` → plans
+- `assinaturas` → subscriptions
+- `vouchers` → vouchers
+- `impressao` → printer_tokens + print_status
+- `pdv` → `/panel/pdv`
+- `qrcode` → `/panel/qr`
+- `relatorio` → `/panel/reportes`
+- `shopping.xml` → feed de productos (a implementar como exportador)

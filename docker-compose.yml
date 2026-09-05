@@ -1,0 +1,124 @@
+services:
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      APP_NAME: ${APP_NAME:-wamercio}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-localhost}
+      API_INTERNAL_URL: ${API_INTERNAL_URL:-http://api:8080}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-wamercio}
+      NEXT_PUBLIC_ROOT_DOMAIN: ${NEXT_PUBLIC_ROOT_DOMAIN:-localhost}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TZ: ${TZ:-America/Santo_Domingo}
+    expose:
+      - "3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      APP_NAME: ${APP_NAME:-wamercio}
+      APP_ENV: ${APP_ENV:-production}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      ROOT_DOMAIN: ${ROOT_DOMAIN:-localhost}
+      TZ: ${TZ:-America/Santo_Domingo}
+
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-480}
+      MEDIA_DIR: ${MEDIA_DIR:-/data/uploads}
+
+      SEED_DEMO: ${SEED_DEMO:-false}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-admin@wamercio.local}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      DEMO_ADMIN_EMAIL: ${DEMO_ADMIN_EMAIL:-demo@wamercio.local}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
+
+      WAXUM_BASE_URL: ${WAXUM_BASE_URL:-https://waxum.ltd.do}
+      WAXUM_SUPERADMIN_TOKEN: ${WAXUM_SUPERADMIN_TOKEN:-}
+      WAXUM_WEBHOOK_BASE_URL: ${WAXUM_WEBHOOK_BASE_URL:-}
+
+      IDENTITY_BASE_URL: ${IDENTITY_BASE_URL:-https://id.ltd.do}
+      IDENTITY_API_KEY: ${IDENTITY_API_KEY:-}
+      IDENTITY_CLIENT_ID: ${IDENTITY_CLIENT_ID:-wamercio}
+      IDENTITY_APPLICATION_DOMAIN: ${IDENTITY_APPLICATION_DOMAIN:-}
+      IDENTITY_HASH_SECRET: ${IDENTITY_HASH_SECRET:-}
+      IDENTITY_OWNER_CONTEXT: ${IDENTITY_OWNER_CONTEXT:-registro_propietario}
+      IDENTITY_BUSINESS_CONTEXT: ${IDENTITY_BUSINESS_CONTEXT:-registro_negocio}
+      IDENTITY_CUSTOMER_CONTEXT: ${IDENTITY_CUSTOMER_CONTEXT:-registro_cliente}
+      IDENTITY_PUBLIC_RATE_LIMIT: ${IDENTITY_PUBLIC_RATE_LIMIT:-8}
+
+      GEO_RD_MAP_BASE_URL: ${GEO_RD_MAP_BASE_URL:-https://geo.ltd.do}
+      GEO_RD_MAP_API_KEY: ${GEO_RD_MAP_API_KEY:-}
+      GEO_RD_MAP_PUBLIC_RATE_LIMIT: ${GEO_RD_MAP_PUBLIC_RATE_LIMIT:-60}
+    expose:
+      - "8080"
+    volumes:
+      - media_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app/wamercio-api", "healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wamercio}
+      POSTGRES_USER: ${POSTGRES_USER:-wamercio}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TZ: ${TZ:-America/Santo_Domingo}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wamercio} -d ${POSTGRES_DB:-wamercio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - internal
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - internal
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+
+networks:
+  internal:
+    driver: bridge

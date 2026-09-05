@@ -1,0 +1,1055 @@
+openapi: 3.0.3
+info:
+  title: Identidad API
+  version: 1.9.5
+  description: API interna para consultar y verificar cédulas, RNC y otros documentos de identidad de República
+    Dominicana. Las consultas usan una API key privada por aplicación, permisos por scope, restricciones de dominio,
+    cuotas y trazabilidad por request ID. Las identidades verificadas pueden resolverse desde Redis, PostgreSQL
+    o proveedores externos; la persistencia central se mantiene cifrada. Las consultas nuevas pueden distribuirse entre
+    MIREX e INTRANT, usando una sola fuente por consulta y failover únicamente si la fuente elegida está indisponible.
+    El perfil público no incluye lugar de nacimiento. Esta especificación documenta la API pública de integración. Los
+    endpoints /admin forman parte del panel operativo y no son una API de consumo.
+  contact:
+    name: Administración de Identidad API
+servers:
+- url: https://id.ltd.do
+  description: Producción
+- url: http://localhost:8080
+  description: Desarrollo local
+security:
+- ApiKeyAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Comprobar liveness del proceso
+      responses:
+        '200':
+          description: Servicio operativo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicSuccessResponse'
+      operationId: getHealth
+      tags:
+      - Sistema
+  /ready:
+    get:
+      security: []
+      summary: Comprobar readiness de dependencias
+      description: Respuesta pública deliberadamente mínima. Solo expone si cada dependencia está lista y si es obligatoria; los diagnósticos detallados permanecen en el panel administrativo autenticado.
+      responses:
+        '200':
+          description: Servicio listo.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadySuccessResponse'
+        '503':
+          description: Una dependencia marcada como obligatoria no está lista.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadySuccessResponse'
+      operationId: getReadiness
+      tags:
+      - Sistema
+  /metrics:
+    get:
+      security: []
+      summary: Exponer métricas Prometheus opcionales
+      description: 'Disponible únicamente cuando METRICS_ENABLED=true. Si METRICS_TOKEN está configurado, requiere
+        X-Metrics-Token o Authorization: Bearer. Las rutas dinámicas se normalizan para no exponer cédulas, UUID
+        de lotes ni otros identificadores en las etiquetas.'
+      parameters:
+      - in: header
+        name: X-Metrics-Token
+        required: false
+        schema:
+          type: string
+        description: Token de métricas cuando METRICS_TOKEN está configurado.
+      responses:
+        '200':
+          description: Métricas en formato Prometheus.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: Token de métricas inválido.
+        '404':
+          description: Métricas deshabilitadas.
+      operationId: getMetrics
+      tags:
+      - Sistema
+  /version:
+    get:
+      security: []
+      summary: Consultar la versión instalada
+      responses:
+        '200':
+          description: Versión instalada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BasicSuccessResponse'
+      operationId: getVersion
+      tags:
+      - Sistema
+  /openapi.yaml:
+    get:
+      operationId: getOpenAPISpec
+      tags:
+      - Sistema
+      security: []
+      summary: Descargar la especificación OpenAPI
+      description: Devuelve esta especificación en YAML. La guía visual interna está disponible en `/admin#integration`
+        para administradores autenticados.
+      responses:
+        '200':
+          description: Especificación OpenAPI 3.0.3
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/v1/identidad/verificar:
+    post:
+      summary: Verificar una persona o empresa
+      description: Requiere el scope `identity:read` para API keys administradas. La respuesta conserva `meta.request_id`
+        para correlación y soporte.
+      parameters:
+      - $ref: '#/components/parameters/ClientID'
+      - $ref: '#/components/parameters/ApplicationDomain'
+      - $ref: '#/components/parameters/UsageContext'
+      - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityRequest'
+            examples:
+              persona:
+                value:
+                  tipo_sujeto: persona
+                  documento: '00100000000'
+                  contexto: onboarding_usuario
+              empresa:
+                value:
+                  tipo_sujeto: empresa
+                  documento: '131188095'
+                  contexto: alta_proveedor
+      responses:
+        '200':
+          description: Documento verificado
+          headers:
+            X-Identity-Cache:
+              description: Nivel que resolvió la identidad (`redis`, `postgres` o `provider`).
+              schema:
+                type: string
+            X-Identity-Stale:
+              description: '`true` cuando se sirvió un registro vencido mientras se refresca en segundo plano.'
+              schema:
+                type: string
+            X-Request-ID:
+              description: Request ID final de la solicitud.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              description: Límite global por minuto.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Solicitudes globales restantes en la ventana.
+              schema:
+                type: integer
+            X-Client-RateLimit-Limit:
+              description: Límite por minuto de la aplicación administrada.
+              schema:
+                type: integer
+            X-Client-RateLimit-Remaining:
+              description: Solicitudes restantes de la aplicación en la ventana.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentitySuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+      operationId: verificarIdentidad
+      tags:
+      - Identidad
+  /api/v1/cedulas/consultar:
+    post:
+      summary: Consultar una cédula
+      description: Requiere el scope `cedula:read` para API keys administradas. La respuesta conserva `meta.request_id`
+        para correlación y soporte.
+      parameters:
+      - $ref: '#/components/parameters/ClientID'
+      - $ref: '#/components/parameters/ApplicationDomain'
+      - $ref: '#/components/parameters/UsageContext'
+      - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - cedula
+              additionalProperties: false
+              properties:
+                cedula:
+                  type: string
+                  example: 001-0000000-0
+            examples:
+              basico:
+                summary: Consulta de cédula
+                value:
+                  cedula: '00100000000'
+      responses:
+        '200':
+          description: Resultado de la consulta
+          headers:
+            X-Identity-Cache:
+              description: Nivel que resolvió la identidad (`redis`, `postgres` o `provider`).
+              schema:
+                type: string
+            X-Identity-Stale:
+              description: '`true` cuando se sirvió un registro vencido mientras se refresca en segundo plano.'
+              schema:
+                type: string
+            X-Request-ID:
+              description: Request ID final de la solicitud.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              description: Límite global por minuto.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Solicitudes globales restantes en la ventana.
+              schema:
+                type: integer
+            X-Client-RateLimit-Limit:
+              description: Límite por minuto de la aplicación administrada.
+              schema:
+                type: integer
+            X-Client-RateLimit-Remaining:
+              description: Solicitudes restantes de la aplicación en la ventana.
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CedulaSuccessResponse'
+              example:
+                success: true
+                data:
+                  cedula: 001-0000000-0
+                  nombre: Nombre Apellido
+                  nombres: Nombre
+                  apellidos: Apellido
+                  primer_nombre: Nombre
+                  primer_apellido: Apellido
+                  fecha_nacimiento: '1990-05-16'
+                  sexo: M
+                  separacion_nombre_confiable: true
+                  encontrada: true
+                  formato_valido: true
+                  checksum_valido: true
+                  fuente: mirex
+                meta:
+                  request_id: 2d8a78c75b3a4f18b15de786
+                  timestamp: '2026-08-19T01:00:00Z'
+                  duration_ms: 42
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+      operationId: consultarCedula
+      tags:
+      - Cédulas
+  /api/v1/rnc/consultar:
+    post:
+      summary: Consultar un RNC
+      description: Requiere el scope `rnc:read` para API keys administradas. La respuesta conserva `meta.request_id`
+        para correlación y soporte.
+      parameters:
+      - $ref: '#/components/parameters/ClientID'
+      - $ref: '#/components/parameters/ApplicationDomain'
+      - $ref: '#/components/parameters/UsageContext'
+      - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - rnc
+              additionalProperties: false
+              properties:
+                rnc:
+                  type: string
+                  example: 131-18809-5
+            examples:
+              basico:
+                summary: Consulta de RNC
+                value:
+                  rnc: '131188095'
+      responses:
+        '200':
+          description: Resultado de la consulta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RNCSuccessResponse'
+              example:
+                success: true
+                data:
+                  rnc: 131-18809-5
+                  razon_social: Empresa De Ejemplo Srl
+                  nombre_comercial: Empresa De Ejemplo
+                  estado: ACTIVO
+                  encontrado: true
+                  formato_valido: true
+                  checksum_valido: true
+                  fuente: dataset
+                meta:
+                  request_id: 7b0b5c0aed0642bd8e3eed23
+                  timestamp: '2026-08-19T01:00:00Z'
+                  duration_ms: 2
+          headers:
+            X-Request-ID:
+              description: Request ID final de la solicitud.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              description: Límite global por minuto.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Solicitudes globales restantes en la ventana.
+              schema:
+                type: integer
+            X-Client-RateLimit-Limit:
+              description: Límite por minuto de la aplicación administrada.
+              schema:
+                type: integer
+            X-Client-RateLimit-Remaining:
+              description: Solicitudes restantes de la aplicación en la ventana.
+              schema:
+                type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+      operationId: consultarRNC
+      tags:
+      - RNC
+  /api/v1/documentos/verificar:
+    post:
+      summary: Verificar un documento por tipo
+      description: Requiere el scope `document:read` para API keys administradas. La respuesta conserva `meta.request_id`
+        para correlación y soporte.
+      parameters:
+      - $ref: '#/components/parameters/ClientID'
+      - $ref: '#/components/parameters/ApplicationDomain'
+      - $ref: '#/components/parameters/UsageContext'
+      - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentRequest'
+            examples:
+              cedula:
+                value:
+                  tipo: cedula
+                  numero: '00100000000'
+              rnc:
+                value:
+                  tipo: rnc
+                  numero: '131188095'
+      responses:
+        '200':
+          description: Resultado de la consulta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentSuccessResponse'
+          headers:
+            X-Request-ID:
+              description: Request ID final de la solicitud.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              description: Límite global por minuto.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Solicitudes globales restantes en la ventana.
+              schema:
+                type: integer
+            X-Client-RateLimit-Limit:
+              description: Límite por minuto de la aplicación administrada.
+              schema:
+                type: integer
+            X-Client-RateLimit-Remaining:
+              description: Solicitudes restantes de la aplicación en la ventana.
+              schema:
+                type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+      operationId: verificarDocumento
+      tags:
+      - Documentos
+  /api/v1/licencias/consultar:
+    post:
+      summary: Consultar una licencia cuando la función esté habilitada
+      description: Requiere el scope `license:read` para API keys administradas. La respuesta conserva `meta.request_id`
+        para correlación y soporte.
+      parameters:
+      - $ref: '#/components/parameters/ClientID'
+      - $ref: '#/components/parameters/ApplicationDomain'
+      - $ref: '#/components/parameters/UsageContext'
+      - $ref: '#/components/parameters/RequestID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - licencia
+              additionalProperties: false
+              properties:
+                licencia:
+                  type: string
+                cedula:
+                  type: string
+      responses:
+        '200':
+          description: Resultado de la consulta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LicenseSuccessResponse'
+          headers:
+            X-Request-ID:
+              description: Request ID final de la solicitud.
+              schema:
+                type: string
+            X-RateLimit-Limit:
+              description: Límite global por minuto.
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              description: Solicitudes globales restantes en la ventana.
+              schema:
+                type: integer
+            X-Client-RateLimit-Limit:
+              description: Límite por minuto de la aplicación administrada.
+              schema:
+                type: integer
+            X-Client-RateLimit-Remaining:
+              description: Solicitudes restantes de la aplicación en la ventana.
+              schema:
+                type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Función deshabilitada o documento no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '504':
+          $ref: '#/components/responses/GatewayTimeout'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+      operationId: consultarLicencia
+      tags:
+      - Licencias
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key privada enviada en `X-API-Key`. Para claves administradas se aplican Client ID, dominio, scopes,
+        vencimiento, contextos y rate limit. La clave heredada puede deshabilitarse con `LEGACY_API_KEY_ENABLED=false`.
+  parameters:
+    ClientID:
+      in: header
+      name: X-Client-ID
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Client ID de la aplicación. En producción se recomienda `API_CLIENT_ID_REQUIRED=true`; en ese modo
+        la cabecera es obligatoria para API keys administradas y debe coincidir con el Client ID registrado.
+    ApplicationDomain:
+      in: header
+      name: X-Application-Domain
+      required: false
+      schema:
+        type: string
+        maxLength: 253
+      description: Dominio declarado por clientes backend cuando la API key está restringida por dominio y `API_CLIENT_DOMAIN_MODE=origin_or_header`.
+        En navegador se valida primero `Origin` y luego `Referer`. No envíe comodines en esta cabecera.
+    UsageContext:
+      in: header
+      name: X-Usage-Context
+      required: false
+      schema:
+        type: string
+        maxLength: 64
+      description: Contexto funcional condicional. Si la aplicación tiene contextos permitidos, esta cabecera es obligatoria en los endpoints que no aceptan contexto en el cuerpo y debe coincidir con uno de ellos.
+    RequestID:
+      in: header
+      name: X-Request-ID
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Identificador de correlación opcional. Si no se envía, la API genera uno y lo devuelve en `meta.request_id`
+        y `X-Request-ID`.
+  schemas:
+    Meta:
+      type: object
+      required:
+      - request_id
+      - timestamp
+      properties:
+        request_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          format: int64
+    IdentityRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - tipo_sujeto
+      - documento
+      properties:
+        tipo_sujeto:
+          type: string
+          enum:
+          - persona
+          - empresa
+        documento:
+          type: string
+        contexto:
+          type: string
+          maxLength: 64
+          description: Contexto funcional opcional. Si no se envía, puede usarse `X-Usage-Context`.
+    Person:
+      type: object
+      required:
+      - cedula
+      - nombre_completo
+      - nombres
+      - apellidos
+      - separacion_nombre_confiable
+      properties:
+        cedula:
+          type: string
+        nombre_completo:
+          type: string
+        nombres:
+          type: string
+        apellidos:
+          type: string
+        primer_nombre:
+          type: string
+        segundo_nombre:
+          type: string
+        primer_apellido:
+          type: string
+        segundo_apellido:
+          type: string
+        fecha_nacimiento:
+          type: string
+          format: date
+          description: Fecha de nacimiento en formato ISO `YYYY-MM-DD`. La UI administrativa la presenta como `DD/MM/AAAA`.
+        sexo:
+          type: string
+          example: M
+        separacion_nombre_confiable:
+          type: boolean
+    Company:
+      type: object
+      required:
+      - rnc
+      - razon_social
+      - activa
+      properties:
+        rnc:
+          type: string
+        razon_social:
+          type: string
+        nombre_comercial:
+          type: string
+        estado:
+          type: string
+        activa:
+          type: boolean
+    IdentityData:
+      type: object
+      required:
+      - tipo_sujeto
+      - tipo_documento
+      - documento
+      - valida
+      - encontrada
+      - puede_autocompletar
+      - requiere_confirmacion
+      - puede_registrarse
+      properties:
+        tipo_sujeto:
+          type: string
+          enum:
+          - persona
+          - empresa
+        tipo_documento:
+          type: string
+          enum:
+          - cedula
+          - rnc
+        documento:
+          type: string
+        contexto:
+          type: string
+        valida:
+          type: boolean
+        encontrada:
+          type: boolean
+        puede_autocompletar:
+          type: boolean
+        requiere_confirmacion:
+          type: boolean
+        puede_registrarse:
+          type: boolean
+        motivo:
+          type: string
+        fuente:
+          type: string
+        persona:
+          $ref: '#/components/schemas/Person'
+        empresa:
+          $ref: '#/components/schemas/Company'
+    CedulaData:
+      type: object
+      properties:
+        cedula:
+          type: string
+        nombre:
+          type: string
+        nombres:
+          type: string
+        apellidos:
+          type: string
+        primer_nombre:
+          type: string
+        segundo_nombre:
+          type: string
+        primer_apellido:
+          type: string
+        segundo_apellido:
+          type: string
+        fecha_nacimiento:
+          type: string
+          format: date
+          description: Fecha de nacimiento en formato ISO `YYYY-MM-DD`. La UI administrativa la presenta como `DD/MM/AAAA`.
+        sexo:
+          type: string
+          example: M
+        separacion_nombre_confiable:
+          type: boolean
+        encontrada:
+          type: boolean
+        formato_valido:
+          type: boolean
+        checksum_valido:
+          type: boolean
+        fuente:
+          type: string
+    RNCData:
+      type: object
+      properties:
+        rnc:
+          type: string
+        razon_social:
+          type: string
+        nombre_comercial:
+          type: string
+        estado:
+          type: string
+        encontrado:
+          type: boolean
+        formato_valido:
+          type: boolean
+        checksum_valido:
+          type: boolean
+        fuente:
+          type: string
+    IdentitySuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/IdentityData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    CedulaSuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/CedulaData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    RNCSuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/RNCData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    BasicSuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ReadySuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          required:
+          - status
+          - dependencies
+          properties:
+            status:
+              type: string
+              enum:
+              - ready
+              - degraded
+              example: ready
+            dependencies:
+              type: object
+              required:
+              - postgresql
+              - redis
+              - rnc
+              - proxy
+              properties:
+                postgresql:
+                  $ref: '#/components/schemas/DependencyReadiness'
+                redis:
+                  $ref: '#/components/schemas/DependencyReadiness'
+                rnc:
+                  $ref: '#/components/schemas/DependencyReadiness'
+                proxy:
+                  $ref: '#/components/schemas/DependencyReadiness'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DependencyReadiness:
+      type: object
+      required:
+      - ready
+      - required
+      additionalProperties: false
+      properties:
+        ready:
+          type: boolean
+          description: Indica si la dependencia está lista en este momento.
+        required:
+          type: boolean
+          description: Indica si la dependencia participa en el resultado HTTP de readiness.
+    ErrorBody:
+      type: object
+      required:
+      - code
+      - message
+      properties:
+        code:
+          type: string
+          description: 'Código estable para lógica del cliente. Ejemplos: `UNAUTHORIZED`, `APPLICATION_DOMAIN_REQUIRED`,
+            `APPLICATION_DOMAIN_NOT_ALLOWED`, `SCOPE_NOT_ALLOWED`, `CONTEXT_NOT_ALLOWED`, `INVALID_DOCUMENT_FORMAT`,
+            `INVALID_DOCUMENT_CHECKSUM`, `DOCUMENT_NOT_FOUND`, `CLIENT_RATE_LIMIT_EXCEEDED`, `PROVIDERS_UNAVAILABLE`,
+            `REQUEST_TIMEOUT`.'
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+    ErrorResponse:
+      type: object
+      required:
+      - success
+      - error
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    LicenseData:
+      type: object
+      properties:
+        licencia:
+          type: string
+        cedula:
+          type: string
+        nombre:
+          type: string
+        nombres:
+          type: string
+        apellidos:
+          type: string
+        primer_nombre:
+          type: string
+        segundo_nombre:
+          type: string
+        primer_apellido:
+          type: string
+        segundo_apellido:
+          type: string
+        fecha_nacimiento:
+          type: string
+          format: date
+          description: Fecha ISO `YYYY-MM-DD` en la API.
+        sexo:
+          type: string
+        encontrada:
+          type: boolean
+        valida:
+          type: boolean
+        estado:
+          type: string
+        categoria:
+          type: string
+        fecha_emision:
+          type: string
+        fecha_vencimiento:
+          type: string
+        formato_valido:
+          type: boolean
+        checksum_valido:
+          type: boolean
+        identidad_verificada:
+          type: boolean
+        verificacion_oficial_disponible:
+          type: boolean
+        requiere_verificacion_manual:
+          type: boolean
+        fuente:
+          type: string
+        mensaje:
+          type: string
+    LicenseSuccessResponse:
+      type: object
+      required:
+      - success
+      - data
+      - meta
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/LicenseData'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    DocumentRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - tipo
+      - numero
+      properties:
+        tipo:
+          type: string
+          enum:
+          - cedula
+          - rnc
+          - licencia
+        numero:
+          type: string
+          description: Número del documento a consultar.
+        cedula:
+          type: string
+          description: Cédula asociada cuando `tipo=licencia`.
+    DocumentSuccessResponse:
+      oneOf:
+      - $ref: '#/components/schemas/CedulaSuccessResponse'
+      - $ref: '#/components/schemas/RNCSuccessResponse'
+      - $ref: '#/components/schemas/LicenseSuccessResponse'
+      description: La forma de `data` depende del tipo de documento solicitado.
+  responses:
+    BadRequest:
+      description: Solicitud inválida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: API key ausente, inválida, vencida o revocada.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Dominio, scope, Client ID o contexto no autorizado para la aplicación.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Documento no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Checksum inválido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Límite global o de la aplicación excedido. Respete `Retry-After` antes de reintentar.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Persistencia, validación de credenciales o proveedor temporalmente no disponible. Aplique reintentos
+        limitados con backoff.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    GatewayTimeout:
+      description: La consulta excedió el tiempo máximo permitido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+tags:
+- name: Sistema
+  description: Liveness, readiness, versión y observabilidad.
+- name: Identidad
+  description: Verificación unificada de personas y empresas.
+- name: Cédulas
+  description: Consulta directa de cédulas dominicanas.
+- name: RNC
+  description: Consulta de Registro Nacional de Contribuyentes.
+- name: Documentos
+  description: Router genérico por tipo de documento.
+- name: Licencias
+  description: Consulta de licencias cuando la función y proveedor estén habilitados.
+x-integration-guide:
+  admin_path: /admin#integration
+  openapi_path: /openapi.yaml
+  recommended_client: backend
+  date_format: ISO 8601 (YYYY-MM-DD) en API; DD/MM/AAAA solo en UI administrativa

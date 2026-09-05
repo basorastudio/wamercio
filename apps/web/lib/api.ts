@@ -1,0 +1,3 @@
+export async function api<T=any>(path:string, init?:RequestInit):Promise<T>{const res=await fetch(`/api/backend${path}`,{...init,headers:{"Content-Type":"application/json",...(init?.headers||{})},cache:"no-store"});const data=await res.json().catch(()=>({}));if(!res.ok)throw new Error(data.error||"Ocurrió un error");return data}
+export async function serverApi<T=any>(path:string):Promise<T>{const base=process.env.API_INTERNAL_URL||"http://api:8080";const res=await fetch(base+path,{cache:"no-store"});if(!res.ok)throw new Error("API no disponible");return res.json()}
+export const money=(v:number)=>new Intl.NumberFormat("es-DO",{style:"currency",currency:"DOP",minimumFractionDigits:2}).format(v);

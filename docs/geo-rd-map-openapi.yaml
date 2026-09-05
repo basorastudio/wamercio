@@ -1,0 +1,3913 @@
+openapi: 3.0.3
+info:
+  title: GEO RD MAP API
+  version: 2.6.1
+  description: API geoespacial central de República Dominicana para integrar división territorial, selectores Provincia →
+    Ciudad → Barrio, geocodificación, autocomplete, reverse geocoding, lugares y direcciones, GeoJSON/MVT, geocercas, routing
+    y navegación. Las integraciones externas usan una API key privada por aplicación, permisos por scope, restricciones de
+    origen y límites de consumo. Esta especificación documenta únicamente la API pública de integración; los endpoints /api/v1/admin
+    forman parte del panel operativo y no son una API de consumo.
+  contact:
+    name: Administración de GEO RD MAP
+servers:
+- url: https://geo.ltd.do
+  description: Producción
+- url: http://localhost:8080
+  description: Backend local
+security:
+- ApiKeyAuth: []
+paths:
+  /healthz:
+    get:
+      tags:
+      - Sistema
+      security: []
+      summary: Comprobar liveness del proceso
+      description: Verifica que el proceso HTTP de GEO RD MAP está respondiendo.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Proceso operativo
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'ok
+
+                  '
+  /readyz:
+    get:
+      tags:
+      - Sistema
+      security: []
+      summary: Comprobar readiness de PostgreSQL
+      description: Devuelve 200 cuando el backend puede comunicarse con PostgreSQL y 503 si la dependencia principal no está
+        lista.
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Servicio listo
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: 'ready
+
+                  '
+        '503':
+          description: PostgreSQL no está listo
+          content:
+            text/plain:
+              schema:
+                type: string
+  /openapi.yaml:
+    get:
+      tags:
+      - Sistema
+      security: []
+      summary: Descargar la especificación OpenAPI
+      description: Especificación pública de integración. No contiene credenciales ni endpoints administrativos.
+      operationId: getOpenAPISpec
+      responses:
+        '200':
+          description: Especificación OpenAPI 3.0.3
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/v1/territories/status:
+    get:
+      tags:
+      - División territorial
+      summary: Estadísticas del catálogo territorial
+      responses:
+        '200':
+          description: Estadísticas del catálogo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerritoryStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getTerritoryStatus
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+  /api/v1/territories/provinces:
+    get:
+      tags:
+      - División territorial
+      summary: Lista las 32 provincias
+      responses:
+        '200':
+          description: Provincias
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvinceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listProvinces
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+      parameters:
+      - in: query
+        name: regionCode
+        required: false
+        schema:
+          type: string
+        description: Filtra por región.
+      description: Devuelve el catálogo oficial de provincias. Use `regionCode` solo cuando necesite filtrar por región.
+      x-codeSamples:
+      - lang: cURL
+        source: 'curl -H ''X-API-Key: geo_TU_API_KEY'' https://geo.ltd.do/api/v1/territories/provinces'
+      - lang: JavaScript
+        source: 'const r = await fetch(''https://geo.ltd.do/api/v1/territories/provinces'', { headers: { ''X-API-Key'': process.env.GEO_RD_MAP_API_KEY
+          } });
+
+          const data = await r.json();'
+  /api/v1/territories/cities:
+    get:
+      tags:
+      - División territorial
+      summary: Lista municipios y distritos municipales como ciudades
+      parameters:
+      - $ref: '#/components/parameters/ProvinceCode'
+        required: true
+      responses:
+        '200':
+          description: Ciudades
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listCities
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+      description: Devuelve municipios y distritos municipales en un único selector denominado “ciudad”. El `cityId` es el
+        identificador estable que debe conservar la aplicación consumidora.
+  /api/v1/territories/cities/{cityId}/neighborhoods:
+    get:
+      tags:
+      - División territorial
+      summary: Lista barrios oficiales y personalizados aprobados de una ciudad
+      parameters:
+      - in: path
+        name: cityId
+        required: true
+        schema:
+          type: string
+          example: '25:01:01'
+      - in: query
+        name: includeCustom
+        required: false
+        schema:
+          type: boolean
+          default: true
+        description: Incluye barrios personalizados aprobados.
+      responses:
+        '200':
+          description: Barrios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NeighborhoodListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: listCityNeighborhoods
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+      description: Devuelve barrios oficiales y, por defecto, barrios personalizados aprobados de la ciudad seleccionada.
+  /api/v1/territories/provinces/{code}/enrichment:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Métricas de Overture asociadas a una provincia del catálogo local
+      parameters:
+      - in: path
+        name: code
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9]{2}$
+          example: '25'
+      responses:
+        '200':
+          description: Enriquecimiento provincial
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProvinceEnrichmentResponse'
+        '404':
+          description: Provincia no encontrada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: getProvinceEnrichment
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+  /api/v1/territories/cities/{cityId}/enrichment:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Métricas de Overture asociadas a una ciudad del catálogo local
+      parameters:
+      - in: path
+        name: cityId
+        required: true
+        schema:
+          type: string
+          example: '25:01:01'
+      responses:
+        '200':
+          description: Enriquecimiento de ciudad
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CityEnrichmentResponse'
+        '404':
+          description: Ciudad no encontrada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: getCityEnrichment
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+  /api/v1/territories/selectors:
+    get:
+      tags:
+      - División territorial
+      summary: Bundle progresivo Provincia-Ciudad-Barrio
+      parameters:
+      - $ref: '#/components/parameters/ProvinceCode'
+      - $ref: '#/components/parameters/CityID'
+      - in: query
+        name: includeCustom
+        required: false
+        schema:
+          type: boolean
+          default: true
+      responses:
+        '200':
+          description: Bundle progresivo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelectorBundleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getTerritorySelectors
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+      description: Endpoint recomendado para formularios progresivos. Sin parámetros devuelve provincias; con `provinceCode`
+        incluye ciudades; con `cityId` incluye barrios.
+      x-codeSamples:
+      - lang: cURL
+        source: 'curl -H ''X-API-Key: geo_TU_API_KEY'' ''https://geo.ltd.do/api/v1/territories/selectors?provinceCode=25&cityId=25%3A01%3A01'''
+  /api/v1/territories/neighborhoods/custom/suggestions:
+    post:
+      tags:
+      - Barrios personalizados
+      summary: Sugiere un barrio faltante; queda pendiente de aprobación central
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomNeighborhoodSuggestionRequest'
+            examples:
+              barrio:
+                value:
+                  name: Los Pinos
+                  provinceCode: '25'
+                  municipalityCode: '01'
+                  districtCode: '01'
+                  cityId: '25:01:01'
+                  submittedRole: cliente
+                  submittedName: Mi App
+      responses:
+        '202':
+          description: Sugerencia registrada como pendiente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomNeighborhoodResponse'
+        '409':
+          description: Duplicado
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: suggestCustomNeighborhood
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:write
+      parameters:
+      - $ref: '#/components/parameters/TenantID'
+  /api/v1/geolocation/config:
+    get:
+      tags:
+      - Geolocalización
+      summary: Configuración pública recomendada para el buscador de consumidores
+      responses:
+        '200':
+          description: Configuración del buscador
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeolocationConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getGeolocationConfig
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/search:
+    get:
+      tags:
+      - Geolocalización
+      summary: Busca destinos mezclando Overture, Nominatim y Google Places según configuración
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+          maxLength: 160
+          example: farmacia Santiago
+      - in: query
+        name: lat
+        required: false
+        schema:
+          type: number
+          format: double
+        description: Sesgo opcional por cercanía.
+      - in: query
+        name: lng
+        required: false
+        schema:
+          type: number
+          format: double
+        description: Sesgo opcional por cercanía.
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 30
+          default: 20
+      responses:
+        '200':
+          description: Resultados unificados y deduplicados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoSearchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: searchGeolocation
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+      description: Búsqueda unificada de destinos dentro de República Dominicana. GEO RD MAP mezcla el catálogo local, Overture,
+        Nominatim y Google Places según configuración, normaliza resultados y evita que la aplicación consumidora tenga que
+        integrar cada proveedor por separado.
+      x-codeSamples:
+      - lang: cURL
+        source: 'curl -H ''X-API-Key: geo_TU_API_KEY'' ''https://geo.ltd.do/api/v1/geolocation/search?q=farmacia%20Santiago&limit=10'''
+  /api/v1/geolocation/selections:
+    post:
+      tags:
+      - Geolocalización
+      summary: Confirma un resultado elegido y aprende localmente lugares de Google Places dentro de RD
+      description: Confirma el resultado elegido por el usuario. Cuando el resultado proviene de Google Places y contiene
+        `selectionToken`, GEO RD MAP valida la firma y puede aprender el lugar localmente para consultas futuras.
+      security:
+      - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlaceSelectionRequest'
+      responses:
+        '200':
+          description: Selección confirmada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceSelectionResponse'
+        '400':
+          description: Resultado inválido, no firmado o fuera de República Dominicana
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: confirmGeolocationSelection
+      x-required-scope: geo:write
+  /api/v1/geolocation/reverse:
+    get:
+      tags:
+      - Geolocalización
+      summary: Reverse geocoding híbrido con contexto territorial oficial
+      parameters:
+      - $ref: '#/components/parameters/Latitude'
+      - $ref: '#/components/parameters/Longitude'
+      responses:
+        '200':
+          description: Resultado de reverse geocoding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoReverseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: reverseGeocode
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/places/nearby:
+    get:
+      tags:
+      - Geolocalización
+      summary: POI Overture cercanos
+      parameters:
+      - in: query
+        name: lat
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: lng
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: radius
+        schema:
+          type: number
+          default: 1000
+      - in: query
+        name: category
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 50
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: listNearbyPlaces
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/addresses/nearby:
+    get:
+      tags:
+      - Geolocalización
+      summary: Direcciones Overture cercanas cuando existen en la release
+      parameters:
+      - in: query
+        name: lat
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: lng
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: radius
+        schema:
+          type: number
+          default: 250
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          default: 25
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: listNearbyAddresses
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/map/config:
+    get:
+      tags:
+      - Mapa
+      summary: Configuración base para renderizar el mapa
+      responses:
+        '200':
+          description: Configuración base del mapa
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getMapConfig
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/map/features:
+    get:
+      tags:
+      - Mapa
+      summary: FeatureCollection GeoJSON para un viewport
+      parameters:
+      - in: query
+        name: bbox
+        required: true
+        schema:
+          type: string
+          example: -70.8,18.2,-69.5,19.0
+      - in: query
+        name: zoom
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 22
+          default: 12
+      - in: query
+        name: layers
+        schema:
+          type: string
+          example: provinces,cities,neighborhoods,places,roads,buildings,geofences
+      responses:
+        '200':
+          description: FeatureCollection para el viewport
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MapFeatureCollectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: getMapFeatures
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/routing/status:
+    get:
+      tags:
+      - Rutas
+      summary: Estado del motor Valhalla
+      responses:
+        '200':
+          description: Estado del motor de rutas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoutingStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getRoutingStatus
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+  /api/v1/routing/route:
+    post:
+      tags:
+      - Rutas
+      summary: Calcula una ruta
+      responses:
+        '200':
+          description: Ruta calculada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: calculateRoute
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RouteRequest'
+            example:
+              locations:
+              - lat: 18.4861
+                lon: -69.9312
+              - lat: 18.4719
+                lon: -69.8933
+              costing: auto
+              language: es-ES
+      description: Calcula rutas sobre el grafo vial de República Dominicana. Para automóvil use `costing=auto`; la plataforma
+        admite los perfiles habilitados por el motor de routing.
+      x-codeSamples:
+      - lang: cURL
+        source: "curl -X POST https://geo.ltd.do/api/v1/routing/route \\\n  -H 'Content-Type: application/json' \\\n  -H 'X-API-Key:\
+          \ geo_TU_API_KEY' \\\n  -d '{\"locations\":[{\"lat\":18.4861,\"lon\":-69.9312},{\"lat\":18.4719,\"lon\":-69.8933}],\"\
+          costing\":\"auto\",\"language\":\"es-ES\"}'"
+  /api/v1/routing/matrix:
+    post:
+      tags:
+      - Rutas
+      summary: Calcula matriz de tiempos/distancias
+      responses:
+        '200':
+          description: Matriz calculada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: calculateMatrix
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MatrixRequest'
+  /api/v1/routing/map-match:
+    post:
+      tags:
+      - Rutas
+      summary: Ajusta trazas GPS a la red vial
+      responses:
+        '200':
+          description: Traza ajustada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: mapMatch
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MapMatchRequest'
+  /api/v1/routing/isochrone:
+    post:
+      tags:
+      - Rutas
+      summary: Calcula isócronas
+      responses:
+        '200':
+          description: Isócrona calculada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: calculateIsochrone
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IsochroneRequest'
+  /api/v1/routing/optimized-route:
+    post:
+      tags:
+      - Rutas
+      summary: Optimiza una ruta con múltiples paradas
+      responses:
+        '200':
+          description: Ruta optimizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: calculateOptimizedRoute
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizedRouteRequest'
+  /api/v1/routing/nearest:
+    get:
+      tags:
+      - Rutas
+      summary: Punto enrutable más cercano
+      responses:
+        '200':
+          description: Punto enrutable más cercano
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getNearestRoutablePoint
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      parameters:
+      - $ref: '#/components/parameters/Latitude'
+      - $ref: '#/components/parameters/Longitude'
+      - in: query
+        name: costing
+        required: false
+        schema:
+          type: string
+          default: auto
+  /api/v1/geolocation/addresses:
+    get:
+      tags:
+      - Geolocalización
+      summary: Busca/lista direcciones Overture sincronizadas en RD
+      parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: provinceCode
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - in: query
+        name: offset
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listAddresses
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/places:
+    get:
+      tags:
+      - Geolocalización
+      summary: Busca/lista lugares y negocios Overture
+      parameters:
+      - in: query
+        name: q
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: category
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: provinceCode
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      - in: query
+        name: offset
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listPlaces
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/places/categories:
+    get:
+      tags:
+      - Geolocalización
+      summary: Lista categorías de lugares disponibles
+      parameters:
+      - in: query
+        name: provinceCode
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryCountListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listPlaceCategories
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/places/{id}:
+    get:
+      tags:
+      - Geolocalización
+      summary: Obtiene un lugar/POI por identificador
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlaceResponse'
+        '404':
+          description: Lugar no encontrado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: getPlace
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/buildings/nearby:
+    get:
+      tags:
+      - Geolocalización
+      summary: Edificaciones Overture cercanas
+      parameters:
+      - in: query
+        name: lat
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: lng
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: radius
+        required: false
+        schema:
+          type: number
+          default: 250
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BuildingListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: listNearbyBuildings
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/buildings/stats:
+    get:
+      tags:
+      - Geolocalización
+      summary: Estadísticas de edificaciones por provincia o a nivel nacional
+      parameters:
+      - in: query
+        name: provinceCode
+        required: false
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getBuildingStats
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/roads:
+    get:
+      tags:
+      - Geolocalización
+      summary: Lista carreteras/segmentos viales Overture
+      parameters:
+      - in: query
+        name: provinceCode
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: class
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+      - in: query
+        name: offset
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+      - in: query
+        name: geometry
+        required: false
+        schema:
+          type: boolean
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listRoads
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/roads/nearby:
+    get:
+      tags:
+      - Geolocalización
+      summary: Segmentos viales cercanos
+      parameters:
+      - in: query
+        name: lat
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: lng
+        required: true
+        schema:
+          type: number
+      - in: query
+        name: radius
+        required: false
+        schema:
+          type: number
+          default: 500
+      - in: query
+        name: limit
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoadListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: listNearbyRoads
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/addresses/validate:
+    post:
+      tags:
+      - Geolocalización
+      summary: Valida/enriquece una dirección contra los datos locales sincronizados
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressValidationRequest'
+            example:
+              lat: 18.4861
+              lng: -69.9312
+              provinceCode: '01'
+              cityId: 01:01:01
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddressValidationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: validateAddress
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/routing/attribution:
+    get:
+      tags:
+      - Rutas
+      summary: Atribución y proveedor del motor de rutas
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getRoutingAttribution
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+  /api/v1/territories/health:
+    get:
+      tags:
+      - División territorial
+      summary: Healthcheck del API territorial
+      security: []
+      responses:
+        '200':
+          description: Estado del catálogo territorial
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerritoryHealthResponse'
+      operationId: getTerritoryHealth
+      x-required-scope: territories:read
+  /api/v1/territories/regions:
+    get:
+      tags:
+      - División territorial
+      summary: Lista regiones territoriales
+      responses:
+        '200':
+          description: Regiones
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listRegions
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: territories:read
+  /api/v1/geolocation/autocomplete:
+    get:
+      tags:
+      - Geolocalización
+      summary: Autocomplete optimizado para direcciones, POI y aliases dominicanos
+      responses:
+        '200':
+          description: Sugerencias de autocomplete
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeoSearchResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - in: query
+        name: q
+        required: true
+        schema:
+          type: string
+          maxLength: 160
+          example: santi
+      - in: query
+        name: lat
+        required: false
+        schema:
+          type: number
+          format: double
+      - in: query
+        name: lng
+        required: false
+        schema:
+          type: number
+          format: double
+      operationId: autocompleteGeolocation
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/batch/geocode:
+    post:
+      tags:
+      - Geolocalización
+      summary: Geocodificación por lotes
+      responses:
+        '200':
+          description: Resultados del lote
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchGeocodeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchGeocodeRequest'
+            example:
+              items:
+              - query: Palacio Nacional, Santo Domingo
+              - query: Monumento a los Héroes, Santiago
+              limit: 5
+      operationId: batchGeocode
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geolocation/batch/reverse:
+    post:
+      tags:
+      - Geolocalización
+      summary: Reverse geocoding por lotes
+      responses:
+        '200':
+          description: Resultados del lote
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchReverseResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchReverseRequest'
+            example:
+              items:
+              - lat: 18.4861
+                lng: -69.9312
+              - lat: 19.4517
+                lng: -70.697
+      operationId: batchReverseGeocode
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geofences:
+    get:
+      tags:
+      - Geocercas
+      summary: Lista geocercas activas
+      responses:
+        '200':
+          description: Geocercas activas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeofenceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      parameters:
+      - name: category
+        in: query
+        required: false
+        description: Categoría
+        schema:
+          type: string
+      - name: serviceType
+        in: query
+        required: false
+        description: Tipo de servicio
+        schema:
+          type: string
+      operationId: listGeofences
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geofences/contains:
+    get:
+      tags:
+      - Geocercas
+      summary: Determina qué geocercas contienen un punto
+      responses:
+        '200':
+          description: Geocercas que contienen el punto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeofenceListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      parameters:
+      - $ref: '#/components/parameters/Latitude'
+      - $ref: '#/components/parameters/Longitude'
+      - in: query
+        name: category
+        required: false
+        schema:
+          type: string
+      - in: query
+        name: serviceType
+        required: false
+        schema:
+          type: string
+          example: delivery
+      operationId: findContainingGeofences
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+      description: Endpoint recomendado para delivery, taxi, motoconcho y otros servicios por zona. Devuelve las geocercas
+        activas que contienen la coordenada indicada.
+      x-codeSamples:
+      - lang: cURL
+        source: 'curl -H ''X-API-Key: geo_TU_API_KEY'' ''https://geo.ltd.do/api/v1/geofences/contains?lat=18.4861&lng=-69.9312&serviceType=delivery'''
+  /api/v1/geofences/{id}:
+    get:
+      tags:
+      - Geocercas
+      summary: Obtiene una geocerca por ID
+      responses:
+        '200':
+          description: Geocerca
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GeofenceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      operationId: getGeofence
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/map/tiles/{z}/{x}/{y}.pbf:
+    get:
+      tags:
+      - Mapa
+      summary: Tesela vectorial MVT generada desde PostGIS
+      responses:
+        '200':
+          description: Mapbox Vector Tile
+          content:
+            application/vnd.mapbox-vector-tile:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - name: z
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: x
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: y
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: layers
+        in: query
+        required: false
+        description: Capas MVT separadas por coma. Soporta provinces, cities, neighborhoods, places, roads, buildings y geofences.
+        schema:
+          type: string
+      operationId: getVectorTile
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/routing/navigation/sessions:
+    post:
+      tags:
+      - Navegación
+      summary: Crea una sesión de navegación y calcula su ruta inicial
+      responses:
+        '201':
+          description: Sesión creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavigationSessionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NavigationCreateRequest'
+            example:
+              origin:
+                lat: 18.4861
+                lon: -69.9312
+              destination:
+                lat: 18.4719
+                lon: -69.8933
+              costing: auto
+      operationId: createNavigationSession
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+      description: Crea una sesión persistente de navegación. La aplicación puede enviar ubicaciones posteriores para actualizar
+        distancia, ETA y recalcular la ruta cuando corresponda.
+  /api/v1/routing/navigation/sessions/{id}:
+    get:
+      tags:
+      - Navegación
+      summary: Consulta el estado de una sesión de navegación
+      responses:
+        '200':
+          description: Sesión finalizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      operationId: getNavigationSession
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+    delete:
+      tags:
+      - Navegación
+      summary: Finaliza una sesión de navegación
+      responses:
+        '200':
+          description: Sesión finalizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      operationId: completeNavigationSession
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+  /api/v1/routing/navigation/sessions/{id}/location:
+    post:
+      tags:
+      - Navegación
+      summary: Actualiza ubicación, ETA, distancia y ruta de una sesión
+      responses:
+        '200':
+          description: Sesión actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NavigationSessionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NavigationUpdateRequest'
+            example:
+              location:
+                lat: 18.481
+                lon: -69.925
+      operationId: updateNavigationLocation
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: routing:read
+  /api/v1/geo/status:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Estado del release Overture cargado para República Dominicana
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getOvertureStatus
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geo/attribution:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Atribución y procedencia de los datasets Overture
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: getOvertureAttribution
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geo/divisions:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Consulta las divisiones Overture normalizadas para República Dominicana
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OvertureDivisionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listOvertureDivisions
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geo/gers/{id}:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Resuelve una entidad Overture por GERS ID
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GERSResponse'
+        '404':
+          description: Entidad no encontrada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: getOvertureGERS
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geo/reverse:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Reverse geocoding territorial usando el índice Overture local
+      parameters:
+      - in: query
+        name: lat
+        required: true
+        schema:
+          type: number
+          format: double
+      - in: query
+        name: lng
+        required: true
+        schema:
+          type: number
+          format: double
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericSuccessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+      operationId: reverseOvertureTerritory
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+  /api/v1/geo/territorial-divisions:
+    get:
+      tags:
+      - Datos geoespaciales
+      summary: Catálogo Overture Divisions normalizado para República Dominicana
+      description: Conserva GERS ID y subtype original; canonicalLevel expone country, province, city, neighborhood u other.
+      parameters:
+      - in: query
+        name: level
+        schema:
+          type: string
+          enum:
+          - country
+          - province
+          - city
+          - neighborhood
+          - other
+      - in: query
+        name: provinceCode
+        schema:
+          type: string
+      - in: query
+        name: cityId
+        schema:
+          type: string
+      - in: query
+        name: q
+        schema:
+          type: string
+      - in: query
+        name: limit
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+      responses:
+        '200':
+          description: Respuesta correcta
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TerritorialDivisionListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+      operationId: listTerritorialDivisions
+      security:
+      - ApiKeyAuth: []
+      x-required-scope: geo:read
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key privada de la aplicación. Las claves se crean en Integraciones API del panel administrativo. Cada
+        clave puede limitarse por scopes, orígenes permitidos y rate limit.
+  parameters:
+    TenantID:
+      in: header
+      name: X-Tenant-ID
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Identificador opcional del tenant que origina una sugerencia de barrio personalizado.
+    ProvinceCode:
+      in: query
+      name: provinceCode
+      required: false
+      schema:
+        type: string
+        pattern: ^[0-9]{2}$
+        example: '25'
+      description: Código provincial de dos dígitos.
+    CityID:
+      in: query
+      name: cityId
+      required: false
+      schema:
+        type: string
+        example: '25:01:01'
+      description: Identificador GEO RD MAP de ciudad (municipio o distrito municipal).
+    Latitude:
+      in: query
+      name: lat
+      required: true
+      schema:
+        type: number
+        format: double
+        minimum: 17.0
+        maximum: 20.5
+        example: 18.4861
+    Longitude:
+      in: query
+      name: lng
+      required: true
+      schema:
+        type: number
+        format: double
+        minimum: -72.5
+        maximum: -68.0
+        example: -69.9312
+    Limit:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+  responses:
+    BadRequest:
+      description: Solicitud inválida.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: API key ausente, inválida o inactiva.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: La API key no posee el scope requerido o el origen no está autorizado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Recurso no encontrado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Conflicto o duplicado.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    TooManyRequests:
+      description: Límite global o por API key excedido.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: Una dependencia o proveedor requerido no está disponible.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+      - valid
+      - message
+      properties:
+        valid:
+          type: boolean
+          example: false
+        message:
+          type: string
+          example: API Key inválida o inactiva
+    GenericSuccessResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: object
+          additionalProperties: true
+        message:
+          type: string
+    GenericArrayResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items: {}
+        message:
+          type: string
+    Region:
+      type: object
+      required:
+      - code
+      - name
+      properties:
+        code:
+          type: string
+          example: CIBAO_NORTE
+        name:
+          type: string
+          example: Cibao Norte
+    Province:
+      type: object
+      required:
+      - code
+      - name
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{2}$
+          example: '25'
+        name:
+          type: string
+          example: Santiago
+        identifier:
+          type: string
+        regionCode:
+          type: string
+    City:
+      type: object
+      required:
+      - id
+      - cityId
+      - name
+      - kind
+      - kindLabel
+      - provinceCode
+      - municipalityCode
+      - districtCode
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        cityId:
+          type: string
+          example: '25:01:01'
+        name:
+          type: string
+          example: Santiago de los Caballeros
+        kind:
+          type: string
+          enum:
+          - municipality
+          - municipal_district
+        kindLabel:
+          type: string
+          example: Municipio
+        identifier:
+          type: string
+        provinceCode:
+          type: string
+          example: '25'
+        municipalityCode:
+          type: string
+          example: '01'
+        districtCode:
+          type: string
+          example: '01'
+        regionCode:
+          type: string
+    Neighborhood:
+      type: object
+      required:
+      - id
+      - name
+      - municipalityCode
+      - provinceCode
+      - custom
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+        name:
+          type: string
+          example: Los Jardines Metropolitanos
+        identifier:
+          type: string
+        key:
+          type: string
+        sectionCode:
+          type: string
+        districtCode:
+          type: string
+        municipalityCode:
+          type: string
+        provinceCode:
+          type: string
+        regionCode:
+          type: string
+        custom:
+          type: boolean
+        source:
+          type: string
+        gersId:
+          type: string
+        overtureSubtype:
+          type: string
+    TerritoryStatus:
+      type: object
+      properties:
+        regions:
+          type: integer
+          format: int64
+        provinces:
+          type: integer
+          format: int64
+        municipalities:
+          type: integer
+          format: int64
+        municipalDistricts:
+          type: integer
+          format: int64
+        cities:
+          type: integer
+          format: int64
+        officialNeighborhoods:
+          type: integer
+          format: int64
+        approvedCustomNeighborhoods:
+          type: integer
+          format: int64
+        pendingCustomNeighborhoods:
+          type: integer
+          format: int64
+        rejectedCustomNeighborhoods:
+          type: integer
+          format: int64
+        disabledCustomNeighborhoods:
+          type: integer
+          format: int64
+    TerritoryHealth:
+      type: object
+      properties:
+        postgres:
+          type: string
+        redis:
+          type: string
+        regions:
+          type: integer
+          format: int64
+        provinces:
+          type: integer
+          format: int64
+        cities:
+          type: integer
+          format: int64
+        neighborhoods:
+          type: integer
+          format: int64
+        customNeighborhoods:
+          type: integer
+          format: int64
+    SelectorBundle:
+      type: object
+      properties:
+        provinces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Province'
+        cities:
+          type: array
+          items:
+            $ref: '#/components/schemas/City'
+        neighborhoods:
+          type: array
+          items:
+            $ref: '#/components/schemas/Neighborhood'
+    CustomNeighborhoodSuggestionRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - name
+      properties:
+        name:
+          type: string
+          maxLength: 120
+          example: Los Pinos
+        provinceCode:
+          type: string
+          example: '25'
+          description: Requerido si no se envía cityId.
+        provinceName:
+          type: string
+          example: Santiago
+        municipalityCode:
+          type: string
+          example: '01'
+          description: Requerido si no se envía cityId.
+        municipalityName:
+          type: string
+          example: Santiago
+        districtCode:
+          type: string
+          example: '01'
+          description: Opcional; se usa 01 para cabecera municipal si se omite.
+        cityId:
+          type: string
+          example: '25:01:01'
+          description: Si se envía, sustituye provinceCode/municipalityCode/districtCode.
+        submittedRole:
+          type: string
+          example: cliente
+        submittedPhone:
+          type: string
+          example: '+18095551234'
+        submittedName:
+          type: string
+          example: Aplicación consumidora
+      oneOf:
+      - required:
+        - cityId
+      - required:
+        - provinceCode
+        - municipalityCode
+    CustomNeighborhood:
+      type: object
+      properties:
+        id:
+          type: string
+        sourceClientId:
+          type: string
+        tenantId:
+          type: string
+        name:
+          type: string
+        provinceCode:
+          type: string
+        provinceName:
+          type: string
+        municipalityCode:
+          type: string
+        municipalityName:
+          type: string
+        districtCode:
+          type: string
+        cityId:
+          type: string
+        neighborhoodKey:
+          type: string
+        neighborhoodIdentifier:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+          - disabled
+        submittedRole:
+          type: string
+        submittedPhone:
+          type: string
+        submittedName:
+          type: string
+        createdBy:
+          type: string
+        reviewedBy:
+          type: integer
+          format: int64
+        reviewNote:
+          type: string
+        reviewedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    GeoSearchResult:
+      type: object
+      required:
+      - id
+      - type
+      - name
+      - label
+      - lat
+      - lng
+      - source
+      properties:
+        geoId:
+          type: string
+          description: GeoID estable asignado por GEO RD MAP cuando está disponible.
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+        category:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        source:
+          type: string
+          enum:
+          - overture
+          - nominatim
+          - google_places
+          - geo_rd_map
+          - hybrid
+          - geo_alias
+        attribution:
+          type: string
+        street:
+          type: string
+        neighborhood:
+          type: string
+        municipality:
+          type: string
+        province:
+          type: string
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+        cityName:
+          type: string
+        cityKind:
+          type: string
+          enum:
+          - municipality
+          - municipal_district
+        municipalityCode:
+          type: string
+        districtCode:
+          type: string
+        distanceKm:
+          type: number
+          format: double
+        selectionToken:
+          type: string
+          description: Token firmado para confirmar una selección de proveedor externo.
+    GeoSearchData:
+      type: object
+      required:
+      - results
+      - source
+      - providers
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoSearchResult'
+        source:
+          type: string
+        providers:
+          type: array
+          items:
+            type: string
+    GeoReverseResult:
+      type: object
+      required:
+      - lat
+      - lng
+      - source
+      properties:
+        geoId:
+          type: string
+          description: GeoID estable asignado por GEO RD MAP cuando está disponible.
+        id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+        category:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        source:
+          type: string
+          enum:
+          - overture
+          - nominatim
+          - google_places
+          - geo_rd_map
+          - hybrid
+          - geo_alias
+        attribution:
+          type: string
+        street:
+          type: string
+        neighborhood:
+          type: string
+        municipality:
+          type: string
+        province:
+          type: string
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+        cityName:
+          type: string
+        cityKind:
+          type: string
+          enum:
+          - municipality
+          - municipal_district
+        municipalityCode:
+          type: string
+        districtCode:
+          type: string
+        distanceKm:
+          type: number
+          format: double
+        selectionToken:
+          type: string
+          description: Token firmado para confirmar una selección de proveedor externo.
+        nearestPlaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Place'
+        nearestAddresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+    GeoReverseData:
+      type: object
+      required:
+      - source
+      properties:
+        result:
+          $ref: '#/components/schemas/GeoReverseResult'
+        source:
+          type: string
+    GeolocationConfig:
+      type: object
+      properties:
+        countryCode:
+          type: string
+          example: DO
+        language:
+          type: string
+          example: es
+        search:
+          type: object
+          properties:
+            minChars:
+              type: integer
+            maxResults:
+              type: integer
+            debounceMs:
+              type: integer
+            prioritizeNearby:
+              type: boolean
+            searchRadiusKm:
+              type: integer
+            googlePlaces:
+              type: boolean
+            learnSelections:
+              type: boolean
+            combineLocal:
+              type: boolean
+            nominatim:
+              type: boolean
+    PlaceSelectionRequest:
+      type: object
+      required:
+      - result
+      properties:
+        query:
+          type: string
+          maxLength: 160
+        result:
+          $ref: '#/components/schemas/GeoSearchResult'
+    PlaceSelectionResult:
+      type: object
+      properties:
+        learned:
+          type: boolean
+        alreadyLocal:
+          type: boolean
+        geoId:
+          type: string
+        selectionCount:
+          type: integer
+          format: int64
+        message:
+          type: string
+    BatchGeocodeItem:
+      type: object
+      required:
+      - query
+      properties:
+        query:
+          type: string
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+    BatchGeocodeRequest:
+      type: object
+      required:
+      - items
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 30
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/BatchGeocodeItem'
+    BatchGeocodeResult:
+      type: object
+      required:
+      - query
+      - results
+      properties:
+        query:
+          type: string
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoSearchResult'
+        error:
+          type: string
+    BatchReverseItem:
+      type: object
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+    BatchReverseRequest:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/BatchReverseItem'
+    BatchReverseResult:
+      type: object
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        result:
+          $ref: '#/components/schemas/GeoReverseResult'
+        error:
+          type: string
+    Address:
+      type: object
+      required:
+      - id
+      - lat
+      - lng
+      properties:
+        id:
+          type: string
+        number:
+          type: string
+        street:
+          type: string
+        unit:
+          type: string
+        postalCity:
+          type: string
+        postcode:
+          type: string
+        addressLevels:
+          type: object
+          additionalProperties: true
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        distanceMeters:
+          type: number
+          format: double
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+        sources:
+          type: object
+          additionalProperties: true
+    Place:
+      type: object
+      required:
+      - id
+      - lat
+      - lng
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        basicCategory:
+          type: string
+        operatingStatus:
+          type: string
+        confidence:
+          type: number
+          format: double
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        distanceMeters:
+          type: number
+          format: double
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+        websites: {}
+        socials: {}
+        phones: {}
+        emails: {}
+        addresses: {}
+        taxonomy: {}
+        sources: {}
+    Building:
+      type: object
+      required:
+      - id
+      - lat
+      - lng
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subtype:
+          type: string
+        class:
+          type: string
+        height:
+          type: number
+        numFloors:
+          type: integer
+        lat:
+          type: number
+        lng:
+          type: number
+        areaSquareMeters:
+          type: number
+        distanceMeters:
+          type: number
+        provinceCode:
+          type: string
+        sources: {}
+    RoadSegment:
+      type: object
+      required:
+      - id
+      - subtype
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subtype:
+          type: string
+        class:
+          type: string
+        subclass:
+          type: string
+        provinceCode:
+          type: string
+        distanceMeters:
+          type: number
+        lengthMeters:
+          type: number
+        geometry:
+          $ref: '#/components/schemas/GeoJSONGeometry'
+        speedLimits: {}
+        accessRestrictions: {}
+        roadSurface: {}
+        sources: {}
+    CategoryCount:
+      type: object
+      required:
+      - category
+      - total
+      properties:
+        category:
+          type: string
+        total:
+          type: integer
+          format: int64
+    ProvinceEnrichment:
+      type: object
+      required:
+      - provinceCode
+      - provinceName
+      - mapped
+      properties:
+        provinceCode:
+          type: string
+        provinceName:
+          type: string
+        mapped:
+          type: boolean
+        overtureId:
+          type: string
+        addresses:
+          type: integer
+          format: int64
+        places:
+          type: integer
+          format: int64
+        buildings:
+          type: integer
+          format: int64
+        roadSegments:
+          type: integer
+          format: int64
+        roadLengthKm:
+          type: number
+        topCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryCount'
+    CityEnrichment:
+      type: object
+      required:
+      - cityId
+      - cityName
+      - cityKind
+      - provinceCode
+      - mapped
+      properties:
+        cityId:
+          type: string
+        cityName:
+          type: string
+        cityKind:
+          type: string
+        provinceCode:
+          type: string
+        municipalityCode:
+          type: string
+        districtCode:
+          type: string
+        mapped:
+          type: boolean
+        overtureId:
+          type: string
+        addresses:
+          type: integer
+          format: int64
+        places:
+          type: integer
+          format: int64
+        buildings:
+          type: integer
+          format: int64
+        roadSegments:
+          type: integer
+          format: int64
+        roadLengthKm:
+          type: number
+        topCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryCount'
+    AddressValidationRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - lat
+      - lng
+      properties:
+        lat:
+          type: number
+          format: double
+        lng:
+          type: number
+          format: double
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+    AddressValidationResult:
+      type: object
+      required:
+      - countryCode
+      - countryName
+      - insideCountry
+      properties:
+        countryCode:
+          type: string
+        countryName:
+          type: string
+        insideCountry:
+          type: boolean
+        provinceCode:
+          type: string
+        provinceName:
+          type: string
+        provinceMatches:
+          type: boolean
+        cityId:
+          type: string
+        cityName:
+          type: string
+        cityMatches:
+          type: boolean
+        nearestPlaces:
+          type: array
+          items:
+            $ref: '#/components/schemas/Place'
+        nearestAddresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+        nearestRoads:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoadSegment'
+    GeoJSONGeometry:
+      type: object
+      required:
+      - type
+      - coordinates
+      properties:
+        type:
+          type: string
+          enum:
+          - Point
+          - MultiPoint
+          - LineString
+          - MultiLineString
+          - Polygon
+          - MultiPolygon
+        coordinates: {}
+    GeoJSONFeature:
+      type: object
+      required:
+      - type
+      - geometry
+      - properties
+      properties:
+        type:
+          type: string
+          enum:
+          - Feature
+        id: {}
+        geometry:
+          $ref: '#/components/schemas/GeoJSONGeometry'
+        properties:
+          type: object
+          additionalProperties: true
+    MapConfig:
+      type: object
+      required:
+      - countryCode
+      - countryName
+      - center
+      - bounds
+      - tileUrl
+      - attribution
+      - layers
+      properties:
+        countryCode:
+          type: string
+          example: DO
+        countryName:
+          type: string
+          example: República Dominicana
+        center:
+          type: object
+          required:
+          - lat
+          - lng
+          - zoom
+          properties:
+            lat:
+              type: number
+              example: 18.7357
+            lng:
+              type: number
+              example: -70.1627
+            zoom:
+              type: integer
+              example: 8
+        bounds:
+          type: object
+          required:
+          - minLng
+          - minLat
+          - maxLng
+          - maxLat
+          properties:
+            minLng:
+              type: number
+            minLat:
+              type: number
+            maxLng:
+              type: number
+            maxLat:
+              type: number
+        tileUrl:
+          type: string
+        vectorTileUrl:
+          type: string
+        attribution:
+          type: string
+        layers:
+          type: array
+          items:
+            type: string
+    MapFeatureCollection:
+      type: object
+      required:
+      - type
+      - features
+      - meta
+      properties:
+        type:
+          type: string
+          enum:
+          - FeatureCollection
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeoJSONFeature'
+        meta:
+          type: object
+          required:
+          - zoom
+          - layers
+          - count
+          - limit
+          properties:
+            zoom:
+              type: integer
+            layers:
+              type: array
+              items:
+                type: string
+            count:
+              type: integer
+            limit:
+              type: integer
+    GeofenceSummary:
+      type: object
+      required:
+      - id
+      - name
+      - category
+      - active
+      - properties
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        serviceType:
+          type: string
+        active:
+          type: boolean
+        properties:
+          type: object
+          additionalProperties: true
+    Geofence:
+      type: object
+      required:
+      - id
+      - name
+      - category
+      - active
+      - geometry
+      - properties
+      - createdAt
+      - updatedAt
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+        serviceType:
+          type: string
+        active:
+          type: boolean
+        geometry:
+          $ref: '#/components/schemas/GeoJSONGeometry'
+        properties:
+          type: object
+          additionalProperties: true
+        sourceClientId:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    RoutingLocation:
+      type: object
+      required:
+      - lat
+      - lon
+      properties:
+        lat:
+          type: number
+          format: double
+          example: 18.4861
+        lon:
+          type: number
+          format: double
+          example: -69.9312
+        type:
+          type: string
+    RouteRequest:
+      type: object
+      required:
+      - locations
+      properties:
+        locations:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          default: auto
+          example: auto
+        costing_options:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        units:
+          type: string
+          enum:
+          - kilometers
+          - miles
+        language:
+          type: string
+          example: es-ES
+        alternates:
+          type: integer
+          minimum: 0
+        date_time:
+          type: object
+          additionalProperties: true
+    MatrixRequest:
+      type: object
+      required:
+      - sources
+      - targets
+      properties:
+        sources:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        targets:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          default: auto
+        costing_options:
+          type: object
+          additionalProperties: true
+        units:
+          type: string
+        verbose:
+          type: boolean
+        date_time:
+          type: object
+          additionalProperties: true
+    MapMatchRequest:
+      type: object
+      required:
+      - shape
+      properties:
+        shape:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          default: auto
+        costing_options:
+          type: object
+          additionalProperties: true
+        shape_match:
+          type: string
+          enum:
+          - edge_walk
+          - map_snap
+          - walk_or_snap
+        search_radius:
+          type: number
+        gps_accuracy:
+          type: number
+        turn_penalty_factor:
+          type: number
+    Contour:
+      type: object
+      properties:
+        time:
+          type: number
+        distance:
+          type: number
+        color:
+          type: string
+    IsochroneRequest:
+      type: object
+      required:
+      - locations
+      - contours
+      properties:
+        locations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          default: auto
+        costing_options:
+          type: object
+          additionalProperties: true
+        contours:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Contour'
+        polygons:
+          type: boolean
+        denoise:
+          type: number
+        generalize:
+          type: number
+    OptimizedRouteRequest:
+      type: object
+      required:
+      - locations
+      properties:
+        locations:
+          type: array
+          minItems: 2
+          items:
+            $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          default: auto
+        costing_options:
+          type: object
+          additionalProperties: true
+        units:
+          type: string
+        language:
+          type: string
+    RoutingStatus:
+      type: object
+      required:
+      - countryCode
+      - countryName
+      - provider
+      - engineAvailable
+      - graphScope
+      - modes
+      properties:
+        countryCode:
+          type: string
+        countryName:
+          type: string
+        provider:
+          type: string
+        engineUrl:
+          type: string
+        engineAvailable:
+          type: boolean
+        engine:
+          type: object
+          additionalProperties: true
+        osmSource:
+          type: string
+        osmSourceMd5:
+          type: string
+        osmSyncedAt:
+          type: string
+          format: date-time
+        extractBytes:
+          type: integer
+          format: int64
+        graphScope:
+          type: string
+        modes:
+          type: array
+          items:
+            type: string
+    NavigationCreateRequest:
+      type: object
+      required:
+      - origin
+      - destination
+      properties:
+        origin:
+          $ref: '#/components/schemas/RoutingLocation'
+        destination:
+          $ref: '#/components/schemas/RoutingLocation'
+        costing:
+          type: string
+          example: auto
+        costing_options:
+          type: object
+          additionalProperties: true
+    NavigationUpdateRequest:
+      type: object
+      required:
+      - location
+      properties:
+        location:
+          $ref: '#/components/schemas/RoutingLocation'
+    NavigationSession:
+      type: object
+      required:
+      - id
+      - status
+      - costing
+      - origin
+      - destination
+      - route
+      - distanceRemainingKm
+      - timeRemainingSeconds
+      - reroutes
+      - createdAt
+      - updatedAt
+      - expiresAt
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+        costing:
+          type: string
+        origin:
+          $ref: '#/components/schemas/RoutingLocation'
+        destination:
+          $ref: '#/components/schemas/RoutingLocation'
+        currentLocation:
+          $ref: '#/components/schemas/RoutingLocation'
+        route:
+          type: object
+          additionalProperties: true
+        distanceRemainingKm:
+          type: number
+        timeRemainingSeconds:
+          type: number
+        reroutes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+    OvertureDivision:
+      type: object
+      required:
+      - id
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subtype:
+          type: string
+        class:
+          type: string
+        adminLevel:
+          type: integer
+        regionCode:
+          type: string
+        parentDivisionId:
+          type: string
+        sources: {}
+    TerritorialDivision:
+      type: object
+      required:
+      - id
+      - name
+      - subtype
+      - canonicalLevel
+      - releaseVersion
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        subtype:
+          type: string
+        canonicalLevel:
+          type: string
+          enum:
+          - country
+          - province
+          - city
+          - neighborhood
+          - other
+        parentDivisionId:
+          type: string
+        provinceCode:
+          type: string
+        cityId:
+          type: string
+        lat:
+          type: number
+        lng:
+          type: number
+        releaseVersion:
+          type: string
+    GERSResult:
+      type: object
+      required:
+      - id
+      - featureType
+      - release
+      properties:
+        id:
+          type: string
+        featureType:
+          type: string
+        name:
+          type: string
+        provinceCode:
+          type: string
+        release:
+          type: string
+    TerritoryHealthResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/TerritoryHealth'
+        message:
+          type: string
+    TerritoryStatusResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/TerritoryStatus'
+        message:
+          type: string
+    RegionListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Region'
+        message:
+          type: string
+    ProvinceListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Province'
+        message:
+          type: string
+    CityListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/City'
+        message:
+          type: string
+    NeighborhoodListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Neighborhood'
+        message:
+          type: string
+    SelectorBundleResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/SelectorBundle'
+        message:
+          type: string
+    CustomNeighborhoodResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/CustomNeighborhood'
+        message:
+          type: string
+    GeolocationConfigResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/GeolocationConfig'
+        message:
+          type: string
+    GeoSearchResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/GeoSearchData'
+        message:
+          type: string
+    GeoReverseResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/GeoReverseData'
+        message:
+          type: string
+    PlaceSelectionResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/PlaceSelectionResult'
+        message:
+          type: string
+    BatchGeocodeResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchGeocodeResult'
+        message:
+          type: string
+    BatchReverseResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BatchReverseResult'
+        message:
+          type: string
+    AddressListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+        message:
+          type: string
+    PlaceListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Place'
+        message:
+          type: string
+    PlaceResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Place'
+        message:
+          type: string
+    BuildingListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Building'
+        message:
+          type: string
+    RoadListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RoadSegment'
+        message:
+          type: string
+    ProvinceEnrichmentResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/ProvinceEnrichment'
+        message:
+          type: string
+    CityEnrichmentResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/CityEnrichment'
+        message:
+          type: string
+    AddressValidationResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/AddressValidationResult'
+        message:
+          type: string
+    MapConfigResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/MapConfig'
+        message:
+          type: string
+    MapFeatureCollectionResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/MapFeatureCollection'
+        message:
+          type: string
+    GeofenceListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeofenceSummary'
+        message:
+          type: string
+    GeofenceResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/Geofence'
+        message:
+          type: string
+    RoutingStatusResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/RoutingStatus'
+        message:
+          type: string
+    NavigationSessionResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/NavigationSession'
+        message:
+          type: string
+    TerritorialDivisionListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TerritorialDivision'
+        message:
+          type: string
+    OvertureDivisionListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/OvertureDivision'
+        message:
+          type: string
+    GERSResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          $ref: '#/components/schemas/GERSResult'
+        message:
+          type: string
+    CategoryCountListResponse:
+      type: object
+      required:
+      - valid
+      - data
+      properties:
+        valid:
+          type: boolean
+          example: true
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryCount'
+        message:
+          type: string
+tags:
+- name: Sistema
+  description: Liveness, readiness y descarga de la especificación OpenAPI.
+- name: División territorial
+  description: Regiones, provincias, ciudades y barrios de República Dominicana.
+- name: Barrios personalizados
+  description: Sugerencias de barrios faltantes para revisión y aprobación central.
+- name: Geolocalización
+  description: Búsqueda, autocomplete, reverse geocoding, lugares, direcciones, vías y edificaciones.
+- name: Mapa
+  description: Configuración del mapa, GeoJSON y teselas vectoriales MVT.
+- name: Geocercas
+  description: Consulta de zonas de servicio y detección de pertenencia por coordenadas.
+- name: Rutas
+  description: Routing, matrices, map matching, isócronas y optimización de paradas.
+- name: Navegación
+  description: Sesiones de navegación con ubicación, ETA y recálculo.
+- name: Datos geoespaciales
+  description: Datos Overture normalizados y enriquecimiento territorial de República Dominicana.
+x-integration-guide:
+  admin_path: /admin/api-clients
+  openapi_path: /openapi.yaml
+  recommended_client: backend
+  api_key_header: X-API-Key
+  country_code: DO
+  coordinate_reference_system: WGS 84 / EPSG:4326
+  city_id_example: '25:01:01'
+  scopes:
+  - territories:read
+  - territories:write
+  - geo:read
+  - geo:write
+  - routing:read
+  recommended_flow:
+  - Crear una integración en el panel administrativo.
+  - Asignar únicamente los scopes necesarios.
+  - Generar una API Key y guardarla solo en el backend consumidor.
+  - Usar provinceCode, cityId y GeoID como identificadores estables.
+  - No conectar aplicaciones consumidoras directamente a Overture, Nominatim, Google Places ni Valhalla.

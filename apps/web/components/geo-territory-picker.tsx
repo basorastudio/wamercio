@@ -1,0 +1,9 @@
+"use client";
+import {useEffect,useState} from "react";
+
+type Props={provinceCode:string;cityId:string;onChange:(v:{provinceCode:string;cityId:string;provinceName:string;cityName:string})=>void;includeNeighborhoods?:boolean};
+async function load(provinceCode:string,cityId:string){const q=new URLSearchParams();if(provinceCode)q.set('provinceCode',provinceCode);if(cityId)q.set('cityId',cityId);const r=await fetch(`/api/backend/api/v1/public/geo/selectors?${q}`);const d=await r.json();if(!r.ok)throw new Error(d.error||'No fue posible cargar GEO RD MAP');return d.data}
+export function GeoTerritoryPicker({provinceCode,cityId,onChange}:Props){const[data,setData]=useState<any>({provinces:[],cities:[]});const[error,setError]=useState('');useEffect(()=>{load(provinceCode,cityId).then(setData).catch(e=>setError(e.message))},[]);// eslint-disable-line react-hooks/exhaustive-deps
+ async function province(code:string){try{const d=await load(code,'');setData(d);const p=(d.provinces||[]).find((x:any)=>x.code===code);onChange({provinceCode:code,cityId:'',provinceName:p?.name||'',cityName:''})}catch(e:any){setError(e.message)}}
+ async function city(id:string){const c=(data.cities||[]).find((x:any)=>x.cityId===id);onChange({provinceCode,cityId:id,provinceName:(data.provinces||[]).find((x:any)=>x.code===provinceCode)?.name||'',cityName:c?.name||''})}
+ return <div className="grid gap-3 md:grid-cols-2"><select className="field" value={provinceCode} onChange={e=>province(e.target.value)}><option value="">Provincia</option>{(data.provinces||[]).map((x:any)=><option key={x.code} value={x.code}>{x.name}</option>)}</select><select className="field" value={cityId} onChange={e=>city(e.target.value)} disabled={!provinceCode}><option value="">Ciudad / municipio</option>{(data.cities||[]).map((x:any)=><option key={x.cityId} value={x.cityId}>{x.name} · {x.kindLabel}</option>)}</select>{error&&<p className="text-xs text-red-600 md:col-span-2">{error}</p>}</div>}
