@@ -3,7 +3,7 @@
 import {useEffect,useRef,useState} from 'react'
 import {useRouter} from 'next/navigation'
 import {api} from '@/lib/api'
-import {ArrowLeft,Building2,CheckCircle2,LoaderCircle,LockKeyRound,MessageCircleMore,ShieldCheck,Smartphone,UserRound,X} from 'lucide-react'
+import {ArrowLeft,Building2,CheckCircle2,LoaderCircle,KeyRound,MessageCircleMore,ShieldCheck,Smartphone,UserRound,X} from 'lucide-react'
 
 type Step='phone'|'pin'|'register'
 
@@ -110,7 +110,7 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
         </>}
 
         {step==='pin'&&<>
-          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><LockKeyRound className="h-7 w-7"/></div>
+          <div className="grid h-14 w-14 place-items-center rounded-2xl bg-amber-50 text-amber-600"><KeyRound className="h-7 w-7"/></div>
           <h2 className="mt-5 text-2xl font-black tracking-tight text-slate-950">Bienvenido de nuevo</h2>
           <p className="mt-2 text-sm leading-6 text-slate-500">Encontramos una cuenta asociada a <strong className="text-slate-700">+{phone}</strong>. Ingresa tu PIN de 4 dígitos.</p>
           {error&&<div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}

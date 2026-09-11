@@ -1,8 +1,8 @@
-# WAMERCIO 1.3.0
+# WAMERCIO 1.3.1
 
 Plataforma SaaS de comercio conversacional para República Dominicana. El flujo y la simplicidad visual del **panel comercial** toman como referencia Foody Friend, pero WAMERCIO utiliza código, arquitectura, branding y autenticación propios.
 
-## Landing pública + acceso unificado (1.3.0)
+## Landing pública + acceso unificado (1.3.1)
 
 La raíz `https://wamercio.com/` ahora es una landing comercial mobile-first inspirada en la estructura de Foody Friend/WhatsMenu, pero con identidad WAMERCIO (amarillo ámbar + azul noche). Incluye hero, funciones, proceso, planes dinámicos, experiencia PWA y CTAs.
 

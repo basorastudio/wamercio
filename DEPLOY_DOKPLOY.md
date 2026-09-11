@@ -1,6 +1,6 @@
-# Despliegue de WAMERCIO 1.3.0 en Dokploy
+# Despliegue de WAMERCIO 1.3.1 en Dokploy
 
-## Actualización a 1.3.0
+## Actualización a 1.3.1
 
 No cambia infraestructura, volúmenes ni variables de entorno. Sube la versión al mismo repositorio y ejecuta **Rebuild**. No uses **Fresh Volumes**.
 

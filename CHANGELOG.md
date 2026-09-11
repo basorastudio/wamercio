@@ -1,4 +1,11 @@
-# WAMERCIO 1.3.0
+# WAMERCIO 1.3.1
+
+## 1.3.1 — Corrección de compilación
+
+- Corregido el import incompatible `LockKeyRound` de `lucide-react`.
+- Sustituido por `KeyRound`, disponible en la versión instalada (`^0.468.0`).
+- Sin cambios en base de datos, routing, autenticación, landing ni variables de entorno.
+
 
 ## Landing y onboarding unificado
 
