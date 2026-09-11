@@ -245,3 +245,17 @@ la capa anterior del builder.
 ## Nota de build Go 1.0.2
 
 Los servicios `api` y `whatsapp` ejecutan `go mod tidy` dentro de la etapa builder antes de compilar. Esto genera/verifica automáticamente `go.sum` en el contenedor de build y evita fallos de Dokploy por sumas de módulos ausentes. Los builders usan Go 1.27.1, compatible con la versión fijada de `whatsmeow` que requiere Go 1.26 o superior.
+
+
+## Solución a `404 page not found`
+
+Un `404 page not found` en texto plano después de un build correcto normalmente es la respuesta por defecto de Traefik: el dominio llega al servidor pero no coincide con un router activo.
+
+- Servicio: `web`
+- Host: `wamercio.com`
+- Path: `/`
+- Container Port: `3000`
+- HTTPS: ON
+- Certificate: Let's Encrypt
+
+Después de guardar cualquier cambio en **Domains**, vuelve a desplegar el Compose. Esta versión conecta `web` explícitamente a `dokploy-network`. Usa **Preview Compose** para confirmar que Dokploy añadió las labels `traefik.http.routers.*` y `traefik.http.services.*` al servicio `web`.

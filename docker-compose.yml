@@ -100,6 +100,9 @@ services:
         condition: service_healthy
     expose:
       - "3000"
+    networks:
+      - default
+      - dokploy-network
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 15s
@@ -110,3 +113,7 @@ volumes:
   postgres_data:
   redis_data:
   uploads_data:
+
+networks:
+  dokploy-network:
+    external: true

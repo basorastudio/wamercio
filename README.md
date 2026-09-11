@@ -117,3 +117,16 @@ requiere Go 1.26 o superior. Esto evita el error de Dokploy `requires go >= 1.26
 ### Corrección 1.0.2
 
 El build Docker de los servicios Go ahora ejecuta `go mod tidy` después de copiar el código fuente, por lo que no depende de que `go.sum` haya sido generado previamente en la máquina de desarrollo. Esto corrige el error `missing go.sum entry` observado en Dokploy.
+
+
+## Dokploy: dominio devuelve `404 page not found`
+
+Si el build finaliza correctamente pero `https://wamercio.com` muestra únicamente `404 page not found` en texto plano, ese 404 corresponde a Traefik/Dokploy y no a Next.js.
+
+1. En **Domains**, verifica: servicio `web`, host `wamercio.com`, path `/`, container port `3000`, HTTPS activo y certificado Let's Encrypt.
+2. Después de crear o modificar el dominio, ejecuta **Deploy/Rebuild** del Compose. Los dominios de Docker Compose se aplican mediante labels de Traefik al desplegar.
+3. Esta versión conecta explícitamente `web` a la red externa `dokploy-network`, además de la red interna del proyecto.
+4. En **Preview Compose**, comprueba que el servicio `web` contiene labels `traefik.*` para `wamercio.com`.
+5. Si usas Cloudflare, el registro `A` de `wamercio.com` debe apuntar a la IPv4 del VPS. Si existe un registro `AAAA` pero el VPS no sirve esa IPv6, elimínalo. Para diagnosticar, puedes poner temporalmente el proxy en **DNS only** y volverlo a activar cuando funcione.
+
+La ruta raíz `/` existe y redirige a `/dashboard`; no debe configurarse un Internal Path distinto de `/`.
