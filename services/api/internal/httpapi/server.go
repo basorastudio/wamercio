@@ -49,6 +49,7 @@ func (s *Server) Router() http.Handler {
 	r.Handle("/media/*", http.StripPrefix("/media/", http.FileServer(http.Dir(s.cfg.UploadDir))))
 
 	r.Route("/api/v1", func(api chi.Router) {
+		api.Get("/meta/country", s.metaCountry)
 		// Merchant/store access is intentionally independent from SaaS administration.
 		api.Post("/auth/store/lookup", s.storeLookup)
 		api.Post("/auth/store/login", s.storeLogin)
@@ -169,11 +170,22 @@ func str(v any) string {
 }
 
 func normalizePhone(v string) string {
-	digits := regexp.MustCompile(`\D+`).ReplaceAllString(strings.TrimSpace(v), "")
-	if len(digits) == 10 {
+	raw := strings.TrimSpace(v)
+	digits := regexp.MustCompile(`\D+`).ReplaceAllString(raw, "")
+	// Legacy Dominican/NANP entries may arrive as ten local digits. When the
+	// client already sent an international E.164 number (leading +), preserve it.
+	if !strings.HasPrefix(raw, "+") && len(digits) == 10 {
 		digits = "1" + digits
 	}
 	return digits
+}
+
+func (s *Server) metaCountry(w http.ResponseWriter, r *http.Request) {
+	country := strings.ToLower(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
+	if !regexp.MustCompile(`^[a-z]{2}$`).MatchString(country) || country == "xx" {
+		country = "do"
+	}
+	jsonOut(w, 200, map[string]string{"country": country})
 }
 
 func validPIN(v string) bool {
@@ -310,7 +322,6 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name         string `json:"name"`
-		Email        string `json:"email"`
 		Phone        string `json:"phone"`
 		PIN          string `json:"pin"`
 		BusinessName string `json:"business_name"`
@@ -350,13 +361,9 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var id string
-	var email any
-	if strings.TrimSpace(in.Email) != "" {
-		email = strings.ToLower(strings.TrimSpace(in.Email))
-	}
-	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,$2,$3,$4,$5,now(),'owner','active') RETURNING id`, name, email, phone, string(randomHash), string(pinHash)).Scan(&id)
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,$3,$4,now(),'owner','active') RETURNING id`, name, phone, string(randomHash), string(pinHash)).Scan(&id)
 	if err != nil {
-		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el correo o WhatsApp")
+		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el WhatsApp")
 		return
 	}
 	var planID string
@@ -405,14 +412,14 @@ func (s *Server) adminMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	var name, email, phone, role string
+	var name, phone, role string
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(email,''),coalesce(phone,''),role,created_at FROM users WHERE id=$1`, c.UserID).Scan(&name, &email, &phone, &role, &created)
+	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(phone,''),role,created_at FROM users WHERE id=$1`, c.UserID).Scan(&name, &phone, &role, &created)
 	if err != nil {
 		jsonErr(w, 404, "Usuario no encontrado")
 		return
 	}
-	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "email": email, "phone": phone, "role": role, "created_at": created})
+	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "phone": phone, "role": role, "created_at": created})
 }
 
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
@@ -1086,11 +1093,11 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	c := claims(r)
-	var sid, customerID, name, phone, email, address, deliveryType, coupon, pm, ps, status, notes, source, proof string
+	var sid, customerID, name, phone, address, deliveryType, coupon, pm, ps, status, notes, source, proof string
 	var num int64
 	var subtotal, discount, shipping, total float64
 	var cr time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.customer_email,''),coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.created_at FROM orders o WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &email, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &status, &notes, &source, &proof, &cr)
+	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.created_at FROM orders o WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &status, &notes, &source, &proof, &cr)
 	if err != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
@@ -1109,7 +1116,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 			items = append(items, map[string]any{"id": iid, "product_id": pid, "product_name": pn, "variant_name": vn, "extras": ex, "unit_price": unit, "quantity": qty, "line_total": line})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "customer_email": email, "delivery_address": address, "delivery_type": deliveryType, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "created_at": cr, "items": items})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "created_at": cr, "items": items})
 }
 func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -1283,12 +1290,12 @@ func (s *Server) sendConversationMessage(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var sid, name, desc, logo, banner, email, phone, wa, address, currency, color string
+	var sid, name, desc, logo, banner, phone, wa, address, currency, color string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(email,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &email, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -1330,7 +1337,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, map[string]any{
 		"store": map[string]any{
-			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner, "email": email,
+			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
 			"phone": phone, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage,
 			"payment_methods": map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer},
@@ -1352,7 +1359,6 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		CustomerName    string         `json:"customer_name"`
 		CustomerPhone   string         `json:"customer_phone"`
-		CustomerEmail   string         `json:"customer_email"`
 		DeliveryAddress string         `json:"delivery_address"`
 		DeliveryType    string         `json:"delivery_type"`
 		ShippingZoneID  string         `json:"shipping_zone_id"`
@@ -1382,7 +1388,6 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 
 	in.CustomerName = strings.TrimSpace(in.CustomerName)
 	in.CustomerPhone = strings.TrimSpace(in.CustomerPhone)
-	in.CustomerEmail = strings.TrimSpace(in.CustomerEmail)
 	in.DeliveryAddress = strings.TrimSpace(in.DeliveryAddress)
 	in.CouponCode = strings.ToUpper(strings.TrimSpace(in.CouponCode))
 	if in.DeliveryType == "" {
@@ -1437,13 +1442,13 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		err = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,email,address,status) VALUES($1,$2,$3,$4,$5,'active') RETURNING id,status`, sid, in.CustomerName, in.CustomerPhone, in.CustomerEmail, in.DeliveryAddress).Scan(&customerID, &customerStatus)
+		err = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,address,status) VALUES($1,$2,$3,$4,'active') RETURNING id,status`, sid, in.CustomerName, in.CustomerPhone, in.DeliveryAddress).Scan(&customerID, &customerStatus)
 		if err != nil {
 			jsonErr(w, 500, "No se pudo registrar el cliente")
 			return
 		}
 	} else {
-		_, _ = tx.Exec(r.Context(), `UPDATE customers SET name=$1,email=coalesce(nullif($2,''),email),address=coalesce(nullif($3,''),address),updated_at=now() WHERE id=$4`, in.CustomerName, in.CustomerEmail, in.DeliveryAddress, customerID)
+		_, _ = tx.Exec(r.Context(), `UPDATE customers SET name=$1,address=coalesce(nullif($2,''),address),updated_at=now() WHERE id=$3`, in.CustomerName, in.DeliveryAddress, customerID)
 	}
 
 	type priceOption struct {
@@ -1567,7 +1572,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	total := subtotal - discount + shipping
 	var orderID string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,customer_email,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'web') RETURNING id,order_number`, sid, customerID, in.CustomerName, in.CustomerPhone, in.CustomerEmail, in.DeliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num)
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'web') RETURNING id,order_number`, sid, customerID, in.CustomerName, in.CustomerPhone, in.DeliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
@@ -1884,12 +1889,12 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	var name, slug, desc, logo, banner, email, phone, wa, address, currency, color string
+	var name, slug, desc, logo, banner, phone, wa, address, currency, color string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer, active bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(email,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &email, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active)
+	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -1897,7 +1902,7 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 	var hours any = map[string]any{}
 	_ = json.Unmarshal(hoursRaw, &hours)
 	jsonOut(w, 200, map[string]any{
-		"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner, "email": email,
+		"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
 		"phone": phone, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 		"pickup_enabled": pickup, "delivery_enabled": delivery, "cash_enabled": cash, "cash_on_delivery_enabled": cod,
 		"bank_transfer_enabled": transfer, "bank_name": bankName, "bank_account_name": accountName, "bank_account_number": accountNumber,
@@ -1918,7 +1923,6 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		Description           string         `json:"description"`
 		LogoURL               string         `json:"logo_url"`
 		BannerURL             string         `json:"banner_url"`
-		Email                 string         `json:"email"`
 		Phone                 string         `json:"phone"`
 		Whatsapp              string         `json:"whatsapp"`
 		Address               string         `json:"address"`
@@ -1958,7 +1962,7 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		in.MinimumOrder = 0
 	}
 	hours, _ := json.Marshal(in.BusinessHours)
-	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,email=$6,phone=$7,whatsapp=$8,address=$9,currency=$10,primary_color=$11,minimum_order=$12,pickup_enabled=$13,delivery_enabled=$14,cash_enabled=$15,cash_on_delivery_enabled=$16,bank_transfer_enabled=$17,bank_name=$18,bank_account_name=$19,bank_account_number=$20,bank_account_type=$21,business_hours=$22,order_notice=$23,checkout_message=$24,is_active=$25,updated_at=now() WHERE id=$26`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Email, in.Phone, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=$6,whatsapp=$7,address=$8,currency=$9,primary_color=$10,minimum_order=$11,pickup_enabled=$12,delivery_enabled=$13,cash_enabled=$14,cash_on_delivery_enabled=$15,bank_transfer_enabled=$16,bank_name=$17,bank_account_name=$18,bank_account_number=$19,bank_account_type=$20,business_hours=$21,order_notice=$22,checkout_message=$23,is_active=$24,updated_at=now() WHERE id=$25`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Phone, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar la tienda; verifica el identificador web")
 		return
@@ -1972,7 +1976,7 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,name,phone,coalesce(email,''),coalesce(address,''),coalesce(notes,''),status,order_count,total_spent,last_order_at,created_at FROM customers WHERE store_id=$1 ORDER BY last_order_at DESC NULLS LAST,created_at DESC`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,phone,coalesce(address,''),coalesce(notes,''),status,order_count,total_spent,last_order_at,created_at FROM customers WHERE store_id=$1 ORDER BY last_order_at DESC NULLS LAST,created_at DESC`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los clientes")
 		return
@@ -1980,13 +1984,13 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, email, address, notes, status string
+		var id, name, phone, address, notes, status string
 		var count int
 		var spent float64
 		var last *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &name, &phone, &email, &address, &notes, &status, &count, &spent, &last, &created)
-		out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "email": email, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "store_id": sid, "owner": c.UserID})
+		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created)
+		out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "store_id": sid, "owner": c.UserID})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1994,18 +1998,18 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	var sid, name, phone, email, address, notes, status string
+	var sid, name, phone, address, notes, status string
 	var count int
 	var spent float64
 	var last *time.Time
 	var created time.Time
-	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.email,''),coalesce(c.address,''),coalesce(c.notes,''),c.status,c.order_count,c.total_spent,c.last_order_at,c.created_at FROM customers c JOIN stores s ON s.id=c.store_id WHERE c.id=$1`
+	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.address,''),coalesce(c.notes,''),c.status,c.order_count,c.total_spent,c.last_order_at,c.created_at FROM customers c JOIN stores s ON s.id=c.store_id WHERE c.id=$1`
 	args := []any{id}
 	if c.Role != "superadmin" {
 		q += ` AND s.user_id=$2`
 		args = append(args, c.UserID)
 	}
-	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &email, &address, &notes, &status, &count, &spent, &last, &created) != nil {
+	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created) != nil {
 		jsonErr(w, 404, "Cliente no encontrado")
 		return
 	}
@@ -2022,7 +2026,7 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 			orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": st, "payment_status": ps, "created_at": at})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "email": email, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders})
 }
 
 func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {
@@ -2039,7 +2043,7 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Cliente no encontrado")
 		return
 	}
-	var in struct{ Name, Email, Address, Notes, Status string }
+	var in struct{ Name, Address, Notes, Status string }
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
 		jsonErr(w, 400, "Nombre obligatorio")
 		return
@@ -2047,7 +2051,7 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {
 	if in.Status != "active" && in.Status != "blocked" {
 		in.Status = "active"
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE customers SET name=$1,email=$2,address=$3,notes=$4,status=$5,updated_at=now() WHERE id=$6`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Email), strings.TrimSpace(in.Address), in.Notes, in.Status, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE customers SET name=$1,address=$2,notes=$3,status=$4,updated_at=now() WHERE id=$5`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Address), in.Notes, in.Status, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar el cliente")
 		return
@@ -2201,7 +2205,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.email,''),coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role<>'superadmin' ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role<>'superadmin' ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -2209,12 +2213,12 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, email, phone, status, planID, planName, planSlug string
+		var id, name, phone, status, planID, planName, planSlug string
 		var created time.Time
 		var stores int
 		var pinConfigured bool
-		_ = rows.Scan(&id, &name, &email, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured)
-		out = append(out, map[string]any{"id": id, "name": name, "email": email, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured})
+		_ = rows.Scan(&id, &name, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured)
+		out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured})
 	}
 	jsonOut(w, 200, out)
 }
@@ -2332,7 +2336,7 @@ func (s *Server) adminAssignPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.name,coalesce(u.email,''),(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.name,coalesce(u.phone,''),(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las tiendas")
 		return
@@ -2340,12 +2344,12 @@ func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, slug, owner, email string
+		var id, name, slug, owner, ownerPhone string
 		var active bool
 		var created time.Time
 		var products, orders int
-		_ = rows.Scan(&id, &name, &slug, &active, &created, &owner, &email, &products, &orders)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner": owner, "owner_email": email, "products": products, "orders": orders})
+		_ = rows.Scan(&id, &name, &slug, &active, &created, &owner, &ownerPhone, &products, &orders)
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
 	}
 	jsonOut(w, 200, out)
 }
@@ -2437,7 +2441,7 @@ func (s *Server) adminUpdatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminSubscriptionRequests(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT sr.id,u.id,u.name,coalesce(u.email,''),coalesce(cp.name,'Sin plan'),rp.id,rp.name,rp.price,coalesce(sr.note,''),sr.status,sr.created_at,sr.reviewed_at FROM subscription_requests sr JOIN users u ON u.id=sr.user_id LEFT JOIN plans cp ON cp.id=sr.current_plan_id JOIN plans rp ON rp.id=sr.requested_plan_id ORDER BY CASE WHEN sr.status='pending' THEN 0 ELSE 1 END,sr.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT sr.id,u.id,u.name,coalesce(u.phone,''),coalesce(cp.name,'Sin plan'),rp.id,rp.name,rp.price,coalesce(sr.note,''),sr.status,sr.created_at,sr.reviewed_at FROM subscription_requests sr JOIN users u ON u.id=sr.user_id LEFT JOIN plans cp ON cp.id=sr.current_plan_id JOIN plans rp ON rp.id=sr.requested_plan_id ORDER BY CASE WHEN sr.status='pending' THEN 0 ELSE 1 END,sr.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las solicitudes")
 		return
@@ -2445,12 +2449,12 @@ func (s *Server) adminSubscriptionRequests(w http.ResponseWriter, r *http.Reques
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, uid, name, email, current, planID, requested, note, status string
+		var id, uid, name, phone, current, planID, requested, note, status string
 		var price float64
 		var created time.Time
 		var reviewed *time.Time
-		_ = rows.Scan(&id, &uid, &name, &email, &current, &planID, &requested, &price, &note, &status, &created, &reviewed)
-		out = append(out, map[string]any{"id": id, "user_id": uid, "user_name": name, "user_email": email, "current_plan": current, "requested_plan_id": planID, "requested_plan": requested, "price": price, "note": note, "status": status, "created_at": created, "reviewed_at": reviewed})
+		_ = rows.Scan(&id, &uid, &name, &phone, &current, &planID, &requested, &price, &note, &status, &created, &reviewed)
+		out = append(out, map[string]any{"id": id, "user_id": uid, "user_name": name, "user_phone": phone, "current_plan": current, "requested_plan_id": planID, "requested_plan": requested, "price": price, "note": note, "status": status, "created_at": created, "reviewed_at": reviewed})
 	}
 	jsonOut(w, 200, out)
 }
@@ -2526,7 +2530,7 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminTransactions(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT t.id,u.name,coalesce(u.email,''),coalesce(st.name,''),t.type,t.amount,t.currency,t.status,coalesce(t.reference,''),coalesce(t.description,''),t.created_at FROM transactions t JOIN users u ON u.id=t.user_id LEFT JOIN stores st ON st.id=t.store_id ORDER BY t.created_at DESC LIMIT 1000`)
+	rows, err := s.db.Query(r.Context(), `SELECT t.id,u.name,coalesce(u.phone,''),coalesce(st.name,''),t.type,t.amount,t.currency,t.status,coalesce(t.reference,''),coalesce(t.description,''),t.created_at FROM transactions t JOIN users u ON u.id=t.user_id LEFT JOIN stores st ON st.id=t.store_id ORDER BY t.created_at DESC LIMIT 1000`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los movimientos")
 		return
@@ -2534,11 +2538,11 @@ func (s *Server) adminTransactions(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, userName, email, store, typ, currency, status, reference, description string
+		var id, userName, phone, store, typ, currency, status, reference, description string
 		var amount float64
 		var created time.Time
-		if rows.Scan(&id, &userName, &email, &store, &typ, &amount, &currency, &status, &reference, &description, &created) == nil {
-			out = append(out, map[string]any{"id": id, "user_name": userName, "user_email": email, "store_name": store, "type": typ, "amount": amount, "currency": currency, "status": status, "reference": reference, "description": description, "created_at": created})
+		if rows.Scan(&id, &userName, &phone, &store, &typ, &amount, &currency, &status, &reference, &description, &created) == nil {
+			out = append(out, map[string]any{"id": id, "user_name": userName, "user_phone": phone, "store_name": store, "type": typ, "amount": amount, "currency": currency, "status": status, "reference": reference, "description": description, "created_at": created})
 		}
 	}
 	jsonOut(w, 200, out)
@@ -2614,9 +2618,9 @@ func (s *Server) ticketOwned(ctx context.Context, c *authpkg.Claims, id string) 
 
 func (s *Server) ticketPayload(ctx context.Context, id string) (map[string]any, error) {
 	var number int64
-	var uid, name, email, subject, priority, status string
+	var uid, name, phone, subject, priority, status string
 	var last, created time.Time
-	if err := s.db.QueryRow(ctx, `SELECT t.number,t.user_id::text,u.name,coalesce(u.email,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=$1`, id).Scan(&number, &uid, &name, &email, &subject, &priority, &status, &last, &created); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT t.number,t.user_id::text,u.name,coalesce(u.phone,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=$1`, id).Scan(&number, &uid, &name, &phone, &subject, &priority, &status, &last, &created); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `SELECT m.id,coalesce(m.sender_user_id::text,''),m.sender_role,m.message,m.created_at,coalesce(u.name,'Soporte WAMERCIO') FROM support_ticket_messages m LEFT JOIN users u ON u.id=m.sender_user_id WHERE m.ticket_id=$1 ORDER BY m.created_at`, id)
@@ -2632,7 +2636,7 @@ func (s *Server) ticketPayload(ctx context.Context, id string) (map[string]any, 
 			messages = append(messages, map[string]any{"id": mid, "sender_user_id": senderID, "sender_role": role, "sender_name": senderName, "message": message, "created_at": at})
 		}
 	}
-	return map[string]any{"id": id, "number": number, "user_id": uid, "user_name": name, "user_email": email, "subject": subject, "priority": priority, "status": status, "last_reply_at": last, "created_at": created, "messages": messages}, nil
+	return map[string]any{"id": id, "number": number, "user_id": uid, "user_name": name, "user_phone": phone, "subject": subject, "priority": priority, "status": status, "last_reply_at": last, "created_at": created, "messages": messages}, nil
 }
 
 func (s *Server) getTicket(w http.ResponseWriter, r *http.Request) {
@@ -2704,7 +2708,7 @@ func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminTickets(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	q := `SELECT t.id,t.number,u.name,coalesce(u.email,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id`
+	q := `SELECT t.id,t.number,u.name,coalesce(u.phone,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id`
 	args := []any{}
 	if status != "" && status != "all" {
 		q += ` WHERE t.status=$1`
@@ -2719,11 +2723,11 @@ func (s *Server) adminTickets(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, email, subject, priority, st string
+		var id, name, phone, subject, priority, st string
 		var number int64
 		var last, created time.Time
-		if rows.Scan(&id, &number, &name, &email, &subject, &priority, &st, &last, &created) == nil {
-			out = append(out, map[string]any{"id": id, "number": number, "user_name": name, "user_email": email, "subject": subject, "priority": priority, "status": st, "last_reply_at": last, "created_at": created})
+		if rows.Scan(&id, &number, &name, &phone, &subject, &priority, &st, &last, &created) == nil {
+			out = append(out, map[string]any{"id": id, "number": number, "user_name": name, "user_phone": phone, "subject": subject, "priority": priority, "status": st, "last_reply_at": last, "created_at": created})
 		}
 	}
 	jsonOut(w, 200, out)

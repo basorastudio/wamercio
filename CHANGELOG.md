@@ -1,31 +1,40 @@
-# WAMERCIO 1.4.0
+# WAMERCIO 1.5.0
 
-## Rediseño tipo WhatsApp Food
+## WhatsApp internacional
 
-- Sustituida la identidad azul noche/ámbar por verde turquesa + blanco + gris claro.
-- Nueva landing inspirada en la estructura visual de WhatsApp Food/WhatsMenu.
-- Hero verde con ilustración UI propia y CTAs compactos.
-- Sección de funciones en tarjetas claras.
-- Sección de proceso con mockup móvil.
-- Planes dinámicos sobre fondo verde.
-- Demo con QR y bloques comerciales claros.
-- Footer ligero.
-- Modal de acceso/registro rediseñado con el mismo lenguaje visual.
-- StoreShell actualizado a navegación blanca, activa en verde y mobile bottom-nav verde.
-- SuperAdminShell rediseñado con sidebar verde y contenido claro.
-- Dashboard de tienda alineado con la nueva identidad.
-- Login de SuperAdmin alineado con la nueva identidad.
-- Componentes globales (`card`, `field`, `btn`, tablas y modal) actualizados.
-- Catálogo público cambia su hero oscuro por el color principal de la tienda.
-- Nuevo icono/favcion/PWA theme en verde.
-- Cache PWA incrementada a `wamercio-store-v1.4`.
-- Nueva migración `000006_whatsapp_food_brand` para actualizar el color por defecto de tiendas a `#36B385`.
+- Integrado `@intl-tel-input/react` + `intl-tel-input` 29.2.3.
+- Añadida bandera del país y código de marcación separado en todos los campos de WhatsApp.
+- Añadido selector/buscador de países en español.
+- Añadido formateo progresivo y validación internacional.
+- Añadido endpoint `GET /api/v1/meta/country` que usa `CF-IPCountry` para seleccionar automáticamente el país sin depender de un servicio IP externo.
+- Fallback de país por locale del navegador y, finalmente, República Dominicana.
+- Corregida la normalización backend para no anteponer `1` a números E.164 internacionales que ya llegan con `+`.
+
+## PIN de acceso
+
+- Sustituido el input único del PIN por cuatro casillas numéricas de un carácter.
+- Avance automático al siguiente dígito.
+- Retroceso inteligente con Backspace.
+- Navegación con flechas.
+- Pegado de un PIN completo de cuatro dígitos.
+- Login automático al completar el cuarto dígito.
+- Eliminado `Repetir PIN` del registro.
+- Simplificado el cambio de PIN del perfil a PIN actual + nuevo PIN, ambos con cuatro casillas.
+
+## Plataforma sin correo comercial
+
+- Eliminado correo del registro de comerciantes.
+- Eliminado correo de perfiles comerciales.
+- Eliminado correo de tiendas y ajustes.
+- Eliminado correo de clientes y checkout.
+- Eliminado correo de pedidos y vistas administrativas de comerciantes.
+- SuperAdmin continúa usando correo + contraseña.
+- Panel SuperAdmin identifica comerciantes por nombre + WhatsApp.
+- Nueva migración `000007_no_merchant_email` que elimina columnas de correo heredadas de tiendas/clientes/pedidos y limpia email de usuarios no SuperAdmin.
 
 ## Compatibilidad
 
-- No cambia autenticación.
-- No cambia WhatsApp/whatsmeow.
-- No cambia PostgreSQL salvo el color visual por defecto de las tiendas.
-- No cambia Redis.
-- No cambia Traefik/gateway.
-- No elimina volúmenes ni datos.
+- No cambia el routing Cloudflare/Traefik/gateway.
+- No cambia Redis ni whatsmeow.
+- No cambia el dominio ni las variables `.env` existentes.
+- No requiere Fresh Volumes.

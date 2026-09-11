@@ -1,4 +1,5 @@
 import './globals.css'
+import 'intl-tel-input/styles'
 import type {Metadata,Viewport} from 'next'
 import PWARegister from '@/components/pwa-register'
 

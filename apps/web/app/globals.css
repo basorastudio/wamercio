@@ -47,3 +47,17 @@ button,a,input,select,textarea { touch-action:manipulation; }
   .btn { @apply min-h-11; }
   .field { @apply min-h-11 text-base; }
 }
+
+/* intl-tel-input: WAMERCIO integration */
+.wamercio-phone-input { width:100%; }
+.wamercio-phone-input .iti { width:100%; display:block; }
+.wamercio-phone-input .iti__tel-input { width:100%; min-height:44px; }
+.wamercio-phone-input .iti__selected-country { border-radius:6px 0 0 6px; }
+.wamercio-phone-input .iti__selected-country-primary { padding-left:12px; padding-right:8px; }
+.wamercio-phone-input .iti__selected-dial-code { color:#586079; font-size:.875rem; }
+.wamercio-phone-input .iti__dropdown-content { border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 18px 45px rgba(46,49,84,.12); overflow:hidden; }
+.wamercio-phone-input .iti__search-input { margin:8px; width:calc(100% - 16px); border:1px solid #e2e8f0; border-radius:7px; padding:9px 10px; outline:none; }
+.wamercio-phone-input .iti__country.iti__highlight { background:#eefaf6; }
+.wamercio-phone-input .iti__country-name { color:#2e3154; }
+.wamercio-phone-input .iti__dial-code { color:#858aa7; }
+.iti--fullscreen-popup.iti--detached-country-selector { z-index: 220 !important; }

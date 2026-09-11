@@ -1,57 +1,50 @@
-# WAMERCIO 1.4.0
+# WAMERCIO 1.5.0
 
 WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js + Go + PostgreSQL + Redis + whatsmeow y desplegable en Dokploy.
 
-## Rediseño visual 1.4.0
+## WhatsApp-first 1.5.0
 
-La interfaz fue rediseñada tomando como referencia el lenguaje visual de WhatsApp Food/WhatsMenu: verde turquesa, blanco, fondos gris muy claro, tipografía ligera, tarjetas limpias y CTAs compactos.
+Esta versión simplifica el acceso y todos los flujos telefónicos de la plataforma:
 
-Paleta principal:
+- integración oficial `intl-tel-input` mediante su wrapper React;
+- bandera y código de marcación visibles automáticamente;
+- selección automática del país usando `CF-IPCountry` de Cloudflare, con respaldo por locale del navegador y República Dominicana;
+- formato internacional progresivo y envío del número completo en formato E.164 desde los formularios; el backend mantiene una representación canónica para autenticación;
+- buscador de países en español;
+- selector adaptativo: desplegable en escritorio y experiencia optimizada para móvil;
+- validación de longitud/número antes de enviar formularios;
+- PIN de acceso representado por 4 campos numéricos independientes con avance automático, retroceso y pegado de código;
+- eliminado el campo de repetir PIN del alta comercial;
+- eliminado el correo de comerciantes, tiendas, clientes y pedidos. El correo queda reservado exclusivamente al SuperAdmin SaaS.
 
-- Verde principal: `#36B385`
-- Verde oscuro: `#2B936D`
-- Fondo: `#FAFBFE`
-- Texto principal: `#2E3154`
-- Texto secundario: `#8A8FA9`
-- Blanco: `#FFFFFF`
+## Acceso comercial
 
-El rediseño afecta:
+En `https://wamercio.com/` el usuario introduce su WhatsApp una sola vez:
 
-- landing pública;
-- modal unificado de acceso/registro;
-- panel mobile-first de las tiendas;
-- panel SuperAdmin SaaS;
-- dashboard y componentes UI compartidos;
-- catálogo público;
-- icono, favicon, manifest y theme-color PWA;
-- color por defecto de nuevas tiendas.
+1. si ya existe, WAMERCIO muestra los 4 campos del PIN y accede al completar el cuarto dígito;
+2. si no existe, muestra el registro corto: nombre, negocio y un único PIN de 4 dígitos;
+3. el código de país y la bandera se determinan automáticamente, pero el usuario puede cambiarlos desde el selector.
 
-La migración `000006_whatsapp_food_brand` cambia el color por defecto de tienda a `#36B385` y actualiza tiendas que aún conservaban los colores por defecto históricos de WAMERCIO.
+El mismo componente internacional de teléfono se utiliza en los campos de WhatsApp del perfil, comercios, ajustes, checkout público y gestión de acceso desde SuperAdmin.
 
-## Acceso
+## SuperAdmin
 
-### Comerciantes
-
-`https://wamercio.com/`
-
-El botón de acceso abre el flujo unificado:
-
-1. WhatsApp.
-2. Si la cuenta existe: PIN de 4 dígitos.
-3. Si no existe: formulario corto de registro dentro del mismo modal.
-
-### SuperAdmin
+El SuperAdmin continúa separado en:
 
 `https://wamercio.com/admin/login`
 
-El SuperAdmin continúa utilizando correo + contraseña y una sesión totalmente separada.
+Solo el SuperAdmin utiliza correo + contraseña. Los comerciantes no utilizan correo para autenticación ni gestión comercial.
+
+## Migración 000007
+
+`000007_no_merchant_email` elimina de la base de datos los campos de correo heredados de tiendas, clientes y pedidos, y limpia el correo de usuarios que no sean SuperAdmin. Los valores anteriores no se restauran porque WAMERCIO pasa a operar de forma WhatsApp-first.
 
 ## Infraestructura
 
-Se conserva la ruta estable de producción:
+Se conserva sin cambios la ruta estable de producción:
 
 ```text
 Cloudflare → Traefik → wamercio-gateway:8080 → web:3000
 ```
 
-No se modifican volúmenes, secretos ni el modelo de despliegue de Dokploy.
+No se modifican volúmenes, secretos ni la arquitectura de Dokploy.
