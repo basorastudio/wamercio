@@ -49,18 +49,26 @@ func (s *Server) Router() http.Handler {
 	r.Handle("/media/*", http.StripPrefix("/media/", http.FileServer(http.Dir(s.cfg.UploadDir))))
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Post("/auth/login", s.login)
+		// Merchant/store access is intentionally independent from SaaS administration.
+		api.Post("/auth/store/login", s.storeLogin)
+		api.Post("/auth/store/register", s.register)
+		api.Post("/auth/store/logout", s.storeLogout)
+		// Legacy aliases kept for clients created before 1.2.
 		api.Post("/auth/register", s.register)
-		api.Post("/auth/logout", s.logout)
+		api.Post("/auth/admin/login", s.adminLogin)
+		api.Post("/auth/admin/logout", s.adminLogout)
+		api.Post("/auth/login", s.adminLogin)
+
 		api.Get("/plans", s.listPlans)
 		api.Get("/public/stores/{slug}", s.publicStore)
 		api.Post("/public/stores/{slug}/checkout", s.checkout)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
+
 		api.Group(func(p chi.Router) {
-			p.Use(s.requireAuth)
+			p.Use(s.requireStoreAuth)
 			p.Get("/me", s.me)
 			p.Patch("/me", s.updateMe)
-			p.Post("/me/password", s.changePassword)
+			p.Post("/me/pin", s.changePIN)
 			p.Get("/dashboard", s.dashboard)
 			p.Get("/stores", s.listStores)
 			p.Post("/stores", s.createStore)
@@ -110,24 +118,28 @@ func (s *Server) Router() http.Handler {
 			p.Post("/whatsapp/{storeID}/disconnect", s.whatsappDisconnect)
 			p.Post("/whatsapp/{storeID}/send", s.whatsappSend)
 
-			p.Group(func(a chi.Router) {
-				a.Use(s.requireSuperAdmin)
-				a.Get("/admin/dashboard", s.adminDashboard)
-				a.Get("/admin/users", s.adminUsers)
-				a.Patch("/admin/users/{id}/status", s.adminUserStatus)
-				a.Put("/admin/users/{id}/plan", s.adminAssignPlan)
-				a.Get("/admin/stores", s.adminStores)
-				a.Get("/admin/plans", s.adminPlans)
-				a.Post("/admin/plans", s.adminCreatePlan)
-				a.Put("/admin/plans/{id}", s.adminUpdatePlan)
-				a.Get("/admin/subscription-requests", s.adminSubscriptionRequests)
-				a.Patch("/admin/subscription-requests/{id}", s.adminReviewSubscriptionRequest)
-				a.Get("/admin/transactions", s.adminTransactions)
-				a.Get("/admin/tickets", s.adminTickets)
-				a.Get("/admin/tickets/{id}", s.adminTicket)
-				a.Post("/admin/tickets/{id}/reply", s.adminReplyTicket)
-				a.Patch("/admin/tickets/{id}/status", s.adminTicketStatus)
-			})
+		})
+
+		api.Group(func(a chi.Router) {
+			a.Use(s.requireAdminAuth)
+			a.Get("/admin/me", s.adminMe)
+			a.Get("/admin/dashboard", s.adminDashboard)
+			a.Get("/admin/users", s.adminUsers)
+			a.Patch("/admin/users/{id}/status", s.adminUserStatus)
+			a.Put("/admin/users/{id}/plan", s.adminAssignPlan)
+			a.Put("/admin/users/{id}/pin", s.adminSetUserPIN)
+			a.Put("/admin/users/{id}/access", s.adminSetUserAccess)
+			a.Get("/admin/stores", s.adminStores)
+			a.Get("/admin/plans", s.adminPlans)
+			a.Post("/admin/plans", s.adminCreatePlan)
+			a.Put("/admin/plans/{id}", s.adminUpdatePlan)
+			a.Get("/admin/subscription-requests", s.adminSubscriptionRequests)
+			a.Patch("/admin/subscription-requests/{id}", s.adminReviewSubscriptionRequest)
+			a.Get("/admin/transactions", s.adminTransactions)
+			a.Get("/admin/tickets", s.adminTickets)
+			a.Get("/admin/tickets/{id}", s.adminTicket)
+			a.Post("/admin/tickets/{id}/reply", s.adminReplyTicket)
+			a.Patch("/admin/tickets/{id}/status", s.adminTicketStatus)
 		})
 	})
 	return r
@@ -155,74 +167,155 @@ func str(v any) string {
 	return fmt.Sprint(v)
 }
 
-func (s *Server) requireAuth(next http.Handler) http.Handler {
+func normalizePhone(v string) string {
+	digits := regexp.MustCompile(`\D+`).ReplaceAllString(strings.TrimSpace(v), "")
+	if len(digits) == 10 {
+		digits = "1" + digits
+	}
+	return digits
+}
+
+func validPIN(v string) bool {
+	return regexp.MustCompile(`^[0-9]{4}$`).MatchString(v)
+}
+
+func (s *Server) claimsFromCookie(r *http.Request, cookieName string) (*authpkg.Claims, error) {
+	cookie, err := r.Cookie(cookieName)
+	if err != nil || cookie.Value == "" {
+		return nil, fmt.Errorf("sesión requerida")
+	}
+	return authpkg.Parse(s.cfg.JWTSecret, cookie.Value)
+}
+
+func (s *Server) requireStoreAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := ""
-		if c, err := r.Cookie("wamercio_token"); err == nil {
-			token = c.Value
-		}
-		if token == "" {
-			h := r.Header.Get("Authorization")
-			if strings.HasPrefix(h, "Bearer ") {
-				token = strings.TrimPrefix(h, "Bearer ")
-			}
-		}
-		if token == "" {
-			jsonErr(w, 401, "Sesión requerida")
-			return
-		}
-		c, err := authpkg.Parse(s.cfg.JWTSecret, token)
-		if err != nil {
-			jsonErr(w, 401, "Sesión inválida o vencida")
+		c, err := s.claimsFromCookie(r, "wamercio_store_token")
+		if err != nil || c.Role != "owner" {
+			jsonErr(w, 401, "Sesión de tienda requerida")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
 	})
 }
 
-func (s *Server) requireSuperAdmin(next http.Handler) http.Handler {
+func (s *Server) requireAdminAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c := claims(r)
-		if c == nil || c.Role != "superadmin" {
-			jsonErr(w, 403, "Acceso reservado al SuperAdmin")
+		c, err := s.claimsFromCookie(r, "wamercio_admin_token")
+		if err != nil || c.Role != "superadmin" {
+			jsonErr(w, 401, "Sesión de SuperAdmin requerida")
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
 	})
 }
 
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	var in struct{ Email, Password string }
-	if decode(r, &in) != nil || in.Email == "" || in.Password == "" {
-		jsonErr(w, 400, "Correo y contraseña son obligatorios")
+func (s *Server) setSessionCookie(w http.ResponseWriter, name, token string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     name,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   strings.HasPrefix(s.cfg.AppURL, "https://"),
+		MaxAge:   maxAge,
+	})
+}
+
+func (s *Server) clearSessionCookie(w http.ResponseWriter, name string) {
+	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.AppURL, "https://"), MaxAge: -1})
+}
+
+func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Phone string `json:"phone"`
+		PIN   string `json:"pin"`
+	}
+	if decode(r, &in) != nil || normalizePhone(in.Phone) == "" || !validPIN(in.PIN) {
+		jsonErr(w, 400, "Ingresa tu número de WhatsApp y un PIN de 4 dígitos")
 		return
 	}
-	var id, name, email, hash, role, status string
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,email,password_hash,role,status FROM users WHERE lower(email)=lower($1)`, in.Email).Scan(&id, &name, &email, &hash, &role, &status)
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil || status != "active" {
-		jsonErr(w, 401, "Credenciales inválidas")
+	phone := normalizePhone(in.Phone)
+	var id, name, storedPhone, pinHash, status string
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(phone,''),coalesce(pin_hash,''),status FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 ORDER BY created_at LIMIT 1`, phone).Scan(&id, &name, &storedPhone, &pinHash, &status)
+	if err != nil || status != "active" {
+		jsonErr(w, 401, "WhatsApp o PIN incorrecto")
 		return
 	}
-	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, role)
+	if pinHash == "" {
+		jsonErr(w, 403, "Tu PIN todavía no está configurado. Solicítalo al administrador de WAMERCIO.")
+		return
+	}
+	if bcrypt.CompareHashAndPassword([]byte(pinHash), []byte(in.PIN)) != nil {
+		jsonErr(w, 401, "WhatsApp o PIN incorrecto")
+		return
+	}
+	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "owner")
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la sesión")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "wamercio_token", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.AppURL, "https://"), MaxAge: 7 * 24 * 3600})
-	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "email": email, "role": role}})
+	_, _ = s.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, id)
+	s.setSessionCookie(w, "wamercio_store_token", tok, 30*24*3600)
+	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": storedPhone, "role": "owner"}})
 }
-func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+
+func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name     string `json:"name"`
 		Email    string `json:"email"`
-		Phone    string `json:"phone"`
 		Password string `json:"password"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Email) == "" || len(in.Password) < 8 {
-		jsonErr(w, 400, "Nombre, correo y una contraseña de al menos 8 caracteres son obligatorios")
+	if decode(r, &in) != nil || strings.TrimSpace(in.Email) == "" || in.Password == "" {
+		jsonErr(w, 400, "Correo y contraseña son obligatorios")
 		return
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	var id, name, email, hash, status string
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(email,''),password_hash,status FROM users WHERE role='superadmin' AND lower(email)=lower($1)`, strings.TrimSpace(in.Email)).Scan(&id, &name, &email, &hash, &status)
+	if err != nil || status != "active" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
+		jsonErr(w, 401, "Credenciales administrativas inválidas")
+		return
+	}
+	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "superadmin")
+	if err != nil {
+		jsonErr(w, 500, "No se pudo crear la sesión")
+		return
+	}
+	_, _ = s.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, id)
+	s.setSessionCookie(w, "wamercio_admin_token", tok, 12*3600)
+	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "email": email, "role": "superadmin"}})
+}
+
+func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name         string `json:"name"`
+		Email        string `json:"email"`
+		Phone        string `json:"phone"`
+		PIN          string `json:"pin"`
+		BusinessName string `json:"business_name"`
+	}
+	name := strings.TrimSpace(in.Name)
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	name = strings.TrimSpace(in.Name)
+	phone := normalizePhone(in.Phone)
+	if name == "" || phone == "" || !validPIN(in.PIN) {
+		jsonErr(w, 400, "Nombre, WhatsApp y un PIN de 4 dígitos son obligatorios")
+		return
+	}
+	var exists int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1`, phone).Scan(&exists)
+	if exists > 0 {
+		jsonErr(w, 409, "Ya existe una cuenta con ese número de WhatsApp")
+		return
+	}
+	pinHash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger el PIN")
+		return
+	}
+	// Owners don't use passwords to sign in. Keep an unusable random hash for schema compatibility.
+	randomHash, err := bcrypt.GenerateFromPassword([]byte(uuid.NewString()+uuid.NewString()), bcrypt.DefaultCost)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la cuenta")
 		return
@@ -234,14 +327,23 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var id string
-	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,role,status) VALUES($1,lower($2),$3,$4,'owner','active') RETURNING id`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Email), strings.TrimSpace(in.Phone), string(hash)).Scan(&id)
+	var email any
+	if strings.TrimSpace(in.Email) != "" {
+		email = strings.ToLower(strings.TrimSpace(in.Email))
+	}
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,$2,$3,$4,$5,now(),'owner','active') RETURNING id`, name, email, phone, string(randomHash), string(pinHash)).Scan(&id)
 	if err != nil {
-		jsonErr(w, 409, "Ya existe una cuenta con ese correo")
+		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el correo o WhatsApp")
 		return
 	}
 	var planID string
 	if err = tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug='emprende' AND is_active=true LIMIT 1`).Scan(&planID); err == nil {
 		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, id, planID)
+	}
+	businessName := strings.TrimSpace(in.BusinessName)
+	if businessName != "" {
+		slug := slugify(businessName)
+		_, _ = tx.Exec(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,$4,$4)`, id, businessName, slug, phone)
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		jsonErr(w, 500, "No se pudo confirmar la cuenta")
@@ -252,18 +354,37 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "Cuenta creada, pero no se pudo iniciar sesión")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: "wamercio_token", Value: tok, Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.AppURL, "https://"), MaxAge: 7 * 24 * 3600})
-	jsonOut(w, 201, map[string]any{"user": map[string]any{"id": id, "name": in.Name, "email": strings.ToLower(in.Email), "role": "owner"}})
+	s.setSessionCookie(w, "wamercio_store_token", tok, 30*24*3600)
+	jsonOut(w, 201, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": phone, "role": "owner"}})
 }
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{Name: "wamercio_token", Value: "", Path: "/", HttpOnly: true, MaxAge: -1})
+
+func (s *Server) storeLogout(w http.ResponseWriter, r *http.Request) {
+	s.clearSessionCookie(w, "wamercio_store_token")
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
+
+func (s *Server) adminLogout(w http.ResponseWriter, r *http.Request) {
+	s.clearSessionCookie(w, "wamercio_admin_token")
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminMe(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	var name, email, role string
+	var created time.Time
+	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(email,''),role,created_at FROM users WHERE id=$1 AND role='superadmin'`, c.UserID).Scan(&name, &email, &role, &created)
+	if err != nil {
+		jsonErr(w, 404, "Administrador no encontrado")
+		return
+	}
+	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "email": email, "role": role, "created_at": created})
+}
+
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var name, email, phone, role string
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT name,email,coalesce(phone,''),role,created_at FROM users WHERE id=$1`, c.UserID).Scan(&name, &email, &phone, &role, &created)
+	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(email,''),coalesce(phone,''),role,created_at FROM users WHERE id=$1`, c.UserID).Scan(&name, &email, &phone, &role, &created)
 	if err != nil {
 		jsonErr(w, 404, "Usuario no encontrado")
 		return
@@ -1650,7 +1771,18 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "El nombre es obligatorio")
 		return
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE users SET name=$1,phone=$2,updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Phone), c.UserID)
+	phone := normalizePhone(in.Phone)
+	if phone == "" {
+		jsonErr(w, 400, "El WhatsApp es obligatorio")
+		return
+	}
+	var duplicate int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND id<>$1 AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$2`, c.UserID, phone).Scan(&duplicate)
+	if duplicate > 0 {
+		jsonErr(w, 409, "Ese WhatsApp ya está asociado a otra cuenta")
+		return
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE users SET name=$1,phone=$2,updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Name), phone, c.UserID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar el perfil")
 		return
@@ -1685,6 +1817,38 @@ func (s *Server) changePassword(w http.ResponseWriter, r *http.Request) {
 	_, err = s.db.Exec(r.Context(), `UPDATE users SET password_hash=$1,updated_at=now() WHERE id=$2`, string(newHash), c.UserID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar la contraseña")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) changePIN(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	var in struct {
+		Current string `json:"current_pin"`
+		New     string `json:"new_pin"`
+	}
+	if decode(r, &in) != nil || !validPIN(in.New) {
+		jsonErr(w, 400, "El nuevo PIN debe tener exactamente 4 dígitos")
+		return
+	}
+	var currentHash string
+	if err := s.db.QueryRow(r.Context(), `SELECT coalesce(pin_hash,'') FROM users WHERE id=$1 AND role='owner'`, c.UserID).Scan(&currentHash); err != nil {
+		jsonErr(w, 404, "Cuenta no encontrada")
+		return
+	}
+	if currentHash != "" && bcrypt.CompareHashAndPassword([]byte(currentHash), []byte(in.Current)) != nil {
+		jsonErr(w, 400, "El PIN actual no es correcto")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.New), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger el PIN")
+		return
+	}
+	_, err = s.db.Exec(r.Context(), `UPDATE users SET pin_hash=$1,pin_changed_at=now(),updated_at=now() WHERE id=$2`, string(hash), c.UserID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo actualizar el PIN")
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
@@ -2014,7 +2178,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,u.email,coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,'') ,(SELECT count(*) FROM stores st WHERE st.user_id=u.id) FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role<>'superadmin' ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.email,''),coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role<>'superadmin' ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -2025,8 +2189,9 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 		var id, name, email, phone, status, planID, planName, planSlug string
 		var created time.Time
 		var stores int
-		_ = rows.Scan(&id, &name, &email, &phone, &status, &created, &planID, &planName, &planSlug, &stores)
-		out = append(out, map[string]any{"id": id, "name": name, "email": email, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores})
+		var pinConfigured bool
+		_ = rows.Scan(&id, &name, &email, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured)
+		out = append(out, map[string]any{"id": id, "name": name, "email": email, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured})
 	}
 	jsonOut(w, 200, out)
 }
@@ -2047,6 +2212,75 @@ func (s *Server) adminUserStatus(w http.ResponseWriter, r *http.Request) {
 	_, err := s.db.Exec(r.Context(), `UPDATE users SET status=$1,updated_at=now() WHERE id=$2 AND role<>'superadmin'`, in.Status, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar el usuario")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminSetUserPIN(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		PIN string `json:"pin"`
+	}
+	if decode(r, &in) != nil || !validPIN(in.PIN) {
+		jsonErr(w, 400, "El PIN debe tener exactamente 4 dígitos")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger el PIN")
+		return
+	}
+	cmd, err := s.db.Exec(r.Context(), `UPDATE users SET pin_hash=$1,pin_changed_at=now(),updated_at=now() WHERE id=$2 AND role='owner'`, string(hash), id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Comerciante no encontrado")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminSetUserAccess(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		Phone string `json:"phone"`
+		PIN   string `json:"pin"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	phone := normalizePhone(in.Phone)
+	if phone == "" {
+		jsonErr(w, 400, "El WhatsApp es obligatorio")
+		return
+	}
+	if in.PIN != "" && !validPIN(in.PIN) {
+		jsonErr(w, 400, "El PIN debe tener exactamente 4 dígitos")
+		return
+	}
+	var duplicate int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND id<>$1 AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$2`, id, phone).Scan(&duplicate)
+	if duplicate > 0 {
+		jsonErr(w, 409, "Ese WhatsApp ya pertenece a otro comerciante")
+		return
+	}
+	if in.PIN == "" {
+		cmd, err := s.db.Exec(r.Context(), `UPDATE users SET phone=$1,updated_at=now() WHERE id=$2 AND role='owner'`, phone, id)
+		if err != nil || cmd.RowsAffected() == 0 {
+			jsonErr(w, 404, "Comerciante no encontrado")
+			return
+		}
+		jsonOut(w, 200, map[string]bool{"ok": true})
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger el PIN")
+		return
+	}
+	cmd, err := s.db.Exec(r.Context(), `UPDATE users SET phone=$1,pin_hash=$2,pin_changed_at=now(),updated_at=now() WHERE id=$3 AND role='owner'`, phone, string(hash), id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Comerciante no encontrado")
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
@@ -2075,7 +2309,7 @@ func (s *Server) adminAssignPlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.name,u.email,(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.name,coalesce(u.email,''),(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las tiendas")
 		return
@@ -2180,7 +2414,7 @@ func (s *Server) adminUpdatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminSubscriptionRequests(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT sr.id,u.id,u.name,u.email,coalesce(cp.name,'Sin plan'),rp.id,rp.name,rp.price,coalesce(sr.note,''),sr.status,sr.created_at,sr.reviewed_at FROM subscription_requests sr JOIN users u ON u.id=sr.user_id LEFT JOIN plans cp ON cp.id=sr.current_plan_id JOIN plans rp ON rp.id=sr.requested_plan_id ORDER BY CASE WHEN sr.status='pending' THEN 0 ELSE 1 END,sr.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT sr.id,u.id,u.name,coalesce(u.email,''),coalesce(cp.name,'Sin plan'),rp.id,rp.name,rp.price,coalesce(sr.note,''),sr.status,sr.created_at,sr.reviewed_at FROM subscription_requests sr JOIN users u ON u.id=sr.user_id LEFT JOIN plans cp ON cp.id=sr.current_plan_id JOIN plans rp ON rp.id=sr.requested_plan_id ORDER BY CASE WHEN sr.status='pending' THEN 0 ELSE 1 END,sr.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las solicitudes")
 		return
@@ -2269,7 +2503,7 @@ func (s *Server) listTransactions(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminTransactions(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT t.id,u.name,u.email,coalesce(st.name,''),t.type,t.amount,t.currency,t.status,coalesce(t.reference,''),coalesce(t.description,''),t.created_at FROM transactions t JOIN users u ON u.id=t.user_id LEFT JOIN stores st ON st.id=t.store_id ORDER BY t.created_at DESC LIMIT 1000`)
+	rows, err := s.db.Query(r.Context(), `SELECT t.id,u.name,coalesce(u.email,''),coalesce(st.name,''),t.type,t.amount,t.currency,t.status,coalesce(t.reference,''),coalesce(t.description,''),t.created_at FROM transactions t JOIN users u ON u.id=t.user_id LEFT JOIN stores st ON st.id=t.store_id ORDER BY t.created_at DESC LIMIT 1000`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los movimientos")
 		return
@@ -2359,7 +2593,7 @@ func (s *Server) ticketPayload(ctx context.Context, id string) (map[string]any, 
 	var number int64
 	var uid, name, email, subject, priority, status string
 	var last, created time.Time
-	if err := s.db.QueryRow(ctx, `SELECT t.number,t.user_id::text,u.name,u.email,t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=$1`, id).Scan(&number, &uid, &name, &email, &subject, &priority, &status, &last, &created); err != nil {
+	if err := s.db.QueryRow(ctx, `SELECT t.number,t.user_id::text,u.name,coalesce(u.email,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id WHERE t.id=$1`, id).Scan(&number, &uid, &name, &email, &subject, &priority, &status, &last, &created); err != nil {
 		return nil, err
 	}
 	rows, err := s.db.Query(ctx, `SELECT m.id,coalesce(m.sender_user_id::text,''),m.sender_role,m.message,m.created_at,coalesce(u.name,'Soporte WAMERCIO') FROM support_ticket_messages m LEFT JOIN users u ON u.id=m.sender_user_id WHERE m.ticket_id=$1 ORDER BY m.created_at`, id)
@@ -2447,7 +2681,7 @@ func (s *Server) closeTicket(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) adminTickets(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
-	q := `SELECT t.id,t.number,u.name,u.email,t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id`
+	q := `SELECT t.id,t.number,u.name,coalesce(u.email,''),t.subject,t.priority,t.status,t.last_reply_at,t.created_at FROM support_tickets t JOIN users u ON u.id=t.user_id`
 	args := []any{}
 	if status != "" && status != "all" {
 		q += ` WHERE t.status=$1`

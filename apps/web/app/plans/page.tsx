@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useState} from 'react'
-import AdminShell from '@/components/admin-shell'
+import AdminShell from '@/components/store-shell'
 import {api,money,dateTime} from '@/lib/api'
 import {Alert,Loading,Modal,Status} from '@/components/ui'
 import type {Plan} from '@/lib/types'

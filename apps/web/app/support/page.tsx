@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useMemo,useState} from 'react'
-import AdminShell from '@/components/admin-shell'
+import AdminShell from '@/components/store-shell'
 import {Alert,Loading,Modal,PageEmpty,SearchBox,Status} from '@/components/ui'
 import {api,dateTime} from '@/lib/api'
 import type {SupportTicket,TicketMessage} from '@/lib/types'

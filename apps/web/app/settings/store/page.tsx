@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useMemo,useState} from 'react'
-import AdminShell,{StoreSelector} from '@/components/admin-shell'
+import AdminShell,{StoreSelector} from '@/components/store-shell'
 import {api,upload} from '@/lib/api'
 import {Alert,Loading} from '@/components/ui'
 import {Store,Palette,Clock3,CreditCard,ShoppingCart,ImagePlus,CheckCircle2} from 'lucide-react'

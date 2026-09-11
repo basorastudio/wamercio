@@ -86,3 +86,17 @@
 - [ ] Revisar solicitudes
 - [ ] Ver movimientos globales
 - [ ] Gestionar tickets
+
+## WAMERCIO 1.2 · autenticación y separación de paneles
+
+1. Abrir `/admin/login` e iniciar sesión con `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+2. Confirmar que `/admin` carga y que la navegación solo contiene módulos SaaS.
+3. Abrir `/dashboard` en la misma sesión administrativa: debe pedir el login de tienda si no existe una sesión comercial separada.
+4. En `/admin/users`, configurar WhatsApp + PIN de un comerciante.
+5. En una ventana privada, abrir `/login`.
+6. Introducir primero el WhatsApp y luego un PIN de cuatro dígitos.
+7. Confirmar entrada automática a `/dashboard` al completar el cuarto dígito.
+8. Confirmar que el panel móvil muestra navegación inferior: Inicio, Pedidos, Chat, Productos, Más.
+9. Abrir `/admin` desde la sesión de tienda: debe redirigir a `/admin/login`.
+10. Cambiar el PIN desde `/settings/profile` y volver a iniciar sesión con el PIN nuevo.
+11. Instalar la PWA y comprobar accesos rápidos a Pedidos, Chat y Productos.

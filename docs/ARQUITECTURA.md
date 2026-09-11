@@ -72,3 +72,13 @@ Twilio no participa.
 ## Dokploy / Traefik
 
 El routing estable de producción usa el File Provider de Traefik además de la red `dokploy-network`. El alias externo del frontend es `wamercio-web` y se conserva entre versiones.
+
+## Separación de identidades desde 1.2
+
+```text
+Browser / PWA
+   ├─ /login → Store Auth → wamercio_store_token → Owner API
+   └─ /admin/login → Admin Auth → wamercio_admin_token → SuperAdmin API
+```
+
+Los dos JWT usan la misma clave de firma interna, pero se almacenan en cookies distintas, tienen roles distintos y middlewares diferentes. Esto permite sesiones simultáneas en el mismo navegador sin mezclar los contextos.

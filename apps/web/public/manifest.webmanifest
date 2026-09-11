@@ -1,9 +1,17 @@
 {
-  "name":"WAMERCIO",
+  "name":"WAMERCIO Tiendas",
   "short_name":"WAMERCIO",
+  "description":"Panel comercial mobile-first para administrar tiendas, catálogo, WhatsApp y pedidos.",
   "start_url":"/dashboard",
+  "scope":"/",
   "display":"standalone",
-  "background_color":"#f8fafc",
-  "theme_color":"#16a34a",
-  "icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+  "background_color":"#f6f8fb",
+  "theme_color":"#fbbf24",
+  "orientation":"any",
+  "icons":[{"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}],
+  "shortcuts":[
+    {"name":"Pedidos","short_name":"Pedidos","url":"/orders"},
+    {"name":"Conversaciones","short_name":"Chat","url":"/conversations"},
+    {"name":"Productos","short_name":"Productos","url":"/catalog/products"}
+  ]
 }

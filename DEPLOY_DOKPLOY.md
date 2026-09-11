@@ -342,3 +342,69 @@ https://wamercio.com/admin/subscriptions
 https://wamercio.com/admin/transactions
 https://wamercio.com/admin/tickets
 ```
+
+---
+
+# Actualización 1.2.0 · paneles y autenticación separados
+
+Esta actualización **no requiere nuevas variables de entorno** y conserva el routing actual de `wamercio.com`.
+
+## Procedimiento
+
+1. Sube WAMERCIO 1.2.0 al mismo repositorio.
+2. Conserva exactamente los named volumes `postgres_data`, `redis_data` y `uploads_data`.
+3. No uses **Fresh Volumes**.
+4. Pulsa **Rebuild**.
+5. El API ejecutará automáticamente `000005_split_auth_panels`.
+
+## Accesos después de actualizar
+
+### SuperAdmin SaaS
+
+```text
+https://wamercio.com/admin/login
+```
+
+Continúa utilizando:
+
+```dotenv
+ADMIN_EMAIL=admin@wamercio.com
+ADMIN_PASSWORD=...
+```
+
+### Comerciantes / tiendas
+
+```text
+https://wamercio.com/login
+```
+
+El acceso ahora es únicamente:
+
+```text
+WhatsApp + PIN de 4 dígitos
+```
+
+Los comerciantes creados antes de 1.2 no disponen todavía de `pin_hash`. Para habilitarlos:
+
+1. inicia sesión como SuperAdmin;
+2. abre **Comerciantes** (`/admin/users`);
+3. pulsa el icono de llave;
+4. confirma/corrige el número de WhatsApp;
+5. escribe un PIN de cuatro dígitos;
+6. guarda;
+7. prueba ese WhatsApp + PIN en `/login`.
+
+El SuperAdmin puede cambiar posteriormente el WhatsApp sin cambiar el PIN, dejando el campo PIN vacío.
+
+## Comprobaciones rápidas
+
+```text
+/login             → acceso WhatsApp + PIN
+/admin/login       → acceso administrativo con correo + contraseña
+/dashboard         → panel de tienda
+/admin             → panel SaaS
+/manifest.webmanifest
+/sw.js
+```
+
+Una cookie de tienda no autoriza `/admin/*` y una cookie del SuperAdmin no autoriza los endpoints operativos de tienda.

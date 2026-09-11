@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useRef,useState} from 'react'
-import AdminShell,{StoreSelector} from '@/components/admin-shell'
+import AdminShell,{StoreSelector} from '@/components/store-shell'
 import {api,dateTime} from '@/lib/api'
 import {MessageCircleMore,Send,Search,CheckCheck,Phone,RefreshCw} from 'lucide-react'
 

@@ -1,37 +1,49 @@
-# WAMERCIO 1.1.1
+# WAMERCIO 1.2.0
 
-## Corrección de despliegue
+## Paneles separados
 
-- Corrige la compilación del backend Go: se añadió el helper `spanishStatus` usado al notificar por WhatsApp los cambios de estado de un pedido.
-- El helper contempla `pending`, `processing`, `out_for_delivery`, `delivered` y `canceled`, con fallback seguro para estados desconocidos.
-- Se mantuvo intacta la configuración de Dokploy/Traefik que ya funciona en `wamercio.com`.
-- Verificación estática adicional: rutas HTTP sin handlers faltantes, imports locales del frontend válidos y TS/TSX sin errores de parseo.
+- Separación real entre **Panel de Tienda** y **SuperAdmin SaaS**.
+- Nuevo `StoreShell` para la operación comercial.
+- Nuevo `SuperAdminShell` exclusivo para administración SaaS.
+- El SuperAdmin ya no ve módulos operativos de tienda dentro de su navegación.
+- Un comerciante no puede reutilizar su sesión para entrar a `/admin/*`.
 
-# Changelog
+## Nuevo acceso de comerciantes
 
-## 1.1.0
+- `/login` ahora utiliza **WhatsApp + PIN de 4 dígitos**.
+- Flujo progresivo: primero WhatsApp, luego PIN.
+- Auto-login al completar los 4 dígitos.
+- Nueva cookie independiente `wamercio_store_token` con sesión prolongada.
+- Registro comercial adaptado a nombre + negocio + WhatsApp + PIN; correo opcional.
+- Cambio de PIN desde **Mi cuenta**.
+- El SuperAdmin puede configurar WhatsApp/PIN de comerciantes existentes.
 
-### Añadido
-- CRM de clientes por tienda.
-- Configuración comercial completa por tienda.
-- Banner, branding, horarios, pedido mínimo y mensajes de checkout.
-- Delivery/recogida configurables.
-- Métodos de pago manuales y datos bancarios.
-- Productos destacados, etiquetas y orden visual.
-- Control de inventario integrado al checkout/cancelación.
-- Estado de pago independiente del estado operativo.
-- Movimientos de pago/reembolso.
-- Perfil editable y cambio de contraseña.
-- Plan actual, consumo y solicitudes de cambio.
-- SuperAdmin: usuarios, tiendas, planes, solicitudes, movimientos y tickets.
-- Centro de soporte propietario/SuperAdmin.
-- QR público de tienda.
-- Rutas de conversaciones que faltaban en el MVP.
+## Acceso SuperAdmin
 
-### Corregido
-- Campos JSON `snake_case` de formularios Go que podían decodificarse como valores cero.
-- Checkout ahora valida precios, variantes, extras, stock, cupón, delivery y métodos de pago en servidor.
-- Cliente bloqueado no puede realizar checkout.
+- Nuevo `/admin/login` con correo/usuario administrativo + contraseña.
+- Cookie separada `wamercio_admin_token`.
+- Sesión administrativa independiente y de menor duración.
+- `/admin/me` independiente de `/me`.
 
-### Infraestructura
-- Se conserva sin cambios el routing de Dokploy/Traefik File Provider de 1.0.5.
+## Mobile-first / SPA / PWA
+
+- Navegación inferior móvil: Inicio, Pedidos, Chat, Productos y Más.
+- Hoja móvil “Más” para módulos secundarios.
+- Sidebar simplificado en escritorio siguiendo el patrón operativo de Foody Friend.
+- Dashboard adaptado a tarjetas compactas y pedidos en formato móvil.
+- Selector de tienda recuerda la última tienda utilizada.
+- Navegación interna convertida a `next/link` para conservar comportamiento SPA.
+- Service worker 1.2 con caché de app shell y assets estáticos.
+- Manifest PWA actualizado con shortcuts y safe-area.
+
+## Base de datos
+
+- Nueva migración `000005_split_auth_panels`.
+- `users.email` pasa a ser opcional para comerciantes.
+- Nuevos campos `pin_hash`, `pin_changed_at` y `last_login_at`.
+- Normalización de teléfonos existentes al formato numérico con prefijo país cuando corresponde.
+
+## Compatibilidad
+
+- Se conserva el routing de Dokploy/Traefik que ya funciona en `wamercio.com`.
+- Se mantienen PostgreSQL, Redis, WhatsApp bridge, volúmenes y datos comerciales existentes.

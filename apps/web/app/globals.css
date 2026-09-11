@@ -21,3 +21,16 @@ button,input,textarea,select { font:inherit; }
   .table th { @apply bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500; }
   .table td { @apply border-t border-slate-100 px-4 py-3 align-middle; }
 }
+
+/* WAMERCIO 1.2 mobile-first application ergonomics */
+html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+body { min-height: 100dvh; }
+button, a, input, select, textarea { touch-action: manipulation; }
+@media (max-width: 639px) {
+  .card { @apply rounded-2xl; }
+  .table-wrap { @apply -mx-3 rounded-none border-x-0; }
+  .table th { @apply whitespace-nowrap px-3 py-2.5 text-[10px]; }
+  .table td { @apply whitespace-nowrap px-3 py-3; }
+  .btn { @apply min-h-11; }
+  .field { @apply min-h-11 text-base; }
+}

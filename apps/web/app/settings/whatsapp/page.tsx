@@ -1,6 +1,6 @@
 'use client'
 import {useEffect,useRef,useState} from 'react'
-import AdminShell,{StoreSelector} from '@/components/admin-shell'
+import AdminShell,{StoreSelector} from '@/components/store-shell'
 import {api} from '@/lib/api'
 import {Alert,PageEmpty} from '@/components/ui'
 import {QRCodeSVG} from 'qrcode.react'

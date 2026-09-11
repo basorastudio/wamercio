@@ -1,130 +1,128 @@
-# WAMERCIO 1.1.1
+# WAMERCIO 1.2.0
 
-Plataforma SaaS de comercio conversacional para República Dominicana, reconstruida con código propio tomando a Foody Friend como referencia de flujo comercial, organización del panel y experiencia de gestión.
+Plataforma SaaS de comercio conversacional para República Dominicana. El flujo y la simplicidad visual del **panel comercial** toman como referencia Foody Friend, pero WAMERCIO utiliza código, arquitectura, branding y autenticación propios.
+
+## Arquitectura de producto
+
+```text
+                    WAMERCIO
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+  PANEL DE TIENDA               SUPERADMIN SaaS
+  WhatsApp + PIN                email + contraseña
+        │                             │
+ StoreShell / PWA              SuperAdminShell
+        │                             │
+ tiendas, catálogo,             comerciantes, planes,
+ pedidos, clientes,             suscripciones, soporte,
+ delivery, WhatsApp             tiendas globales, métricas
+```
+
+Las sesiones son independientes:
+
+- tienda: `wamercio_store_token`
+- SaaS: `wamercio_admin_token`
+
+## Experiencia de tienda
+
+Patrón funcional equivalente al panel de usuario de Foody Friend:
+
+- Dashboard
+- Mis tiendas
+- Categorías
+- Productos, variantes y extras
+- Delivery
+- Cupones
+- Pedidos
+- Clientes
+- Conversaciones
+- WhatsApp
+- Movimientos
+- Plan y suscripción
+- Soporte
+- Perfil / PIN
+
+La interfaz es **mobile-first**. En móvil utiliza navegación inferior fija y menú “Más”; en escritorio utiliza sidebar claro y compacto. El selector de tienda recuerda la última tienda administrada.
+
+## SuperAdmin SaaS
+
+Acceso independiente en:
+
+```text
+https://wamercio.com/admin/login
+```
+
+Usa las variables actuales:
+
+```dotenv
+ADMIN_EMAIL=...
+ADMIN_PASSWORD=...
+```
+
+Administra comerciantes, WhatsApp/PIN de acceso, estados, planes, tiendas globales, solicitudes, movimientos y tickets.
+
+## Acceso de tiendas
+
+```text
+https://wamercio.com/login
+```
+
+El comerciante escribe su número de WhatsApp y después su PIN de 4 dígitos. El sistema inicia sesión automáticamente cuando se completa el PIN.
+
+Comerciantes creados antes de 1.2 deben recibir un PIN desde **SuperAdmin → Comerciantes → llave** una sola vez.
+
+## Registro
+
+`/register` crea una cuenta comercial con:
+
+- responsable;
+- nombre del negocio;
+- WhatsApp;
+- PIN de 4 dígitos;
+- correo opcional.
+
+También crea la primera tienda y asigna el plan gratuito `Emprende` cuando está disponible.
+
+## SPA + PWA
+
+- Next.js App Router + React.
+- navegación interna con `next/link`.
+- manifest instalable.
+- service worker con caché de assets y app shell.
+- `start_url=/dashboard`.
+- shortcuts PWA para Pedidos, Chat y Productos.
+- safe-area para dispositivos móviles.
 
 ## Stack
 
-- **Frontend:** Next.js 14.2.35 + React 18 + TypeScript + Tailwind CSS + PWA
-- **API:** Go + Chi + pgx + PostgreSQL + JWT HttpOnly
-- **Cache/infra:** Redis + Docker Compose
-- **WhatsApp:** servicio Go separado con `whatsmeow`, QR y sesiones multi-tienda
-- **Despliegue:** Dokploy + Traefik, incluyendo el File Provider fallback que ya está funcionando en `wamercio.com`
+- Next.js 14.2.35 + React 18 + TypeScript + Tailwind CSS
+- Go + Chi + pgx
+- PostgreSQL 16
+- Redis 7
+- whatsmeow como servicio independiente
+- Docker Compose + Dokploy + Traefik
 
-## Funcionalidad incluida
+## Actualización desde 1.1.1
 
-### SaaS / cuenta
-- Registro, login/logout y perfil
-- Cambio de contraseña
-- Planes, límites y consumo
-- Solicitudes de cambio de plan sin pasarelas externas
-- SuperAdmin para usuarios, tiendas, planes y solicitudes
-- Centro de soporte con tickets y respuestas
-- Libro de movimientos comerciales
+1. reemplaza el código del repositorio por esta versión;
+2. conserva el `.env` actual;
+3. **no uses Fresh Volumes**;
+4. haz Rebuild en Dokploy;
+5. entra primero en `/admin/login`;
+6. abre `/admin/users` y asigna WhatsApp/PIN a cualquier comerciante anterior que todavía no tenga PIN;
+7. prueba `/login` con ese WhatsApp + PIN.
 
-### Comercio
-- Múltiples tiendas por propietario
-- Ajustes comerciales por tienda
-- Logo, banner, color principal y textos del checkout
-- Horarios comerciales
-- Categorías
-- Productos, SKU, stock y control de inventario
-- Variantes y extras
-- Etiquetas, productos destacados y orden de visualización
-- Cupones
-- Delivery y recogida
-- Pedido mínimo
-- QR público por tienda
-- Catálogo público responsive
-- Carrito persistente
-- Checkout con validación de precios en servidor
-- Efectivo, transferencia y pago al recibir
-- Datos bancarios por tienda
-- Pedidos, detalle, estado operativo y estado de pago
-- Restauración de inventario al cancelar
-- Registro de cobros/reembolsos en movimientos
+La migración `000005_split_auth_panels` se aplica automáticamente al iniciar el API.
 
-### CRM / WhatsApp
-- Clientes derivados del historial de compras
-- Perfil del cliente, notas, dirección, gasto total y bloqueo
-- Conversaciones WhatsApp por tienda
-- Recepción y envío de texto desde WAMERCIO
-- Sesión QR mediante whatsmeow, sin Twilio
-- Confirmaciones de pedido y cambios de estado por WhatsApp
+## Routing Dokploy
 
-### SuperAdmin
-- Dashboard SaaS
-- Gestión de propietarios
-- Activar/bloquear usuarios
-- Asignar plan manualmente
-- Ver todas las tiendas
-- Crear/editar planes y límites
-- Aprobar/rechazar solicitudes de plan
-- Ver movimientos globales
-- Centro de tickets de soporte
+Se conserva sin cambios el workaround funcional de `wamercio.com` basado en `dokploy-network`, alias `wamercio-web`, `traefik-config` y File Provider. No lo elimines al actualizar.
 
-## No incluido intencionalmente
+## Documentación
 
-- Twilio
-- Stripe, PayPal, Razorpay, Mollie y las demás pasarelas de Foody Friend
-- Telegram/Messenger
-- Facturación fiscal
-- GEO RD MAP e Identidad Dominicana (se integrarán como servicios propios en siguientes fases)
-- IA/automatizaciones avanzadas
-- Llamadas de WhatsApp
-
-## Estructura
-
-```text
-WAMERCIO/
-├─ apps/web/                    Next.js / panel + tienda pública
-├─ services/api/                Go / API comercial
-│  └─ migrations/               PostgreSQL migrations
-├─ services/whatsapp-bridge/    Go + whatsmeow
-├─ infra/traefik/               routing estable de Dokploy
-├─ scripts/                     diagnóstico Dokploy
-├─ docs/
-├─ docker-compose.yml
-├─ .env.example
-└─ DEPLOY_DOKPLOY.md
-```
-
-## Actualizar una instalación existente 1.0.5
-
-No borres volúmenes. Sube esta versión al mismo repositorio y ejecuta **Rebuild** en Dokploy. El API ejecuta automáticamente las migraciones pendientes al arrancar:
-
-- `000003_commerce_features`
-- `000004_support_transactions`
-
-Los volúmenes actuales de PostgreSQL, Redis y uploads se conservan.
-
-## Routing de Dokploy
-
-Esta versión **mantiene intacto** el workaround que ya resolvió el `404 page not found` de `wamercio.com`:
-
-- `web` usa el alias `wamercio-web` en `dokploy-network`
-- `traefik-config` instala `infra/traefik/wamercio.yml`
-- el archivo dinámico se copia a `/etc/dokploy/traefik/dynamic/wamercio.yml`
-
-No elimines esa configuración al actualizar.
-
-## Seguridad
-
-Antes de producción definitiva:
-
-1. Mantén `.env` fuera del repositorio.
-2. Rota secretos que hayan sido compartidos durante pruebas.
-3. Expón solo el frontend; API, PostgreSQL, Redis y WhatsApp permanecen internos.
-4. Configura backup de `postgres_data` y `uploads_data` en Dokploy.
-5. Conserva HTTPS y Cloudflare según tu despliegue actual.
-
-## Validación de esta entrega
-
-- `gofmt` aplicado al API Go.
-- 34 archivos TypeScript/TSX verificados con el parser de TypeScript sin errores sintácticos.
-- Migraciones versionadas e idempotentes para actualización sobre 1.0.5.
-- El entorno de creación no dispone de Docker ni acceso de red suficiente para ejecutar un build completo; la prueba final de integración debe hacerse mediante Rebuild en Dokploy, igual que en las versiones anteriores.
-
-
-## Corrección 1.1.1
-
-Se corrigió la función `spanishStatus` requerida por el backend al enviar notificaciones WhatsApp de cambios de estado de pedidos. Esta actualización no modifica la configuración de dominio/Traefik ni requiere cambios en `.env`.
+- `DEPLOY_DOKPLOY.md`
+- `docs/PANELES_Y_ACCESO.md`
+- `docs/ARQUITECTURA.md`
+- `docs/PRUEBAS.md`
+- `docs/FOODY_FRIEND_MAPPING.md`
