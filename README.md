@@ -1,6 +1,16 @@
-# WAMERCIO 1.2.0
+# WAMERCIO 1.2.1
 
 Plataforma SaaS de comercio conversacional para República Dominicana. El flujo y la simplicidad visual del **panel comercial** toman como referencia Foody Friend, pero WAMERCIO utiliza código, arquitectura, branding y autenticación propios.
+
+## Routing estable en Dokploy (1.2.1)
+
+La publicación del dominio ya no apunta Traefik directamente al contenedor Next.js. Se añadió un gateway Nginx estable:
+
+```text
+Cloudflare → Traefik → wamercio-gateway:8080 → web:3000
+```
+
+El servicio `traefik-config` espera a que el gateway esté `healthy` antes de reemplazar atómicamente `/etc/dokploy/traefik/dynamic/wamercio.yml`. Esto evita el 502 que podía aparecer durante la recreación de `web`. Next.js también fija `HOSTNAME=0.0.0.0`.
 
 ## Arquitectura de producto
 

@@ -1,3 +1,25 @@
+# WAMERCIO 1.2.1
+
+## Corrección de 502 en Dokploy / Cloudflare
+
+- Se añadió `gateway` basado en Nginx como endpoint estable entre Traefik y Next.js.
+- Traefik ahora enruta a `wamercio-gateway:8080`, no directamente a `web:3000`.
+- `gateway` no arranca hasta que `web` esté `healthy`.
+- `traefik-config` no publica la configuración dinámica hasta que `gateway` esté `healthy`.
+- La escritura de `wamercio.yml` es atómica (`.tmp` + `mv`) para evitar que Traefik lea un archivo parcialmente copiado.
+- Next.js fija `HOSTNAME=0.0.0.0` y `PORT=3000`.
+- Se añadió healthcheck de Traefik contra `/gateway-health`.
+- El script `dokploy-diagnose.sh` ahora prueba DNS y conectividad real Traefik-network → gateway → Next.js.
+
+## Compatibilidad
+
+- No modifica PostgreSQL ni migraciones.
+- No elimina volúmenes.
+- No cambia las URLs públicas ni las variables de autenticación.
+- Mantiene la separación de paneles, WhatsApp + PIN y PWA de 1.2.0.
+
+---
+
 # WAMERCIO 1.2.0
 
 ## Paneles separados

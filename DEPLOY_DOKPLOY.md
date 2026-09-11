@@ -1,4 +1,26 @@
-# Despliegue de WAMERCIO en Dokploy
+# Despliegue de WAMERCIO 1.2.1 en Dokploy
+
+## Actualización desde 1.2.0 (corrección 502)
+
+No uses **Fresh Volumes**. Sube 1.2.1 al mismo repositorio y ejecuta **Rebuild**. No es necesario cambiar el `.env`.
+
+La ruta de publicación es ahora:
+
+```text
+Cloudflare → Dokploy/Traefik → wamercio-gateway:8080 → web:3000
+```
+
+El gateway se conecta a `dokploy-network`, espera a que Next.js esté saludable y solo entonces `traefik-config` publica el archivo dinámico.
+
+Si necesitas comprobarlo desde **Open Terminal**:
+
+```bash
+sh scripts/dokploy-diagnose.sh
+```
+
+Debe mostrar `wamercio-gateway` en `dokploy-network`, responder `ok` en `/gateway-health` y alcanzar `web:3000/health`.
+
+---
 
 Esta entrega está preparada para **Docker Compose**. En Dokploy usa el tipo **Docker Compose**, no Docker Stack, porque el proyecto construye las imágenes `web`, `api` y `whatsapp` desde el código fuente.
 

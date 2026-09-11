@@ -20,5 +20,9 @@ http:
     wamercio-file-service:
       loadBalancer:
         passHostHeader: true
+        healthCheck:
+          path: /gateway-health
+          interval: 10s
+          timeout: 3s
         servers:
-          - url: "http://wamercio-web:3000"
+          - url: "http://wamercio-gateway:8080"
