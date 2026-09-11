@@ -551,7 +551,7 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		in.Slug = slugify(in.Slug)
 	}
 	if in.PrimaryColor == "" {
-		in.PrimaryColor = "#16a34a"
+		in.PrimaryColor = "#36b385"
 	}
 	var id string
 	err := s.db.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,description,logo_url,phone,whatsapp,address,primary_color) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, c.UserID, in.Name, in.Slug, in.Description, in.LogoURL, in.Phone, in.Whatsapp, in.Address, in.PrimaryColor).Scan(&id)
@@ -1952,7 +1952,7 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		in.Currency = "DOP"
 	}
 	if in.PrimaryColor == "" {
-		in.PrimaryColor = "#16a34a"
+		in.PrimaryColor = "#36b385"
 	}
 	if in.MinimumOrder < 0 {
 		in.MinimumOrder = 0
