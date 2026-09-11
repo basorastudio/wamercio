@@ -1,148 +1,125 @@
-# WAMERCIO
+# WAMERCIO 1.1.0
 
-Reconstrucción moderna, con código propio, del concepto funcional de Foody Friend orientada a comercio conversacional para República Dominicana.
+Plataforma SaaS de comercio conversacional para República Dominicana, reconstruida con código propio tomando a Foody Friend como referencia de flujo comercial, organización del panel y experiencia de gestión.
 
 ## Stack
 
-- **Frontend:** Next.js 14 + React 18 + TypeScript + Tailwind CSS + PWA
+- **Frontend:** Next.js 14.2.35 + React 18 + TypeScript + Tailwind CSS + PWA
 - **API:** Go + Chi + pgx + PostgreSQL + JWT HttpOnly
 - **Cache/infra:** Redis + Docker Compose
-- **WhatsApp:** servicio Go separado con `whatsmeow` y sesiones multi-tienda almacenadas en PostgreSQL
-- **Despliegue:** Docker Compose, preparado para Dokploy/Traefik
+- **WhatsApp:** servicio Go separado con `whatsmeow`, QR y sesiones multi-tienda
+- **Despliegue:** Dokploy + Traefik, incluyendo el File Provider fallback que ya está funcionando en `wamercio.com`
 
-## Módulos incluidos
+## Funcionalidad incluida
 
-- Registro e inicio de sesión SaaS
-- Planes y límites de tiendas/productos/pedidos
-- Dashboard
-- Múltiples tiendas
+### SaaS / cuenta
+- Registro, login/logout y perfil
+- Cambio de contraseña
+- Planes, límites y consumo
+- Solicitudes de cambio de plan sin pasarelas externas
+- SuperAdmin para usuarios, tiendas, planes y solicitudes
+- Centro de soporte con tickets y respuestas
+- Libro de movimientos comerciales
+
+### Comercio
+- Múltiples tiendas por propietario
+- Ajustes comerciales por tienda
+- Logo, banner, color principal y textos del checkout
+- Horarios comerciales
 - Categorías
-- Productos
-- Variantes
-- Adicionales/extras
-- Carga de imágenes
+- Productos, SKU, stock y control de inventario
+- Variantes y extras
+- Etiquetas, productos destacados y orden de visualización
 - Cupones
-- Zonas de delivery
+- Delivery y recogida
+- Pedido mínimo
+- QR público por tienda
 - Catálogo público responsive
 - Carrito persistente
-- Checkout
-- Pagos manuales: efectivo, transferencia y pago al recibir
-- Pedidos y estados
-- Notificaciones de pedido por WhatsApp cuando existe una sesión conectada
-- Conexión WhatsApp por QR sin Twilio
-- Centro de conversaciones WhatsApp (texto)
-- PWA básica
-- PostgreSQL migrations
-- Docker healthchecks
+- Checkout con validación de precios en servidor
+- Efectivo, transferencia y pago al recibir
+- Datos bancarios por tienda
+- Pedidos, detalle, estado operativo y estado de pago
+- Restauración de inventario al cancelar
+- Registro de cobros/reembolsos en movimientos
+
+### CRM / WhatsApp
+- Clientes derivados del historial de compras
+- Perfil del cliente, notas, dirección, gasto total y bloqueo
+- Conversaciones WhatsApp por tienda
+- Recepción y envío de texto desde WAMERCIO
+- Sesión QR mediante whatsmeow, sin Twilio
+- Confirmaciones de pedido y cambios de estado por WhatsApp
+
+### SuperAdmin
+- Dashboard SaaS
+- Gestión de propietarios
+- Activar/bloquear usuarios
+- Asignar plan manualmente
+- Ver todas las tiendas
+- Crear/editar planes y límites
+- Aprobar/rechazar solicitudes de plan
+- Ver movimientos globales
+- Centro de tickets de soporte
 
 ## No incluido intencionalmente
 
 - Twilio
-- Stripe, PayPal, Razorpay, Mollie y demás pasarelas de Foody Friend
+- Stripe, PayPal, Razorpay, Mollie y las demás pasarelas de Foody Friend
 - Telegram/Messenger
 - Facturación fiscal
-- GEO RD MAP/Identidad Dominicana (preparados como integraciones futuras)
+- GEO RD MAP e Identidad Dominicana (se integrarán como servicios propios en siguientes fases)
+- IA/automatizaciones avanzadas
 - Llamadas de WhatsApp
-- Automatizaciones/IA avanzadas
-
-## Inicio rápido local
-
-```bash
-cp .env.example .env
-# Cambia contraseñas y secretos en .env
-docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
-```
-
-Abre `http://localhost:3000` si publicas temporalmente el puerto del servicio web, o usa un reverse proxy. Para producción usa Dokploy según `DEPLOY_DOKPLOY.md`.
-
-## Usuario administrador inicial
-
-El API crea el superadministrador al primer arranque usando:
-
-- `ADMIN_EMAIL`
-- `ADMIN_PASSWORD`
-- `ADMIN_NAME`
-
-El superadministrador recibe el plan `Pro` si es una instalación nueva.
 
 ## Estructura
 
 ```text
 WAMERCIO/
-├─ apps/
-│  └─ web/                    Next.js
-├─ services/
-│  ├─ api/                    API comercial Go
-│  └─ whatsapp-bridge/        whatsmeow multi-sesión
+├─ apps/web/                    Next.js / panel + tienda pública
+├─ services/api/                Go / API comercial
+│  └─ migrations/               PostgreSQL migrations
+├─ services/whatsapp-bridge/    Go + whatsmeow
+├─ infra/traefik/               routing estable de Dokploy
+├─ scripts/                     diagnóstico Dokploy
 ├─ docs/
 ├─ docker-compose.yml
 ├─ .env.example
 └─ DEPLOY_DOKPLOY.md
 ```
 
-## Flujo
+## Actualizar una instalación existente 1.0.5
 
-```text
-Cliente
-  ↓
-Catálogo Next.js
-  ↓
-Carrito / Checkout
-  ↓
-API Go
-  ↓
-PostgreSQL
-  ↓
-Pedido
-  ├─ Panel WAMERCIO
-  └─ WhatsApp Bridge → WhatsApp
-```
+No borres volúmenes. Sube esta versión al mismo repositorio y ejecuta **Rebuild** en Dokploy. El API ejecuta automáticamente las migraciones pendientes al arrancar:
 
-## Seguridad antes de producción
+- `000003_commerce_features`
+- `000004_support_transactions`
 
-1. Genera contraseñas largas para PostgreSQL y el administrador.
-2. Genera `JWT_SECRET` e `INTERNAL_WEBHOOK_SECRET` aleatorios.
-3. No subas un `.env` real al repositorio.
-4. Expón públicamente solo el servicio `web`.
-5. Mantén PostgreSQL, Redis, API y WhatsApp únicamente en la red interna de Docker.
-6. Activa HTTPS en Dokploy.
-7. Configura backups de `postgres_data` y `uploads_data`.
+Los volúmenes actuales de PostgreSQL, Redis y uploads se conservan.
 
-## Compatibilidad Go / whatsmeow
+## Routing de Dokploy
 
-Desde WAMERCIO 1.0.1-mvp los servicios Go se construyen con `golang:1.27.1-alpine`.
-El módulo declara Go 1.26 como mínimo porque la versión fijada de `go.mau.fi/whatsmeow`
-requiere Go 1.26 o superior. Esto evita el error de Dokploy `requires go >= 1.26.0`.
+Esta versión **mantiene intacto** el workaround que ya resolvió el `404 page not found` de `wamercio.com`:
 
-### Corrección 1.0.2
+- `web` usa el alias `wamercio-web` en `dokploy-network`
+- `traefik-config` instala `infra/traefik/wamercio.yml`
+- el archivo dinámico se copia a `/etc/dokploy/traefik/dynamic/wamercio.yml`
 
-El build Docker de los servicios Go ahora ejecuta `go mod tidy` después de copiar el código fuente, por lo que no depende de que `go.sum` haya sido generado previamente en la máquina de desarrollo. Esto corrige el error `missing go.sum entry` observado en Dokploy.
+No elimines esa configuración al actualizar.
 
+## Seguridad
 
-## Dokploy: dominio devuelve `404 page not found`
+Antes de producción definitiva:
 
-Si el build finaliza correctamente pero `https://wamercio.com` muestra únicamente `404 page not found` en texto plano, ese 404 corresponde a Traefik/Dokploy y no a Next.js.
+1. Mantén `.env` fuera del repositorio.
+2. Rota secretos que hayan sido compartidos durante pruebas.
+3. Expón solo el frontend; API, PostgreSQL, Redis y WhatsApp permanecen internos.
+4. Configura backup de `postgres_data` y `uploads_data` en Dokploy.
+5. Conserva HTTPS y Cloudflare según tu despliegue actual.
 
-1. En **Domains**, verifica: servicio `web`, host `wamercio.com`, path `/`, container port `3000`, HTTPS activo y certificado Let's Encrypt.
-2. Después de crear o modificar el dominio, ejecuta **Deploy/Rebuild** del Compose. Los dominios de Docker Compose se aplican mediante labels de Traefik al desplegar.
-3. Esta versión conecta explícitamente `web` a la red externa `dokploy-network`, además de la red interna del proyecto.
-4. En **Preview Compose**, comprueba que el servicio `web` contiene labels `traefik.*` para `wamercio.com`.
-5. Si usas Cloudflare, el registro `A` de `wamercio.com` debe apuntar a la IPv4 del VPS. Si existe un registro `AAAA` pero el VPS no sirve esa IPv6, elimínalo. Para diagnosticar, puedes poner temporalmente el proxy en **DNS only** y volverlo a activar cuando funcione.
+## Validación de esta entrega
 
-La ruta raíz `/` existe y redirige a `/dashboard`; no debe configurarse un Internal Path distinto de `/`.
-
-
-### v1.0.4 - Routing Dokploy
-El servicio web incorpora routing Traefik explícito para `wamercio.com`/`www.wamercio.com` sobre `dokploy-network`, con redirección HTTP→HTTPS y TLS Let's Encrypt.
-
-## Dokploy routing fallback (1.0.5)
-
-WAMERCIO 1.0.5 includes an explicit Traefik File Provider fallback for Dokploy Compose deployments that return Traefik's plain `404 page not found` even when the containers are healthy.
-
-At deploy time the `traefik-config` one-shot service copies `infra/traefik/wamercio.yml` to `/etc/dokploy/traefik/dynamic/wamercio.yml`. The `web` service also receives the unique `wamercio-web` alias on `dokploy-network`, so Traefik can resolve it without depending on Dokploy's generated Compose labels.
-
-For troubleshooting from the Dokploy terminal:
-
-```bash
-sh scripts/dokploy-diagnose.sh
-```
+- `gofmt` aplicado al API Go.
+- 34 archivos TypeScript/TSX verificados con el parser de TypeScript sin errores sintácticos.
+- Migraciones versionadas e idempotentes para actualización sobre 1.0.5.
+- El entorno de creación no dispone de Docker ni acceso de red suficiente para ejecutar un build completo; la prueba final de integración debe hacerse mediante Rebuild en Dokploy, igual que en las versiones anteriores.

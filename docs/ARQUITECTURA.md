@@ -1,54 +1,74 @@
-# Arquitectura WAMERCIO
+# Arquitectura WAMERCIO 1.1
 
 ## Principio
 
-La aplicación conserva el flujo comercial y el patrón visual de gestión observado en Foody Friend, pero no reutiliza su backend Laravel, Twilio ni su colección de pasarelas de pago.
+WAMERCIO conserva de Foody Friend el patrón SaaS de propietario → tiendas → catálogo → checkout → pedidos, pero sustituye Laravel/Twilio/pasarelas internacionales por servicios propios Go/Next.js y un motor WhatsApp basado en whatsmeow.
 
-## Servicios
+```text
+                         WAMERCIO SaaS
+                              │
+              ┌───────────────┼────────────────┐
+              │               │                │
+          Next.js Web       Go API       WhatsApp Bridge
+              │               │                │
+              └───────────────┼────────────────┘
+                              │
+                         PostgreSQL
+                              │
+                         Redis / cache
+```
 
-### web
-Next.js/React. Panel administrativo, catálogo público, carrito, checkout y PWA.
+## Dominios lógicos
 
-### api
-Go/Chi. Autenticación, tenants lógicos, catálogo, pedidos, planes, archivos y coordinación de WhatsApp.
+### SaaS
+Usuarios, roles, planes, suscripciones, solicitudes de cambio y SuperAdmin.
 
-### whatsapp
-Go/whatsmeow. Sesiones por tienda, QR, reconexión, mensajes de texto y eventos entrantes.
+### Comercio por tienda
+Configuración, branding, horarios, categorías, productos, variantes, extras, cupones, delivery, clientes y pedidos.
 
-### postgres
-Fuente de verdad para usuarios, tiendas, catálogo, pedidos, conversaciones y credenciales del store SQL de whatsmeow.
+### Conversacional
+Sesiones WhatsApp, conversaciones, mensajes, confirmaciones de pedido y respuestas desde el panel.
 
-### redis
-Preparado para cache, rate limiting, colas y eventos en siguientes iteraciones.
+### Soporte
+Tickets, mensajes y operación del SuperAdmin.
+
+### Auditoría comercial
+Movimientos creados al marcar pagos/reembolsos de pedidos.
 
 ## Multitenancy
 
-La versión entregada usa una única instancia PostgreSQL con aislamiento lógico por `user_id` y `store_id`, equivalente al enfoque SaaS práctico de Foody Friend pero con controles explícitos en la API.
+La versión 1.1 mantiene aislamiento lógico por `user_id` y `store_id` sobre una misma instancia PostgreSQL. Toda consulta sensible valida propietario o rol SuperAdmin desde la API.
 
-Si WAMERCIO crece, la capa Go permite evolucionar a esquemas por tenant o bases de datos separadas sin rehacer el frontend.
+## Checkout seguro
+
+El navegador nunca decide el total final. La API:
+
+1. carga producto y configuración de tienda;
+2. valida stock, variantes y extras;
+3. calcula precios del lado servidor;
+4. valida cupón y pedido mínimo;
+5. valida delivery/recogida y método de pago;
+6. crea/actualiza el CRM del cliente;
+7. crea pedido e items en transacción;
+8. descuenta inventario;
+9. notifica por WhatsApp si existe sesión conectada.
 
 ## WhatsApp
 
 ```text
 WhatsApp
-  ⇅
-whatsmeow bridge
-  ⇅
-WAMERCIO API
-  ⇅
-PostgreSQL
-  ⇅
-Centro de Conversaciones
+   ⇅
+whatsmeow
+   ⇅
+whatsapp-bridge
+   ⇅
+Go API
+   ⇅
+conversations / messages / orders
 ```
 
-Twilio no participa en el flujo.
+Twilio no participa.
 
-## Pagos
+## Dokploy / Traefik
 
-La primera versión acepta únicamente métodos manuales:
-
-- pago al recibir
-- efectivo
-- transferencia bancaria
-
-No existe dependencia de Stripe, PayPal u otras pasarelas.
+El routing estable de producción usa el File Provider de Traefik además de la red `dokploy-network`. El alias externo del frontend es `wamercio-web` y se conserva entre versiones.

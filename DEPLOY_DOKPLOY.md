@@ -294,3 +294,51 @@ Diagnóstico completo:
 ```bash
 sh scripts/dokploy-diagnose.sh
 ```
+
+---
+
+# Actualización WAMERCIO 1.1.0 sobre 1.0.5
+
+Si `wamercio.com` ya está funcionando con 1.0.5, **no recrees el proyecto y no uses Fresh Volumes**.
+
+1. Sustituye/actualiza los archivos del mismo repositorio Git.
+2. Conserva el `.env` actual de Dokploy.
+3. Conserva `infra/traefik/wamercio.yml`, `traefik-config` y `dokploy-network` tal como vienen en esta entrega.
+4. Haz commit/push.
+5. En Dokploy pulsa **Rebuild**.
+6. El API ejecutará automáticamente `000003_commerce_features` y `000004_support_transactions` si aún no existen.
+7. Comprueba `/health`, login, una tienda pública y el panel.
+
+La actualización conserva los named volumes:
+
+```text
+postgres_data
+redis_data
+uploads_data
+```
+
+No debes borrar ninguno de ellos.
+
+## Prueba rápida post actualización
+
+Después del Rebuild:
+
+```text
+https://wamercio.com/login
+https://wamercio.com/dashboard
+https://wamercio.com/customers
+https://wamercio.com/settings/store
+https://wamercio.com/transactions
+https://wamercio.com/support
+```
+
+Como SuperAdmin verifica también:
+
+```text
+https://wamercio.com/admin
+https://wamercio.com/admin/users
+https://wamercio.com/admin/plans
+https://wamercio.com/admin/subscriptions
+https://wamercio.com/admin/transactions
+https://wamercio.com/admin/tickets
+```
