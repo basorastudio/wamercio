@@ -1029,6 +1029,23 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
+func spanishStatus(status string) string {
+	switch status {
+	case "pending":
+		return "Pendiente"
+	case "processing":
+		return "En proceso"
+	case "out_for_delivery":
+		return "En camino"
+	case "delivered":
+		return "Entregado"
+	case "canceled":
+		return "Cancelado"
+	default:
+		return status
+	}
+}
+
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	sid, ok := s.assertStore(w, r)
 	if !ok {

@@ -1,3 +1,12 @@
+# WAMERCIO 1.1.1
+
+## Corrección de despliegue
+
+- Corrige la compilación del backend Go: se añadió el helper `spanishStatus` usado al notificar por WhatsApp los cambios de estado de un pedido.
+- El helper contempla `pending`, `processing`, `out_for_delivery`, `delivered` y `canceled`, con fallback seguro para estados desconocidos.
+- Se mantuvo intacta la configuración de Dokploy/Traefik que ya funciona en `wamercio.com`.
+- Verificación estática adicional: rutas HTTP sin handlers faltantes, imports locales del frontend válidos y TS/TSX sin errores de parseo.
+
 # Changelog
 
 ## 1.1.0

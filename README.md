@@ -1,4 +1,4 @@
-# WAMERCIO 1.1.0
+# WAMERCIO 1.1.1
 
 Plataforma SaaS de comercio conversacional para República Dominicana, reconstruida con código propio tomando a Foody Friend como referencia de flujo comercial, organización del panel y experiencia de gestión.
 
@@ -123,3 +123,8 @@ Antes de producción definitiva:
 - 34 archivos TypeScript/TSX verificados con el parser de TypeScript sin errores sintácticos.
 - Migraciones versionadas e idempotentes para actualización sobre 1.0.5.
 - El entorno de creación no dispone de Docker ni acceso de red suficiente para ejecutar un build completo; la prueba final de integración debe hacerse mediante Rebuild en Dokploy, igual que en las versiones anteriores.
+
+
+## Corrección 1.1.1
+
+Se corrigió la función `spanishStatus` requerida por el backend al enviar notificaciones WhatsApp de cambios de estado de pedidos. Esta actualización no modifica la configuración de dominio/Traefik ni requiere cambios en `.env`.
