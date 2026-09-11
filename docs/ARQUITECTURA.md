@@ -1,33 +1,54 @@
-# Arquitectura funcional
+# Arquitectura WAMERCIO
 
-## Capas
+## Principio
 
-1. **Web / Next.js**: landing, catálogo público, carrito, checkout, panel, SuperAdmin y PWA.
-2. **API / Go**: autenticación, tenancy, catálogo, pedidos, administración, integraciones.
-3. **PostgreSQL**: fuente de verdad.
-4. **Redis**: disponible para caché, rate-limit, sesiones auxiliares y jobs.
-5. **Media**: volumen persistente; interfaz migrable a R2/S3.
-6. **Waxum/AstraCalls**: canal WhatsApp desacoplado mediante adaptador.
-7. **GEO RD MAP**: previsto para catálogo territorial, geocercas, tarifas y routing.
+La aplicación conserva el flujo comercial y el patrón visual de gestión observado en Foody Friend, pero no reutiliza su backend Laravel, Twilio ni su colección de pasarelas de pago.
 
-## Tenancy
+## Servicios
 
-Cada entidad operacional lleva `tenant_id`. El backend nunca toma el tenant de un campo arbitrario para rutas privadas: lo toma del JWT. En rutas públicas, el tenant se resuelve por `slug`/subdominio.
+### web
+Next.js/React. Panel administrativo, catálogo público, carrito, checkout y PWA.
 
-## Diseño conservado del original
+### api
+Go/Chi. Autenticación, tenants lógicos, catálogo, pedidos, planes, archivos y coordinación de WhatsApp.
 
-- Tienda mobile-first con portada, avatar superpuesto, estado abierto/cerrado, categorías horizontales y tarjetas de producto.
-- Barra flotante de carrito.
-- Checkout lateral/modal progresivo.
-- Panel administrativo con barra lateral y módulos equivalentes al original.
-- SuperAdmin separado.
-- Marketplace y afiliados como dominios funcionales independientes.
+### whatsapp
+Go/whatsmeow. Sesiones por tienda, QR, reconexión, mensajes de texto y eventos entrantes.
 
-## Adaptaciones RD
+### postgres
+Fuente de verdad para usuarios, tiendas, catálogo, pedidos, conversaciones y credenciales del store SQL de whatsmeow.
 
-- Moneda DOP / RD$.
-- Provincia → municipio → sector/barrio.
-- Teléfono WhatsApp dominicano sin prefijo +55 hardcodeado.
-- Sustitución de CEP/ViaCEP por estructura territorial dominicana y GEO RD MAP.
-- Métodos base: efectivo, tarjeta al recibir, transferencia bancaria y enlace de pago.
-- Zona horaria `America/Santo_Domingo`.
+### redis
+Preparado para cache, rate limiting, colas y eventos en siguientes iteraciones.
+
+## Multitenancy
+
+La versión entregada usa una única instancia PostgreSQL con aislamiento lógico por `user_id` y `store_id`, equivalente al enfoque SaaS práctico de Foody Friend pero con controles explícitos en la API.
+
+Si WAMERCIO crece, la capa Go permite evolucionar a esquemas por tenant o bases de datos separadas sin rehacer el frontend.
+
+## WhatsApp
+
+```text
+WhatsApp
+  ⇅
+whatsmeow bridge
+  ⇅
+WAMERCIO API
+  ⇅
+PostgreSQL
+  ⇅
+Centro de Conversaciones
+```
+
+Twilio no participa en el flujo.
+
+## Pagos
+
+La primera versión acepta únicamente métodos manuales:
+
+- pago al recibir
+- efectivo
+- transferencia bancaria
+
+No existe dependencia de Stripe, PayPal u otras pasarelas.

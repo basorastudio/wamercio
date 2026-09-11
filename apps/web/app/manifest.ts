@@ -1,1 +1,0 @@
-import type {MetadataRoute} from "next";export default function manifest():MetadataRoute.Manifest{return {name:'wamercio',short_name:'wamercio',description:'Catálogo y pedidos para comercio local',start_url:'/',display:'standalone',background_color:'#ffffff',theme_color:'#ff5400',icons:[]}}

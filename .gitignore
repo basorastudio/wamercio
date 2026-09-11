@@ -1,18 +1,8 @@
-# Secrets / local configuration
 .env
 .env.local
-.env.*.local
-
-# Node / Next
-node_modules/
-.next/
-out/
-
-# Go
-bin/
-*.test
-
-# Local data
-uploads/
+node_modules
+.next
+coverage
 *.log
 .DS_Store
+services/api/data
