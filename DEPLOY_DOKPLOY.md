@@ -274,3 +274,23 @@ El servicio `web` debe permanecer conectado a `dokploy-network`. Las labels crea
 - selección explícita de `dokploy-network`.
 
 Después de subir esta versión al repositorio, usa **Rebuild** en Dokploy. Si ya existe `wamercio.com` en la pestaña Domains, puede mantenerse durante la prueba; si Dokploy genera una regla duplicada problemática, elimina la entrada UI y vuelve a desplegar, porque el Compose ya gestiona el dominio directamente.
+
+## WAMERCIO 1.0.5: fallback de routing para 404 de Traefik
+
+Esta versión instala automáticamente `/etc/dokploy/traefik/dynamic/wamercio.yml` mediante el servicio one-shot `traefik-config`. Esto evita depender de la generación de labels de dominio de Docker Compose cuando Dokploy/Traefik devuelve `404 page not found` pese a que `web` está healthy.
+
+Después de desplegar 1.0.5:
+
+```bash
+cat /etc/dokploy/traefik/dynamic/wamercio.yml
+```
+
+debe mostrar routers para `wamercio.com` y `www.wamercio.com`, apuntando a `http://wamercio-web:3000`.
+
+No es necesario borrar el registro DNS de Cloudflare. El A de `wamercio.com` debe seguir apuntando al VPS de Dokploy. Si mantienes el dominio también en la pestaña Domains de Dokploy, el router de archivo usa prioridad 1000 para prevalecer; aun así, para una configuración más limpia puedes retirar esa entrada una vez confirmes que el File Provider funciona.
+
+Diagnóstico completo:
+
+```bash
+sh scripts/dokploy-diagnose.sh
+```

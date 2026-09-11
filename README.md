@@ -134,3 +134,15 @@ La ruta raíz `/` existe y redirige a `/dashboard`; no debe configurarse un Inte
 
 ### v1.0.4 - Routing Dokploy
 El servicio web incorpora routing Traefik explícito para `wamercio.com`/`www.wamercio.com` sobre `dokploy-network`, con redirección HTTP→HTTPS y TLS Let's Encrypt.
+
+## Dokploy routing fallback (1.0.5)
+
+WAMERCIO 1.0.5 includes an explicit Traefik File Provider fallback for Dokploy Compose deployments that return Traefik's plain `404 page not found` even when the containers are healthy.
+
+At deploy time the `traefik-config` one-shot service copies `infra/traefik/wamercio.yml` to `/etc/dokploy/traefik/dynamic/wamercio.yml`. The `web` service also receives the unique `wamercio-web` alias on `dokploy-network`, so Traefik can resolve it without depending on Dokploy's generated Compose labels.
+
+For troubleshooting from the Dokploy terminal:
+
+```bash
+sh scripts/dokploy-diagnose.sh
+```

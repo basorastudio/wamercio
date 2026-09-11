@@ -101,28 +101,31 @@ services:
     expose:
       - "3000"
     networks:
-      - default
-      - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
-      - "traefik.http.services.wamercio-web.loadbalancer.server.port=3000"
-      - "traefik.http.routers.wamercio-web-http.rule=Host(`wamercio.com`) || Host(`www.wamercio.com`)"
-      - "traefik.http.routers.wamercio-web-http.entrypoints=web"
-      - "traefik.http.routers.wamercio-web-http.service=wamercio-web"
-      - "traefik.http.routers.wamercio-web-http.middlewares=wamercio-https-redirect"
-      - "traefik.http.middlewares.wamercio-https-redirect.redirectscheme.scheme=https"
-      - "traefik.http.middlewares.wamercio-https-redirect.redirectscheme.permanent=true"
-      - "traefik.http.routers.wamercio-web.rule=Host(`wamercio.com`) || Host(`www.wamercio.com`)"
-      - "traefik.http.routers.wamercio-web.entrypoints=websecure"
-      - "traefik.http.routers.wamercio-web.service=wamercio-web"
-      - "traefik.http.routers.wamercio-web.tls=true"
-      - "traefik.http.routers.wamercio-web.tls.certResolver=letsencrypt"
+      default:
+      dokploy-network:
+        aliases:
+          - wamercio-web
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
       interval: 15s
       timeout: 5s
       retries: 10
+
+  # Workaround for Dokploy Compose/Traefik routing issues: write an explicit
+  # dynamic File Provider configuration into Dokploy's watched directory.
+  traefik-config:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - ./infra/traefik/wamercio.yml:/source/wamercio.yml:ro
+      - /etc/dokploy/traefik/dynamic:/target
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        cp /source/wamercio.yml /target/wamercio.yml &&
+        chmod 0644 /target/wamercio.yml &&
+        echo 'WAMERCIO Traefik dynamic configuration installed.'
 
 volumes:
   postgres_data:
