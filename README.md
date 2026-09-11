@@ -107,3 +107,9 @@ Pedido
 5. Mantén PostgreSQL, Redis, API y WhatsApp únicamente en la red interna de Docker.
 6. Activa HTTPS en Dokploy.
 7. Configura backups de `postgres_data` y `uploads_data`.
+
+## Compatibilidad Go / whatsmeow
+
+Desde WAMERCIO 1.0.1-mvp los servicios Go se construyen con `golang:1.27.1-alpine`.
+El módulo declara Go 1.26 como mínimo porque la versión fijada de `go.mau.fi/whatsmeow`
+requiere Go 1.26 o superior. Esto evita el error de Dokploy `requires go >= 1.26.0`.

@@ -1,6 +1,6 @@
 module wamercio/services/whatsapp-bridge
 
-go 1.23.0
+go 1.26.0
 
 require (
 	github.com/lib/pq v1.10.9

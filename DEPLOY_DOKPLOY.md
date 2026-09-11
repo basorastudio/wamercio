@@ -234,3 +234,10 @@ web :3000
 ```
 
 Solo `web` queda expuesto a Internet.
+
+## Nota sobre Go y whatsmeow
+
+La imagen de compilación de `api` y `whatsapp` está fijada en `golang:1.27.1-alpine`.
+No reduzcas el bridge a Go 1.23: la versión actual fijada de `whatsmeow` exige Go 1.26+.
+Después de actualizar desde 1.0.0-mvp, usa **Redeploy / Rebuild** en Dokploy para invalidar
+la capa anterior del builder.
