@@ -241,3 +241,7 @@ La imagen de compilación de `api` y `whatsapp` está fijada en `golang:1.27.1-a
 No reduzcas el bridge a Go 1.23: la versión actual fijada de `whatsmeow` exige Go 1.26+.
 Después de actualizar desde 1.0.0-mvp, usa **Redeploy / Rebuild** en Dokploy para invalidar
 la capa anterior del builder.
+
+## Nota de build Go 1.0.2
+
+Los servicios `api` y `whatsapp` ejecutan `go mod tidy` dentro de la etapa builder antes de compilar. Esto genera/verifica automáticamente `go.sum` en el contenedor de build y evita fallos de Dokploy por sumas de módulos ausentes. Los builders usan Go 1.27.1, compatible con la versión fijada de `whatsmeow` que requiere Go 1.26 o superior.

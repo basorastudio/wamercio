@@ -113,3 +113,7 @@ Pedido
 Desde WAMERCIO 1.0.1-mvp los servicios Go se construyen con `golang:1.27.1-alpine`.
 El módulo declara Go 1.26 como mínimo porque la versión fijada de `go.mau.fi/whatsmeow`
 requiere Go 1.26 o superior. Esto evita el error de Dokploy `requires go >= 1.26.0`.
+
+### Corrección 1.0.2
+
+El build Docker de los servicios Go ahora ejecuta `go mod tidy` después de copiar el código fuente, por lo que no depende de que `go.sum` haya sido generado previamente en la máquina de desarrollo. Esto corrige el error `missing go.sum entry` observado en Dokploy.
