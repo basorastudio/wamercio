@@ -1,4 +1,19 @@
-# Despliegue de WAMERCIO 1.2.1 en Dokploy
+# Despliegue de WAMERCIO 1.3.0 en Dokploy
+
+## Actualización a 1.3.0
+
+No cambia infraestructura, volúmenes ni variables de entorno. Sube la versión al mismo repositorio y ejecuta **Rebuild**. No uses **Fresh Volumes**.
+
+Después del despliegue prueba:
+
+- `https://wamercio.com/` → landing pública.
+- Botón **Entrar** o **Empezar ahora** → modal WhatsApp unificado.
+- WhatsApp existente → solicita PIN.
+- WhatsApp nuevo → muestra registro dentro del mismo modal.
+- `https://wamercio.com/admin/login` → SuperAdmin independiente.
+
+La configuración `gateway` + File Provider de Traefik de 1.2.1 se conserva sin cambios.
+
 
 ## Actualización desde 1.2.0 (corrección 502)
 

@@ -50,6 +50,7 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(api chi.Router) {
 		// Merchant/store access is intentionally independent from SaaS administration.
+		api.Post("/auth/store/lookup", s.storeLookup)
 		api.Post("/auth/store/login", s.storeLogin)
 		api.Post("/auth/store/register", s.register)
 		api.Post("/auth/store/logout", s.storeLogout)
@@ -223,6 +224,28 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, name, token string, max
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.AppURL, "https://"), MaxAge: -1})
+}
+
+func (s *Server) storeLookup(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Phone string `json:"phone"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Número de WhatsApp inválido")
+		return
+	}
+	phone := normalizePhone(in.Phone)
+	if len(phone) < 10 {
+		jsonErr(w, 400, "Ingresa un número de WhatsApp válido")
+		return
+	}
+	var exists bool
+	err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1)`, phone).Scan(&exists)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo verificar el WhatsApp")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"exists": exists})
 }
 
 func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {

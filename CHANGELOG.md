@@ -1,3 +1,20 @@
+# WAMERCIO 1.3.0
+
+## Landing y onboarding unificado
+
+- Nueva landing pública en `/`, mobile-first y responsive.
+- Identidad visual WAMERCIO consolidada: ámbar + azul noche; verde reservado para estados/WhatsApp.
+- Hero, módulos, flujo de uso, planes dinámicos, sección PWA y CTAs.
+- Nuevo modal único para acceso + registro mediante WhatsApp.
+- Nuevo endpoint público `POST /api/v1/auth/store/lookup`.
+- Si el WhatsApp existe: PIN de 4 dígitos y acceso automático.
+- Si no existe: registro corto en el mismo modal.
+- `/login` y `/register` redirigen al modal de la landing.
+- Icono PWA y favicon actualizados a los colores de WAMERCIO.
+- Se mantiene íntegra la solución gateway/Traefik de 1.2.1.
+
+---
+
 # WAMERCIO 1.2.1
 
 ## Corrección de 502 en Dokploy / Cloudflare

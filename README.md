@@ -1,6 +1,21 @@
-# WAMERCIO 1.2.1
+# WAMERCIO 1.3.0
 
 Plataforma SaaS de comercio conversacional para República Dominicana. El flujo y la simplicidad visual del **panel comercial** toman como referencia Foody Friend, pero WAMERCIO utiliza código, arquitectura, branding y autenticación propios.
+
+## Landing pública + acceso unificado (1.3.0)
+
+La raíz `https://wamercio.com/` ahora es una landing comercial mobile-first inspirada en la estructura de Foody Friend/WhatsMenu, pero con identidad WAMERCIO (amarillo ámbar + azul noche). Incluye hero, funciones, proceso, planes dinámicos, experiencia PWA y CTAs.
+
+El acceso y registro de comerciantes se fusionaron en un único modal progresivo:
+
+1. El usuario introduce su WhatsApp.
+2. `POST /api/v1/auth/store/lookup` determina si ya existe.
+3. Si existe, se solicita únicamente el PIN de 4 dígitos.
+4. Si no existe, el mismo modal abre el formulario corto de registro, conservando el WhatsApp introducido.
+5. `/login` y `/register` se mantienen por compatibilidad, pero redirigen a `/?access=1`.
+
+El SuperAdmin conserva su acceso separado en `/admin/login`.
+
 
 ## Routing estable en Dokploy (1.2.1)
 
