@@ -259,3 +259,18 @@ Un `404 page not found` en texto plano después de un build correcto normalmente
 - Certificate: Let's Encrypt
 
 Después de guardar cualquier cambio en **Domains**, vuelve a desplegar el Compose. Esta versión conecta `web` explícitamente a `dokploy-network`. Usa **Preview Compose** para confirmar que Dokploy añadió las labels `traefik.http.routers.*` y `traefik.http.services.*` al servicio `web`.
+
+
+## Enrutamiento explícito para wamercio.com (v1.0.4)
+
+A partir de la versión 1.0.4 el servicio `web` incluye labels Traefik explícitas para `wamercio.com` y `www.wamercio.com`. Esto evita depender exclusivamente de la inyección automática de labels desde Dokploy Domains.
+
+El servicio `web` debe permanecer conectado a `dokploy-network`. Las labels crean:
+
+- router HTTP en `web` con redirección a HTTPS;
+- router HTTPS en `websecure`;
+- certificado mediante `letsencrypt`;
+- servicio Traefik apuntando al puerto interno `3000`;
+- selección explícita de `dokploy-network`.
+
+Después de subir esta versión al repositorio, usa **Rebuild** en Dokploy. Si ya existe `wamercio.com` en la pestaña Domains, puede mantenerse durante la prueba; si Dokploy genera una regla duplicada problemática, elimina la entrada UI y vuelve a desplegar, porque el Compose ya gestiona el dominio directamente.

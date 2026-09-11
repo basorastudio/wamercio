@@ -130,3 +130,7 @@ Si el build finaliza correctamente pero `https://wamercio.com` muestra únicamen
 5. Si usas Cloudflare, el registro `A` de `wamercio.com` debe apuntar a la IPv4 del VPS. Si existe un registro `AAAA` pero el VPS no sirve esa IPv6, elimínalo. Para diagnosticar, puedes poner temporalmente el proxy en **DNS only** y volverlo a activar cuando funcione.
 
 La ruta raíz `/` existe y redirige a `/dashboard`; no debe configurarse un Internal Path distinto de `/`.
+
+
+### v1.0.4 - Routing Dokploy
+El servicio web incorpora routing Traefik explícito para `wamercio.com`/`www.wamercio.com` sobre `dokploy-network`, con redirección HTTP→HTTPS y TLS Let's Encrypt.
