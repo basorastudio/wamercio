@@ -70,6 +70,9 @@ button,a,input,select,textarea { touch-action:manipulation; }
 .section-copy { @apply mt-1 text-sm leading-6 text-[#8d92aa]; }
 .icon-action { @apply grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-[#7f859f] transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700; }
 .merchant-grid-card { @apply overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lg; }
+.modal-scroll { -ms-overflow-style:none; scrollbar-width:none; }
+.modal-scroll::-webkit-scrollbar { width:0; height:0; display:none; }
+
 @media (max-width:639px) {
   .mobile-sheet { border-radius:24px 24px 0 0 !important; }
 }

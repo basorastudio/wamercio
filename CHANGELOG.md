@@ -1,3 +1,13 @@
+# WAMERCIO 1.8.1
+
+## Ajustes de experiencia operativa
+
+- Barra lateral del comerciante ahora es contraíble y expandible, con mejor aprovechamiento del espacio de trabajo.
+- Centro de conversaciones rediseñado con una experiencia mucho más cercana a WhatsApp Web.
+- Ajusta el flujo de modales para evitar superposiciones cuando se cambia de resumen a edición.
+- Modal de Nuevo producto pasa a una estructura de dos columnas, sin barra de desplazamiento visible.
+- Ajustes incorpora vista previa en forma de móvil para validar la tienda en tiempo real.
+
 # WAMERCIO 1.8.0
 
 ## Experiencia de tienda

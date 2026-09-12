@@ -1,27 +1,64 @@
 'use client'
-import {useEffect,useState} from 'react'
+import {useEffect,useMemo,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
-import {api,upload} from '@/lib/api'
+import {api,money,upload} from '@/lib/api'
 import {Alert,ImagePicker,Loading,Switch} from '@/components/ui'
 import PhoneInput from '@/components/phone-input'
-import {Store,Clock3,ShoppingBag,CheckCircle2,WalletCards,Truck,Image as ImageIcon} from 'lucide-react'
+import {Store,Clock3,ShoppingBag,CheckCircle2,WalletCards,Truck,Image as ImageIcon,Smartphone,Search,Clock4,MapPin,MessageCircleMore} from 'lucide-react'
 
 const days=[['mon','Lunes'],['tue','Martes'],['wed','Miércoles'],['thu','Jueves'],['fri','Viernes'],['sat','Sábado'],['sun','Domingo']] as const
 const defaultHours=Object.fromEntries(days.map(([k])=>[k,{enabled:k!=='sun',open:'08:00',close:'18:00'}]))
 const tabs=[['general','Mi negocio',Store],['sales','Ventas y entrega',ShoppingBag],['hours','Horarios',Clock3]] as const
+
+function firstEnabledHours(business_hours:any){
+  for(const [key,label] of days){
+    const day=business_hours?.[key]
+    if(day?.enabled)return `${label}: ${day.open||'08:00'} - ${day.close||'18:00'}`
+  }
+  return 'Horario no configurado'
+}
+
+function MobilePreview({form}:{form:any}){
+  const accent=form?.primary_color||'#36b385'
+  const chips=['Todos','Destacados',form?.delivery_enabled?'Delivery':'Recoger']
+  const hasBanner=!!form?.banner_url
+  const description=form?.description||'Agrega una descripción breve para que tus clientes entiendan qué vendes.'
+  const hoursLabel=firstEnabledHours(form?.business_hours)
+  const products=[
+    {name:'Producto estrella',price:money(Number(form?.minimum_order||0)>0?Math.max(180,Number(form?.minimum_order||0)):180),desc:'Se muestra como ejemplo dentro del catálogo.'},
+    {name:'Promoción del día',price:money(250),desc:form?.order_notice||'Aquí aparecerán tus productos más vendidos.'},
+  ]
+  return <div className="mx-auto w-[310px] rounded-[42px] bg-[#111827] p-3 shadow-[0_30px_80px_rgba(15,23,42,.28)]">
+    <div className="relative overflow-hidden rounded-[30px] bg-[#f6f8f8]">
+      <div className="absolute left-1/2 top-2 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-[#111827]"/>
+      <div className="border-b border-[#e7eceb] bg-white px-4 pb-3 pt-10">
+        <div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#eaf6f1]">{form?.logo_url?<img src={form.logo_url} className="h-full w-full object-cover"/>:<Store className="h-4 w-4" style={{color:accent}}/>}</div><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-ink-900">{form?.name||'Tu negocio'}</h3><p className="truncate text-[11px] text-[#8d92aa]">{form?.address||'Catálogo en línea'}</p></div><div className="ml-auto rounded-full px-2.5 py-1 text-[10px] font-semibold text-white" style={{background:accent}}>Abierto</div></div>
+      </div>
+      <div className="p-3">
+        <section className="overflow-hidden rounded-[24px] text-white shadow-sm" style={{background:hasBanner?undefined:`linear-gradient(135deg, ${accent}, #5bc49e)`}}>{hasBanner&&<div className="relative h-28"><img src={form.banner_url} className="absolute inset-0 h-full w-full object-cover"/><div className="absolute inset-0 bg-slate-950/35"/></div>}<div className="relative p-4"><div className="inline-flex rounded-full bg-white/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.14em]">Catálogo</div><h4 className="mt-3 text-xl font-semibold leading-tight">{form?.name||'Tu negocio'}</h4><p className="mt-2 line-clamp-3 text-[12px] leading-5 text-white/90">{description}</p><div className="mt-3 flex flex-wrap gap-2">{form?.whatsapp&&<span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px]"><MessageCircleMore className="h-3 w-3"/> WhatsApp</span>}{form?.delivery_enabled&&<span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px]"><Truck className="h-3 w-3"/> Delivery</span>}{form?.pickup_enabled&&<span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 text-[10px]"><MapPin className="h-3 w-3"/> Recoger</span>}</div></div></section>
+        <div className="mt-3 flex gap-2 overflow-hidden">{chips.map(chip=><span key={chip} className="rounded-full px-3 py-1.5 text-[11px] font-semibold" style={chip==='Todos'?{background:accent,color:'white'}:{background:'#fff',color:'#66706d',border:'1px solid #e3e7e5'}}>{chip}</span>)}</div>
+        <div className="relative mt-3"><Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#98a09f]"/><div className="rounded-2xl border border-[#e3e7e5] bg-white py-2.5 pl-9 pr-3 text-[11px] text-[#adb4b2]">Buscar productos...</div></div>
+        <div className="mt-3 space-y-3">{products.map((product,index)=><div key={product.name} className="overflow-hidden rounded-2xl border border-[#e8ece9] bg-white shadow-sm"><div className="h-24" style={{background:index===0?`linear-gradient(135deg, ${accent}22, ${accent}55)`:'#eef3f2'}}/><div className="p-3"><div className="flex items-start gap-3"><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold text-ink-900">{product.name}</div><div className="mt-1 line-clamp-2 text-[11px] leading-4 text-[#8d92aa]">{product.desc}</div></div><div className="text-sm font-semibold" style={{color:accent}}>{product.price}</div></div></div></div>)}</div>
+        <div className="mt-3 rounded-2xl border border-[#e8ece9] bg-white p-3"><div className="flex items-start gap-2 text-[11px] text-[#6e7774]"><Clock4 className="mt-0.5 h-3.5 w-3.5" style={{color:accent}}/><span>{hoursLabel}</span></div>{form?.order_notice&&<div className="mt-2 rounded-xl bg-[#f6f9f8] p-2.5 text-[11px] leading-4 text-[#7f8785]">{form.order_notice}</div>}<div className="mt-3 flex items-center justify-between rounded-xl px-3 py-2 text-white" style={{background:accent}}><div className="flex items-center gap-2 text-xs font-semibold"><ShoppingBag className="h-3.5 w-3.5"/> Mi pedido</div><div className="text-xs">{form?.minimum_order?`Mín. ${money(Number(form.minimum_order||0))}`:'Listo para pedir'}</div></div></div>
+      </div>
+    </div>
+  </div>
+}
 
 export default function StoreSettings(){
  const[store,setStore]=useState(''),[form,setForm]=useState<any>(null),[tab,setTab]=useState<(typeof tabs)[number][0]>('general'),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[err,setErr]=useState(''),[ok,setOk]=useState(''),[up,setUp]=useState('')
  useEffect(()=>{if(!store){setForm(null);return};setLoading(true);setErr('');api(`/stores/${store}/settings`).then((x:any)=>setForm({...x,business_hours:{...defaultHours,...(x.business_hours||{})}})).catch((e:any)=>setErr(e.message)).finally(()=>setLoading(false))},[store])
  const save=async()=>{if(!form)return;setSaving(true);setErr('');setOk('');try{const payload={...form,currency:form.currency||'DOP',primary_color:form.primary_color||'#36b385',is_active:form.is_active!==false};await api(`/stores/${store}/settings`,{method:'PUT',body:JSON.stringify(payload)});setOk('Cambios guardados.')}catch(e:any){setErr(e.message)}finally{setSaving(false)}}
  const pick=async(kind:'logo_url'|'banner_url',f:File)=>{setUp(kind);setErr('');try{const url=await upload(f);setForm((v:any)=>({...v,[kind]:url}))}catch(e:any){setErr(e.message)}finally{setUp('')}}
+ const previewTip=useMemo(()=>tab==='general'?'Edita tu marca y revisa cómo se verá el catálogo en móvil.':tab==='sales'?'Activa delivery, pagos y mensajes; la vista previa refleja la experiencia del cliente.':'Ajusta tus horarios y verifica cómo se muestran en la tienda.',[tab])
+
  return <StoreShell title="Ajustes" subtitle="Solo lo necesario para vender">
   <div className="mb-5 max-w-sm"><StoreSelector value={store} onChange={setStore}/></div>
-  {!store?<div className="card p-10 text-center text-sm text-[#8d92aa]">Selecciona una tienda para configurarla.</div>:loading||!form?<Loading/>:<div className="grid gap-5 xl:grid-cols-[210px_1fr]">
-   <aside className="card h-fit p-2">{tabs.map(([id,label,I])=><button key={id} onClick={()=>setTab(id)} className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-3 text-left text-sm font-semibold transition ${tab===id?'bg-brand-50 text-brand-700':'text-[#747a92] hover:bg-[#fafbfc]'}`}><I className="h-4 w-4"/>{label}</button>)}</aside>
+  {!store?<div className="card p-10 text-center text-sm text-[#8d92aa]">Selecciona una tienda para configurarla.</div>:loading||!form?<Loading/>:<div className="grid gap-5 xl:grid-cols-[210px_minmax(0,1fr)_360px]">
+   <aside className="card h-fit p-2">{tabs.map(([id,label,I])=><button key={id} onClick={()=>setTab(id)} className={`flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm font-semibold transition ${tab===id?'bg-brand-50 text-brand-700':'text-[#747a92] hover:bg-[#fafbfc]'}`}><I className="h-4 w-4"/>{label}</button>)}</aside>
    <section className="card p-5 sm:p-7">{err&&<Alert text={err}/>} {ok&&<Alert text={ok} type="success"/>}
     {tab==='general'&&<div><p className="section-kicker">Tu identidad</p><h2 className="section-title">Así verán tu negocio</h2><p className="section-copy">WAMERCIO genera automáticamente el enlace, color y demás datos técnicos.</p>
-     <div className="mt-6 grid gap-6 lg:grid-cols-[210px_1fr]"><div className="space-y-4"><div><label className="label">Logo</label><ImagePicker value={form.logo_url} onPick={f=>pick('logo_url',f)} onClear={()=>setForm({...form,logo_url:''})} label="Agregar logo" busy={up==='logo_url'}/></div></div><div className="space-y-4"><div><label className="label">Nombre del negocio *</label><input className="field" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div><label className="label">WhatsApp comercial</label><PhoneInput value={form.whatsapp||''} onChange={value=>setForm({...form,whatsapp:value})}/></div><div><label className="label">Dirección</label><input className="field" value={form.address||''} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Dónde te encuentran tus clientes"/></div><div><label className="label">Descripción</label><textarea className="field min-h-24 resize-none" value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Una frase corta sobre tu negocio"/></div></div></div>
+     <div className="mt-6 grid gap-6 lg:grid-cols-[220px_1fr]"><div className="space-y-4"><div><label className="label">Logo</label><ImagePicker value={form.logo_url} onPick={f=>pick('logo_url',f)} onClear={()=>setForm({...form,logo_url:''})} label="Agregar logo" busy={up==='logo_url'}/></div><div className="rounded-2xl border border-[#edf0f4] bg-[#fbfcfd] p-4"><p className="text-sm font-semibold text-ink-900">Consejo</p><p className="mt-2 text-xs leading-5 text-[#9197ad]">Sube una imagen cuadrada y limpia. Si no tienes una, el sistema seguirá mostrando tu tienda con un ícono neutro.</p></div></div><div className="space-y-4"><div><label className="label">Nombre del negocio *</label><input className="field" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div><label className="label">WhatsApp comercial</label><PhoneInput value={form.whatsapp||''} onChange={value=>setForm({...form,whatsapp:value})}/></div><div><label className="label">Dirección</label><input className="field" value={form.address||''} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Dónde te encuentran tus clientes"/></div><div><label className="label">Descripción</label><textarea className="field min-h-24 resize-none" value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Una frase corta sobre tu negocio"/></div></div></div>
      <div className="mt-7 border-t border-slate-100 pt-6"><div className="mb-3 flex items-center gap-2"><ImageIcon className="h-4 w-4 text-brand-600"/><h3 className="font-semibold text-ink-900">Portada del catálogo</h3></div><ImagePicker value={form.banner_url} onPick={f=>pick('banner_url',f)} onClear={()=>setForm({...form,banner_url:''})} label="Agregar portada" busy={up==='banner_url'} ratio="banner"/><p className="mt-2 text-xs text-[#9aa0b4]">Opcional. Si no subes una, WAMERCIO usará una portada limpia con tu marca.</p></div>
     </div>}
 
@@ -36,6 +73,10 @@ export default function StoreSettings(){
 
     <div className="mt-8 flex justify-end border-t border-slate-100 pt-5"><button onClick={save} disabled={saving} className="btn-primary min-w-44"><CheckCircle2 className="h-4 w-4"/>{saving?'Guardando...':'Guardar cambios'}</button></div>
    </section>
+   <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
+      <div className="card p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Smartphone className="h-5 w-5"/></span><div><p className="section-kicker">Vista previa</p><h3 className="text-lg font-semibold text-ink-900">Así se verá en móvil</h3></div></div><p className="mt-2 text-sm leading-6 text-[#8d92aa]">{previewTip}</p><div className="mt-5"><MobilePreview form={form}/></div></div>
+      <div className="card p-4"><p className="text-sm font-semibold text-ink-900">Sugerencias</p><ul className="mt-3 space-y-2 text-xs leading-5 text-[#8d92aa]"><li>• Mantén el nombre corto para que se vea bien en pantallas pequeñas.</li><li>• Usa una descripción clara y una portada que represente tu marca.</li><li>• Activa solo métodos de pago y entregas que realmente ofreces.</li></ul></div>
+   </aside>
   </div>}
  </StoreShell>
 }
