@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -16,7 +15,9 @@ import (
 
 	_ "github.com/lib/pq"
 	"go.mau.fi/whatsmeow"
+	waCompanionReg "go.mau.fi/whatsmeow/proto/waCompanionReg"
 	waE2E "go.mau.fi/whatsmeow/proto/waE2E"
+	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -30,6 +31,7 @@ type Session struct {
 	QR      string
 	Phone   string
 	Updated time.Time
+	stop    chan struct{}
 }
 
 type Manager struct {
@@ -42,6 +44,12 @@ type Manager struct {
 }
 
 func New(ctx context.Context, dbURL, coreURL, secret string) (*Manager, error) {
+	// Brand new pairings as WAMERCIO so the WhatsApp Linked Devices screen
+	// shows the product name instead of the underlying transport library.
+	store.SetOSInfo("WAMERCIO", store.GetWAVersion())
+	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
+	store.DeviceProps.RequireFullSync = proto.Bool(true)
+
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return nil, err
@@ -63,6 +71,11 @@ func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
+		select {
+		case <-s.stop:
+		default:
+			close(s.stop)
+		}
 		if s.Client != nil {
 			s.Client.Disconnect()
 		}
@@ -91,7 +104,8 @@ func (m *Manager) Restore(ctx context.Context) error {
 			continue
 		}
 		client := whatsmeow.NewClient(dev, nil)
-		s := &Session{StoreID: storeID, Client: client, Status: "connecting", Updated: time.Now()}
+		client.EnableAutoReconnect = true
+		s := &Session{StoreID: storeID, Client: client, Status: "connecting", Updated: time.Now(), stop: make(chan struct{})}
 		m.installHandler(s)
 		m.mu.Lock()
 		m.sessions[storeID] = s
@@ -173,7 +187,8 @@ func (m *Manager) connect(w http.ResponseWriter, r *http.Request, storeID string
 	}
 	dev := m.container.NewDevice()
 	client := whatsmeow.NewClient(dev, nil)
-	s := &Session{StoreID: storeID, Client: client, Status: "starting", Updated: time.Now()}
+	client.EnableAutoReconnect = true
+	s := &Session{StoreID: storeID, Client: client, Status: "starting", Updated: time.Now(), stop: make(chan struct{})}
 	m.installHandler(s)
 	m.mu.Lock()
 	m.sessions[storeID] = s
@@ -217,6 +232,9 @@ func (m *Manager) installHandler(s *Session) {
 		switch v := evt.(type) {
 		case *events.Connected:
 			m.setState(s.StoreID, "connected", "")
+			// Keep the linked device visibly active without forcing the account to
+			// appear online. Sending unavailable also publishes the push name.
+			_ = s.Client.SendPresence(context.Background(), types.PresenceUnavailable)
 			if s.Client.Store.ID != nil {
 				jid := s.Client.Store.ID.String()
 				_, _ = m.db.Exec(`INSERT INTO whatsapp_bridge_sessions(store_id,jid,updated_at) VALUES($1,$2,now()) ON CONFLICT(store_id) DO UPDATE SET jid=excluded.jid,updated_at=now()`, s.StoreID, jid)
@@ -231,10 +249,39 @@ func (m *Manager) installHandler(s *Session) {
 		case *events.Disconnected:
 			m.setState(s.StoreID, "disconnected", "")
 			_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET status='disconnected',updated_at=now() WHERE store_id=$1`, s.StoreID)
+		case *events.KeepAliveTimeout:
+			if v.ErrorCount >= 2 && s.Client != nil && s.Client.IsLoggedIn() {
+				go func() {
+					s.Client.Disconnect()
+					time.Sleep(1500 * time.Millisecond)
+					_ = s.Client.Connect()
+				}()
+			}
 		case *events.Message:
 			m.forwardMessage(s.StoreID, v)
 		}
 	})
+	go m.maintainSession(s)
+}
+
+func (m *Manager) maintainSession(s *Session) {
+	// WhatsApp expires linked devices after long periods of inactivity. The
+	// library already sends socket keep-alives; this low-frequency unavailable
+	// presence also refreshes the companion activity without showing the user as online.
+	ticker := time.NewTicker(6 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if s.Client != nil && s.Client.IsConnected() && s.Client.IsLoggedIn() {
+				_ = s.Client.SendPresence(context.Background(), types.PresenceUnavailable)
+				_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET last_seen_at=now(),updated_at=now() WHERE store_id=$1`, s.StoreID)
+				m.setState(s.StoreID, "connected", "")
+			}
+		case <-s.stop:
+			return
+		}
+	}
 }
 func (m *Manager) setState(storeID, status, qr string) {
 	m.mu.Lock()
@@ -250,9 +297,16 @@ func (m *Manager) disconnect(w http.ResponseWriter, r *http.Request, storeID str
 	s := m.sessions[storeID]
 	delete(m.sessions, storeID)
 	m.mu.Unlock()
-	if s != nil && s.Client != nil {
-		_ = s.Client.Logout(r.Context())
-		s.Client.Disconnect()
+	if s != nil {
+		select {
+		case <-s.stop:
+		default:
+			close(s.stop)
+		}
+		if s.Client != nil {
+			_ = s.Client.Logout(r.Context())
+			s.Client.Disconnect()
+		}
 	}
 	_, _ = m.db.ExecContext(r.Context(), `DELETE FROM whatsapp_bridge_sessions WHERE store_id=$1`, storeID)
 	_, _ = m.db.ExecContext(r.Context(), `UPDATE whatsapp_sessions SET jid=NULL,phone=NULL,status='disconnected',updated_at=now() WHERE store_id=$1`, storeID)
@@ -298,6 +352,8 @@ func (m *Manager) send(w http.ResponseWriter, r *http.Request, storeID string) {
 		writeJSON(w, 502, map[string]string{"error": err.Error()})
 		return
 	}
+	_ = s.Client.SendPresence(context.Background(), types.PresenceUnavailable)
+	_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET last_seen_at=now(),updated_at=now() WHERE store_id=$1`, storeID)
 	writeJSON(w, 200, map[string]any{"ok": true, "id": resp.ID})
 }
 
@@ -319,9 +375,64 @@ func messageText(v *events.Message) string {
 	}
 	return ""
 }
+
+func messageKind(v *events.Message) (string, string) {
+	body := strings.TrimSpace(messageText(v))
+	typ := strings.ToLower(strings.TrimSpace(v.Info.MediaType))
+	if typ == "" {
+		typ = strings.ToLower(strings.TrimSpace(v.Info.Type))
+	}
+	if typ == "" || typ == "chat" || typ == "text" || typ == "extendedtext" {
+		typ = "text"
+	}
+	if body == "" {
+		switch {
+		case strings.Contains(typ, "image"):
+			typ, body = "image", "Imagen"
+		case strings.Contains(typ, "video"):
+			typ, body = "video", "Video"
+		case strings.Contains(typ, "audio") || strings.Contains(typ, "ptt"):
+			typ, body = "audio", "Audio"
+		case strings.Contains(typ, "document"):
+			typ, body = "document", "Documento"
+		case strings.Contains(typ, "sticker"):
+			typ, body = "sticker", "Sticker"
+		case strings.Contains(typ, "location"):
+			typ, body = "location", "Ubicación"
+		case strings.Contains(typ, "contact"):
+			typ, body = "contact", "Contacto"
+		case strings.Contains(typ, "reaction"):
+			typ, body = "reaction", "Reacción"
+		default:
+			typ, body = "other", "Mensaje de WhatsApp"
+		}
+	}
+	return typ, body
+}
+
+func directPhone(v *events.Message) string {
+	if v.Info.IsGroup {
+		return ""
+	}
+	for _, jid := range []types.JID{v.Info.Chat, v.Info.Sender, v.Info.SenderAlt} {
+		if jid.Server == types.DefaultUserServer && jid.User != "" {
+			return nonDigits.ReplaceAllString(jid.User, "")
+		}
+	}
+	return ""
+}
+
 func (m *Manager) forwardMessage(storeID string, v *events.Message) {
-	body := messageText(v)
-	payload := map[string]any{"store_id": storeID, "remote_jid": v.Info.Chat.String(), "message_id": v.Info.ID, "body": body, "direction": "in", "type": "text", "display_name": v.Info.PushName, "occurred_at": v.Info.Timestamp}
+	typ, body := messageKind(v)
+	direction := "in"
+	if v.Info.IsFromMe {
+		direction = "out"
+	}
+	payload := map[string]any{
+		"store_id": storeID, "remote_jid": v.Info.Chat.String(), "message_id": v.Info.ID,
+		"body": body, "direction": direction, "type": typ, "display_name": v.Info.PushName,
+		"phone": directPhone(v), "occurred_at": v.Info.Timestamp,
+	}
 	b, _ := json.Marshal(payload)
 	req, _ := http.NewRequest("POST", m.coreURL+"/api/v1/internal/whatsapp/events", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
@@ -337,5 +448,3 @@ func (m *Manager) forwardMessage(storeID string, v *events.Message) {
 		log.Printf("forward event status %d: %s", resp.StatusCode, string(bb))
 	}
 }
-
-func (m *Manager) debug() { fmt.Sprint("") }

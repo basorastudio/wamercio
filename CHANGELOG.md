@@ -1,4 +1,28 @@
-# WAMERCIO 1.5.0
+# WAMERCIO 1.6.0
+
+## Centro de Conversaciones
+
+- Nueva bandeja inspirada en WhatsApp Web con lista, chat y panel contextual.
+- Panel derecho inline de datos del contacto en escritorio, sin overlay ni blur.
+- Registros de atención en el mismo espacio lateral.
+- Métricas por conversación: recibidos, enviados, imágenes, videos, audios y documentos.
+- Notas internas y estado de atención: abierta, pendiente o cerrada.
+- Vinculación automática de contactos con el CRM de Clientes.
+- Actualización inmediata del nombre/datos del cliente sin refrescar el navegador.
+- Mensajes no textuales clasificados por tipo en lugar de una etiqueta genérica.
+
+## WhatsApp
+
+- Las nuevas vinculaciones se identifican como **WAMERCIO** en Dispositivos vinculados.
+- Supervisión de actividad y reconexión para mantener saludable la sesión.
+- El panel muestra únicamente la identidad WAMERCIO y detalles útiles para el comerciante.
+- Se eliminó toda referencia visible a proveedores o nombres técnicos de transporte.
+
+## Datos
+
+- Migración `000008_conversation_center` con vínculo conversación-cliente, estado y notas internas.
+
+## Historial anterior
 
 ## WhatsApp internacional
 
@@ -35,6 +59,7 @@
 ## Compatibilidad
 
 - No cambia el routing Cloudflare/Traefik/gateway.
-- No cambia Redis ni whatsmeow.
+- No cambia Redis ni el servicio WhatsApp existente.
 - No cambia el dominio ni las variables `.env` existentes.
 - No requiere Fresh Volumes.
+

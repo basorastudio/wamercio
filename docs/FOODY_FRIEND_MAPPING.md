@@ -26,7 +26,7 @@ Esta matriz documenta qué concepto funcional de Foody Friend se conserva y cóm
 | Admin Purchase Plans | Solicitudes de plan |
 | Admin Transactions | Movimientos SaaS |
 | Admin Tickets | Tickets SuperAdmin |
-| WhatsApp Bot / Twilio | whatsmeow multi-sesión por QR |
+| Bot de mensajería heredado | WAMERCIO multi-sesión por QR |
 | Telegram / Messenger | No se incluyen |
 | Gateway collection | Se elimina; solo pagos manuales configurables |
 
@@ -43,4 +43,4 @@ Foody Friend se utilizó como referencia, pero WAMERCIO 1.1 añade:
 - Delivery o recogida según configuración.
 - Métodos manuales configurables por tienda.
 - SuperAdmin con aprobación de cambios de plan.
-- Motor WhatsApp independiente de Twilio.
+- Motor WhatsApp propio presentado al usuario como WAMERCIO.

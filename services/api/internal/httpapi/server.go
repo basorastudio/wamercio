@@ -112,6 +112,11 @@ func (s *Server) Router() http.Handler {
 			p.Patch("/tickets/{id}/close", s.closeTicket)
 			p.Get("/conversations", s.listConversations)
 			p.Get("/conversations/{id}/messages", s.listMessages)
+			p.Get("/conversations/{id}/details", s.conversationDetails)
+			p.Put("/conversations/{id}/customer", s.saveConversationCustomer)
+			p.Patch("/conversations/{id}/status", s.updateConversationStatus)
+			p.Get("/conversations/{id}/notes", s.listConversationNotes)
+			p.Post("/conversations/{id}/notes", s.createConversationNote)
 			p.Patch("/conversations/{id}/read", s.readConversation)
 			p.Post("/conversations/{id}/send", s.sendConversationMessage)
 			p.Post("/uploads", s.upload)
@@ -1202,7 +1207,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,remote_jid,coalesce(display_name,''),unread_count,coalesce(last_message,''),last_message_at,created_at FROM conversations WHERE store_id=$1 ORDER BY last_message_at DESC NULLS LAST,created_at DESC LIMIT 300`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT c.id,c.remote_jid,coalesce(cu.name,nullif(c.display_name,''),''),c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,coalesce(c.customer_id::text,''),coalesce(c.status,'open'),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.store_id=$1 ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC LIMIT 300`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las conversaciones")
 		return
@@ -1210,12 +1215,12 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, jid, name, last string
+		var id, jid, name, last, customerID, status, phone string
 		var unread int
 		var lastAt *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created)
-		out = append(out, map[string]any{"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "created_at": created})
+		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created, &customerID, &status, &phone)
+		out = append(out, map[string]any{"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "created_at": created, "customer_id": customerID, "status": status, "phone": phone})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1226,6 +1231,10 @@ func (s *Server) conversationOwned(ctx context.Context, c *authpkg.Claims, id st
 		return "", "", false
 	}
 	return sid, jid, true
+}
+func conversationPhone(jid string) string {
+	base := strings.SplitN(jid, "@", 2)[0]
+	return normalizePhone(base)
 }
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
@@ -1249,6 +1258,154 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "occurred_at": at})
 	}
 	jsonOut(w, 200, out)
+}
+func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var displayName, customerID, status string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(display_name,''),coalesce(customer_id::text,''),coalesce(status,'open') FROM conversations WHERE id=$1`, id).Scan(&displayName, &customerID, &status)
+	phone := conversationPhone(jid)
+	customer := map[string]any{"id": "", "name": displayName, "phone": phone, "address": "", "notes": "", "status": "active", "order_count": 0, "total_spent": 0.0}
+	orders := []map[string]any{}
+	if customerID != "" {
+		var name, cphone, address, notes, cstatus string
+		var count int
+		var spent float64
+		var last *time.Time
+		var created time.Time
+		if s.db.QueryRow(r.Context(), `SELECT name,phone,coalesce(address,''),coalesce(notes,''),status,order_count,total_spent,last_order_at,created_at FROM customers WHERE id=$1`, customerID).Scan(&name, &cphone, &address, &notes, &cstatus, &count, &spent, &last, &created) == nil {
+			customer = map[string]any{"id": customerID, "name": name, "phone": cphone, "address": address, "notes": notes, "status": cstatus, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created}
+			orows, _ := s.db.Query(r.Context(), `SELECT id,order_number,total,status,payment_status,created_at FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 20`, customerID)
+			if orows != nil {
+				defer orows.Close()
+				for orows.Next() {
+					var oid, ost, ps string
+					var num int64
+					var total float64
+					var at time.Time
+					_ = orows.Scan(&oid, &num, &total, &ost, &ps, &at)
+					orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": ost, "payment_status": ps, "created_at": at})
+				}
+			}
+		}
+	}
+	var total, incoming, outgoing, images, videos, audios, documents int
+	var firstAt, lastAt *time.Time
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,count(*) FILTER (WHERE direction='in')::int,count(*) FILTER (WHERE direction='out')::int,count(*) FILTER (WHERE type ILIKE '%image%')::int,count(*) FILTER (WHERE type ILIKE '%video%')::int,count(*) FILTER (WHERE type ILIKE '%audio%' OR type ILIKE '%ptt%')::int,count(*) FILTER (WHERE type ILIKE '%document%')::int,min(occurred_at),max(occurred_at) FROM messages WHERE conversation_id=$1`, id).Scan(&total, &incoming, &outgoing, &images, &videos, &audios, &documents, &firstAt, &lastAt)
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "remote_jid": jid, "display_name": displayName, "phone": phone, "status": status, "customer": customer, "orders": orders, "metrics": map[string]any{"messages": total, "incoming": incoming, "outgoing": outgoing, "images": images, "videos": videos, "audios": audios, "documents": documents, "first_interaction": firstAt, "last_interaction": lastAt}})
+}
+func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		Name    string `json:"name"`
+		Address string `json:"address"`
+		Notes   string `json:"notes"`
+		Status  string `json:"status"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "El nombre es obligatorio")
+		return
+	}
+	phone := conversationPhone(jid)
+	var linkedCustomerID, linkedPhone string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(c.customer_id::text,''),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, id).Scan(&linkedCustomerID, &linkedPhone)
+	if linkedPhone != "" {
+		phone = normalizePhone(linkedPhone)
+	}
+	if phone == "" {
+		jsonErr(w, 400, "No se pudo determinar el WhatsApp del contacto")
+		return
+	}
+	if in.Status != "blocked" {
+		in.Status = "active"
+	}
+	var customerID string
+	err := s.db.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,address,notes,status) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(store_id,phone) DO UPDATE SET name=excluded.name,address=excluded.address,notes=excluded.notes,status=excluded.status,updated_at=now() RETURNING id`, sid, strings.TrimSpace(in.Name), phone, strings.TrimSpace(in.Address), in.Notes, in.Status).Scan(&customerID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar el contacto")
+		return
+	}
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET customer_id=$1,display_name=$2,updated_at=now() WHERE id=$3`, customerID, strings.TrimSpace(in.Name), id)
+	s.refreshCustomerStats(r.Context(), customerID)
+	jsonOut(w, 200, map[string]any{"ok": true, "customer_id": customerID, "name": strings.TrimSpace(in.Name), "phone": phone})
+}
+func (s *Server) updateConversationStatus(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		Status string `json:"status"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Estado inválido")
+		return
+	}
+	if in.Status != "open" && in.Status != "pending" && in.Status != "closed" {
+		in.Status = "open"
+	}
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET status=$1,updated_at=now() WHERE id=$2`, in.Status, id)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+func (s *Server) listConversationNotes(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT n.id,n.note,n.created_at,coalesce(u.name,'WAMERCIO') FROM conversation_notes n LEFT JOIN users u ON u.id=n.created_by WHERE n.conversation_id=$1 ORDER BY n.created_at DESC LIMIT 100`, id)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los registros")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var nid, note, author string
+		var at time.Time
+		_ = rows.Scan(&nid, &note, &at, &author)
+		out = append(out, map[string]any{"id": nid, "note": note, "created_at": at, "author": author})
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) createConversationNote(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		Note string `json:"note"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Note) == "" {
+		jsonErr(w, 400, "Escribe un registro")
+		return
+	}
+	var nid string
+	var at time.Time
+	if s.db.QueryRow(r.Context(), `INSERT INTO conversation_notes(conversation_id,created_by,note) VALUES($1,$2,$3) RETURNING id,created_at`, id, c.UserID, strings.TrimSpace(in.Note)).Scan(&nid, &at) != nil {
+		jsonErr(w, 500, "No se pudo guardar el registro")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": nid, "note": strings.TrimSpace(in.Note), "created_at": at})
 }
 func (s *Server) readConversation(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
@@ -1755,6 +1912,7 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		Direction   string    `json:"direction"`
 		Type        string    `json:"type"`
 		DisplayName string    `json:"display_name"`
+		Phone       string    `json:"phone"`
 		OccurredAt  time.Time `json:"occurred_at"`
 	}
 	if decode(r, &in) != nil || in.StoreID == "" || in.RemoteJID == "" {
@@ -1776,13 +1934,29 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
+	var customerID any
+	phone := normalizePhone(in.Phone)
+	if phone != "" {
+		name := strings.TrimSpace(in.DisplayName)
+		if name == "" {
+			name = "+" + phone
+		}
+		var cid string
+		if tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,status) VALUES($1,$2,$3,'active') ON CONFLICT(store_id,phone) DO UPDATE SET name=CASE WHEN customers.name=customers.phone OR customers.name=('+'||customers.phone) OR customers.name='' THEN excluded.name ELSE customers.name END,updated_at=now() RETURNING id`, in.StoreID, name, phone).Scan(&cid) == nil {
+			customerID = cid
+		}
+	}
+	unreadInc := 0
+	if in.Direction != "out" {
+		unreadInc = 1
+	}
 	var convID string
-	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,unread_count,last_message,last_message_at) VALUES($1,$2,$3,1,$4,$5) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name), unread_count=conversations.unread_count+1,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, in.DisplayName, in.Body, in.OccurredAt).Scan(&convID)
+	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$5,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, in.DisplayName, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo registrar conversación")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,$3,$4,$5,'received',$6) ON CONFLICT(conversation_id,message_id) DO NOTHING`, convID, in.MessageID, in.Direction, in.Type, in.Body, in.OccurredAt)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(conversation_id,message_id) DO NOTHING`, convID, in.MessageID, in.Direction, in.Type, in.Body, map[bool]string{true: "sent", false: "received"}[in.Direction == "out"], in.OccurredAt)
 	_ = tx.Commit(r.Context())
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }

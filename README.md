@@ -1,50 +1,76 @@
-# WAMERCIO 1.5.0
+# WAMERCIO 1.6.0
 
-WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js + Go + PostgreSQL + Redis + whatsmeow y desplegable en Dokploy.
+WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js + Go + PostgreSQL + Redis y un servicio WhatsApp propio, desplegable en Dokploy.
 
-## WhatsApp-first 1.5.0
+## Novedades 1.6.0
 
-Esta versión simplifica el acceso y todos los flujos telefónicos de la plataforma:
+Esta versión convierte la bandeja de conversaciones en un verdadero centro de atención comercial inspirado en WhatsApp Web y refuerza la identidad WAMERCIO en las vinculaciones de WhatsApp.
 
-- integración oficial `intl-tel-input` mediante su wrapper React;
-- bandera y código de marcación visibles automáticamente;
-- selección automática del país usando `CF-IPCountry` de Cloudflare, con respaldo por locale del navegador y República Dominicana;
-- formato internacional progresivo y envío del número completo en formato E.164 desde los formularios; el backend mantiene una representación canónica para autenticación;
-- buscador de países en español;
-- selector adaptativo: desplegable en escritorio y experiencia optimizada para móvil;
-- validación de longitud/número antes de enviar formularios;
-- PIN de acceso representado por 4 campos numéricos independientes con avance automático, retroceso y pegado de código;
-- eliminado el campo de repetir PIN del alta comercial;
-- eliminado el correo de comerciantes, tiendas, clientes y pedidos. El correo queda reservado exclusivamente al SuperAdmin SaaS.
+### Centro de Conversaciones
+
+- lista de conversaciones con búsqueda y no leídos;
+- chat con diseño tipo WhatsApp Web;
+- clasificación de imágenes, videos, audios, documentos, ubicación, sticker y reacción;
+- panel derecho inline para datos del contacto, sin overlay ni blur en escritorio;
+- panel de **Registros de atención** en la misma estructura;
+- estado de atención: abierta, pendiente o cerrada;
+- notas internas cronológicas;
+- métricas de mensajes recibidos/enviados y archivos;
+- primera y última interacción;
+- enlace automático del número de WhatsApp con el CRM de Clientes;
+- edición de nombre, dirección, notas y estado del cliente desde el chat;
+- pedidos recientes y total comprado dentro de la ficha del contacto;
+- actualización del nombre/contacto en la interfaz sin refrescar el navegador.
+
+### Dispositivo WAMERCIO
+
+Las nuevas vinculaciones se presentan a WhatsApp con el nombre **WAMERCIO**. El servicio mantiene reconexión automática, supervisión del canal y actividad periódica de la sesión sin forzar el estado visible “en línea”.
+
+Las vinculaciones creadas antes de 1.6.0 conservan el nombre con el que fueron emparejadas. Para actualizar una sesión antigua, desvincúlala una vez desde WAMERCIO y vuelve a escanear el QR.
+
+### Sin referencias técnicas en la experiencia
+
+La interfaz, documentación comercial y estados muestran únicamente la identidad **WAMERCIO**. Los nombres internos de librerías de transporte quedan limitados al código del servicio y no forman parte de la experiencia del comerciante.
 
 ## Acceso comercial
 
-En `https://wamercio.com/` el usuario introduce su WhatsApp una sola vez:
+El comerciante utiliza:
 
-1. si ya existe, WAMERCIO muestra los 4 campos del PIN y accede al completar el cuarto dígito;
-2. si no existe, muestra el registro corto: nombre, negocio y un único PIN de 4 dígitos;
-3. el código de país y la bandera se determinan automáticamente, pero el usuario puede cambiarlos desde el selector.
+```text
+WhatsApp + PIN de 4 dígitos
+```
 
-El mismo componente internacional de teléfono se utiliza en los campos de WhatsApp del perfil, comercios, ajustes, checkout público y gestión de acceso desde SuperAdmin.
+El SuperAdmin utiliza exclusivamente:
 
-## SuperAdmin
+```text
+/admin/login → correo + contraseña
+```
 
-El SuperAdmin continúa separado en:
+## Teléfonos internacionales
 
-`https://wamercio.com/admin/login`
-
-Solo el SuperAdmin utiliza correo + contraseña. Los comerciantes no utilizan correo para autenticación ni gestión comercial.
-
-## Migración 000007
-
-`000007_no_merchant_email` elimina de la base de datos los campos de correo heredados de tiendas, clientes y pedidos, y limpia el correo de usuarios que no sean SuperAdmin. Los valores anteriores no se restauran porque WAMERCIO pasa a operar de forma WhatsApp-first.
+Los campos de WhatsApp usan selector internacional con bandera, código de marcación, búsqueda de país y formato E.164. El país inicial usa Cloudflare `CF-IPCountry`, locale del navegador y República Dominicana como respaldo.
 
 ## Infraestructura
 
-Se conserva sin cambios la ruta estable de producción:
+Se conserva la ruta estable de producción:
 
 ```text
 Cloudflare → Traefik → wamercio-gateway:8080 → web:3000
 ```
 
-No se modifican volúmenes, secretos ni la arquitectura de Dokploy.
+No se modifican los volúmenes persistentes ni las variables `.env` actuales.
+
+## Migraciones nuevas
+
+```text
+000008_conversation_center
+```
+
+Añade vínculo conversación-cliente, estado operativo de conversación y registros internos de atención.
+
+Consulta:
+
+- `docs/CENTRO_CONVERSACIONES.md`
+- `docs/SESION_WHATSAPP.md`
+- `docs/ARQUITECTURA.md`
+- `DEPLOY_DOKPLOY.md`
