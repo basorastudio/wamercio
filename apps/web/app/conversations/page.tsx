@@ -125,9 +125,8 @@ export default function Conversations(){
   const filtered=useMemo(()=>convs.filter(c=>(!onlyUnread||c.unread_count>0)&&(label(c)+' '+c.last_message+' '+(c.phone||'')).toLowerCase().includes(search.toLowerCase())),[convs,search,onlyUnread])
   const paneOpen=!!panel&&!!selected
 
-  return <StoreShell title="Conversaciones" subtitle="Centro de atención de WhatsApp de WAMERCIO" actions={<button className="btn-secondary px-3" title="Actualizar" onClick={()=>{loadConvs();selected&&loadMsgs(selected);paneOpen&&loadDetails()}}><RefreshCw className="h-4 w-4"/></button>}>
-    <div className="mb-4"><StoreSelector value={store} onChange={setStore}/></div>
-    <div className="relative flex h-[calc(100dvh-156px)] min-h-[660px] overflow-hidden rounded-[28px] border border-[#dde3e7] bg-white shadow-[0_16px_48px_rgba(15,23,42,.06)]">
+  return <StoreShell title="WhatsApp" subtitle="Atiende a tus clientes desde una experiencia similar a WhatsApp Web" context={<StoreSelector value={store} onChange={setStore}/>} fullHeight actions={<button className="btn-secondary px-3" title="Actualizar" onClick={()=>{loadConvs();selected&&loadMsgs(selected);paneOpen&&loadDetails()}}><RefreshCw className="h-4 w-4"/></button>}>
+    <div className="relative flex h-full min-h-0 overflow-hidden rounded-[28px] border border-[#dde3e7] bg-white shadow-[0_16px_48px_rgba(15,23,42,.06)]">
       <aside className={`${selected?'hidden md:flex':'flex'} w-full shrink-0 flex-col border-r border-[#e9edef] bg-white md:w-[340px] xl:w-[380px]`}>
         <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-3 py-3.5">
           <div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#00a884]">WhatsApp</p><h2 className="text-[15px] font-semibold text-[#111b21]">Bandeja de conversaciones</h2></div><button onClick={()=>{loadConvs();selected&&loadMsgs(selected)}} className="grid h-9 w-9 place-items-center rounded-full text-[#54656f] hover:bg-white"><RefreshCw className="h-4 w-4"/></button></div>
@@ -159,7 +158,7 @@ export default function Conversations(){
             <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-white px-1.5 py-1"><textarea rows={1} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[20px] border-0 bg-transparent px-3 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder={sendingMedia?'Enviando archivo...':'Escribe un mensaje'}/></div>
             <button disabled={sending||sendingMedia||!text.trim()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm disabled:opacity-40"><Send className="h-4 w-4"/></button>
           </form>
-        </>:<div className="grid h-full place-items-center bg-[#f7f8fa] text-center"><div className="max-w-sm px-6"><div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MessageCircleMore className="h-9 w-9"/></div><h3 className="mt-5 text-xl font-medium text-[#3b4a54]">WAMERCIO Conversaciones</h3><p className="mt-2 text-sm leading-6 text-[#667781]">Selecciona una conversación para atender a tu cliente desde un espacio familiar, inspirado en WhatsApp Web.</p></div></div>}
+        </>:<div className="grid h-full place-items-center bg-[#f7f8fa] text-center"><div className="max-w-sm px-6"><div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MessageCircleMore className="h-9 w-9"/></div><h3 className="mt-5 text-xl font-medium text-[#3b4a54]">WAMERCIO WhatsApp</h3><p className="mt-2 text-sm leading-6 text-[#667781]">Selecciona una conversación para atender a tu cliente desde un espacio familiar, inspirado en WhatsApp Web.</p></div></div>}
       </section>
 
       {paneOpen&&selected&&<aside className="absolute inset-0 z-20 flex flex-col border-l border-[#dfe3e6] bg-white md:left-[340px] xl:static xl:w-[390px] xl:shrink-0">

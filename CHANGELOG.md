@@ -1,3 +1,16 @@
+# WAMERCIO 1.8.2
+
+## WhatsApp y navegación refinados
+
+- WhatsApp ahora ocupa el viewport del panel y elimina el desplazamiento externo duplicado; solo se desplazan la lista de chats y el lienzo de mensajes.
+- Selector de tienda reubicado a la cabecera en los módulos operativos.
+- La opción `Conversaciones` pasa a llamarse `WhatsApp` y utiliza un icono específico de WhatsApp.
+- La vinculación técnica deja de ocupar un acceso principal y pasa a `Ajustes → Conexión`.
+- Eliminado el segundo botón de `Contraer menú`; se mantiene un único control en la cabecera.
+- Vista previa móvil de Ajustes reducida y fijada para funcionar como referencia constante.
+- Renderizador de mensajes ampliado para imágenes, GIF/video, video circular, notas de voz, audio, documentos, stickers, ubicaciones, contactos, encuestas, reacciones, mensajes interactivos, productos/pedidos y archivos genéricos.
+- El bridge clasifica más tipos del protobuf de WhatsApp antes de guardarlos.
+
 # WAMERCIO 1.8.1
 
 ## Ajustes de experiencia operativa

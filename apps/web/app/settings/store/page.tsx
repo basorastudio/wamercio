@@ -3,12 +3,12 @@ import {useEffect,useMemo,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money,upload} from '@/lib/api'
 import {Alert,ImagePicker,Loading,Switch} from '@/components/ui'
+import SettingsNav from '@/components/settings-nav'
 import PhoneInput from '@/components/phone-input'
 import {Store,Clock3,ShoppingBag,CheckCircle2,WalletCards,Truck,Image as ImageIcon,Smartphone,Search,Clock4,MapPin,MessageCircleMore} from 'lucide-react'
 
 const days=[['mon','Lunes'],['tue','Martes'],['wed','Miércoles'],['thu','Jueves'],['fri','Viernes'],['sat','Sábado'],['sun','Domingo']] as const
 const defaultHours=Object.fromEntries(days.map(([k])=>[k,{enabled:k!=='sun',open:'08:00',close:'18:00'}]))
-const tabs=[['general','Mi negocio',Store],['sales','Ventas y entrega',ShoppingBag],['hours','Horarios',Clock3]] as const
 
 function firstEnabledHours(business_hours:any){
   for(const [key,label] of days){
@@ -28,8 +28,8 @@ function MobilePreview({form}:{form:any}){
     {name:'Producto estrella',price:money(Number(form?.minimum_order||0)>0?Math.max(180,Number(form?.minimum_order||0)):180),desc:'Se muestra como ejemplo dentro del catálogo.'},
     {name:'Promoción del día',price:money(250),desc:form?.order_notice||'Aquí aparecerán tus productos más vendidos.'},
   ]
-  return <div className="mx-auto w-[310px] rounded-[42px] bg-[#111827] p-3 shadow-[0_30px_80px_rgba(15,23,42,.28)]">
-    <div className="relative overflow-hidden rounded-[30px] bg-[#f6f8f8]">
+  return <div className="mx-auto w-[238px] rounded-[34px] bg-[#111827] p-2.5 shadow-[0_24px_60px_rgba(15,23,42,.24)]">
+    <div className="relative h-[440px] overflow-hidden rounded-[26px] bg-[#f6f8f8]">
       <div className="absolute left-1/2 top-2 z-20 h-6 w-28 -translate-x-1/2 rounded-full bg-[#111827]"/>
       <div className="border-b border-[#e7eceb] bg-white px-4 pb-3 pt-10">
         <div className="flex items-center gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#eaf6f1]">{form?.logo_url?<img src={form.logo_url} className="h-full w-full object-cover"/>:<Store className="h-4 w-4" style={{color:accent}}/>}</div><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-ink-900">{form?.name||'Tu negocio'}</h3><p className="truncate text-[11px] text-[#8d92aa]">{form?.address||'Catálogo en línea'}</p></div><div className="ml-auto rounded-full px-2.5 py-1 text-[10px] font-semibold text-white" style={{background:accent}}>Abierto</div></div>
@@ -46,16 +46,16 @@ function MobilePreview({form}:{form:any}){
 }
 
 export default function StoreSettings(){
- const[store,setStore]=useState(''),[form,setForm]=useState<any>(null),[tab,setTab]=useState<(typeof tabs)[number][0]>('general'),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[err,setErr]=useState(''),[ok,setOk]=useState(''),[up,setUp]=useState('')
+ const[store,setStore]=useState(''),[form,setForm]=useState<any>(null),[tab,setTab]=useState<'general'|'sales'|'hours'>('general'),[loading,setLoading]=useState(false),[saving,setSaving]=useState(false),[err,setErr]=useState(''),[ok,setOk]=useState(''),[up,setUp]=useState('')
+ useEffect(()=>{if(typeof window==='undefined')return;const t=new URLSearchParams(window.location.search).get('tab');if(t==='general'||t==='sales'||t==='hours')setTab(t)},[])
  useEffect(()=>{if(!store){setForm(null);return};setLoading(true);setErr('');api(`/stores/${store}/settings`).then((x:any)=>setForm({...x,business_hours:{...defaultHours,...(x.business_hours||{})}})).catch((e:any)=>setErr(e.message)).finally(()=>setLoading(false))},[store])
  const save=async()=>{if(!form)return;setSaving(true);setErr('');setOk('');try{const payload={...form,currency:form.currency||'DOP',primary_color:form.primary_color||'#36b385',is_active:form.is_active!==false};await api(`/stores/${store}/settings`,{method:'PUT',body:JSON.stringify(payload)});setOk('Cambios guardados.')}catch(e:any){setErr(e.message)}finally{setSaving(false)}}
  const pick=async(kind:'logo_url'|'banner_url',f:File)=>{setUp(kind);setErr('');try{const url=await upload(f);setForm((v:any)=>({...v,[kind]:url}))}catch(e:any){setErr(e.message)}finally{setUp('')}}
  const previewTip=useMemo(()=>tab==='general'?'Edita tu marca y revisa cómo se verá el catálogo en móvil.':tab==='sales'?'Activa delivery, pagos y mensajes; la vista previa refleja la experiencia del cliente.':'Ajusta tus horarios y verifica cómo se muestran en la tienda.',[tab])
 
- return <StoreShell title="Ajustes" subtitle="Solo lo necesario para vender">
-  <div className="mb-5 max-w-sm"><StoreSelector value={store} onChange={setStore}/></div>
-  {!store?<div className="card p-10 text-center text-sm text-[#8d92aa]">Selecciona una tienda para configurarla.</div>:loading||!form?<Loading/>:<div className="grid gap-5 xl:grid-cols-[210px_minmax(0,1fr)_360px]">
-   <aside className="card h-fit p-2">{tabs.map(([id,label,I])=><button key={id} onClick={()=>setTab(id)} className={`flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm font-semibold transition ${tab===id?'bg-brand-50 text-brand-700':'text-[#747a92] hover:bg-[#fafbfc]'}`}><I className="h-4 w-4"/>{label}</button>)}</aside>
+ return <StoreShell title="Ajustes" subtitle="Solo lo necesario para vender" context={<StoreSelector value={store} onChange={setStore}/>}>
+  {!store?<div className="card p-10 text-center text-sm text-[#8d92aa]">Selecciona una tienda para configurarla.</div>:loading||!form?<Loading/>:<div className="grid gap-5 xl:grid-cols-[190px_minmax(0,1fr)_300px]">
+   <SettingsNav active={tab} onSelect={setTab}/>
    <section className="card p-5 sm:p-7">{err&&<Alert text={err}/>} {ok&&<Alert text={ok} type="success"/>}
     {tab==='general'&&<div><p className="section-kicker">Tu identidad</p><h2 className="section-title">Así verán tu negocio</h2><p className="section-copy">WAMERCIO genera automáticamente el enlace, color y demás datos técnicos.</p>
      <div className="mt-6 grid gap-6 lg:grid-cols-[220px_1fr]"><div className="space-y-4"><div><label className="label">Logo</label><ImagePicker value={form.logo_url} onPick={f=>pick('logo_url',f)} onClear={()=>setForm({...form,logo_url:''})} label="Agregar logo" busy={up==='logo_url'}/></div><div className="rounded-2xl border border-[#edf0f4] bg-[#fbfcfd] p-4"><p className="text-sm font-semibold text-ink-900">Consejo</p><p className="mt-2 text-xs leading-5 text-[#9197ad]">Sube una imagen cuadrada y limpia. Si no tienes una, el sistema seguirá mostrando tu tienda con un ícono neutro.</p></div></div><div className="space-y-4"><div><label className="label">Nombre del negocio *</label><input className="field" value={form.name} onChange={e=>setForm({...form,name:e.target.value})}/></div><div><label className="label">WhatsApp comercial</label><PhoneInput value={form.whatsapp||''} onChange={value=>setForm({...form,whatsapp:value})}/></div><div><label className="label">Dirección</label><input className="field" value={form.address||''} onChange={e=>setForm({...form,address:e.target.value})} placeholder="Dónde te encuentran tus clientes"/></div><div><label className="label">Descripción</label><textarea className="field min-h-24 resize-none" value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})} placeholder="Una frase corta sobre tu negocio"/></div></div></div>
@@ -73,8 +73,8 @@ export default function StoreSettings(){
 
     <div className="mt-8 flex justify-end border-t border-slate-100 pt-5"><button onClick={save} disabled={saving} className="btn-primary min-w-44"><CheckCircle2 className="h-4 w-4"/>{saving?'Guardando...':'Guardar cambios'}</button></div>
    </section>
-   <aside className="space-y-4 xl:sticky xl:top-24 xl:self-start">
-      <div className="card p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Smartphone className="h-5 w-5"/></span><div><p className="section-kicker">Vista previa</p><h3 className="text-lg font-semibold text-ink-900">Así se verá en móvil</h3></div></div><p className="mt-2 text-sm leading-6 text-[#8d92aa]">{previewTip}</p><div className="mt-5"><MobilePreview form={form}/></div></div>
+   <aside className="hidden space-y-4 xl:sticky xl:top-[82px] xl:block xl:max-h-[calc(100dvh-98px)] xl:self-start xl:overflow-hidden">
+      <div className="card p-4"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-600"><Smartphone className="h-5 w-5"/></span><div><p className="section-kicker">Vista previa</p><h3 className="text-lg font-semibold text-ink-900">Así se verá en móvil</h3></div></div><p className="mt-2 text-sm leading-6 text-[#8d92aa]">{previewTip}</p><div className="mt-5"><MobilePreview form={form}/></div></div>
       <div className="card p-4"><p className="text-sm font-semibold text-ink-900">Sugerencias</p><ul className="mt-3 space-y-2 text-xs leading-5 text-[#8d92aa]"><li>• Mantén el nombre corto para que se vea bien en pantallas pequeñas.</li><li>• Usa una descripción clara y una portada que represente tu marca.</li><li>• Activa solo métodos de pago y entregas que realmente ofreces.</li></ul></div>
    </aside>
   </div>}

@@ -13,7 +13,7 @@ export default function TransactionsPage(){
  const filtered=useMemo(()=>rows.filter(x=>`${x.reference} ${x.store_name} ${x.description} ${x.status}`.toLowerCase().includes(q.toLowerCase())),[rows,q])
  const paid=rows.filter(x=>x.status==='paid').reduce((a,x)=>a+Number(x.amount),0)
  const refunded=rows.filter(x=>x.status==='refunded').reduce((a,x)=>a+Math.abs(Number(x.amount)),0)
- return <AdminShell title="Movimientos" subtitle="Historial de cobros y reembolsos registrados en WAMERCIO" actions={<StoreSelector value={store} onChange={setStore}/>}> 
+ return <AdminShell title="Movimientos" subtitle="Historial de cobros y reembolsos registrados en WAMERCIO" context={<StoreSelector value={store} onChange={setStore}/>}> 
   <div className="mb-5 grid gap-4 md:grid-cols-3">
    <div className="card p-5"><p className="text-sm text-[#8d92aa]">Cobrado</p><div className="mt-2 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><ArrowDownLeft className="h-5 w-5"/></span><strong className="text-2xl text-ink-900">{money(paid)}</strong></div></div>
    <div className="card p-5"><p className="text-sm text-[#8d92aa]">Reembolsado</p><div className="mt-2 flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-violet-50 text-violet-600"><ArrowUpRight className="h-5 w-5"/></span><strong className="text-2xl text-ink-900">{money(refunded)}</strong></div></div>

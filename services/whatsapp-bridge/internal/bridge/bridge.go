@@ -573,6 +573,36 @@ func messageText(v *events.Message) string {
 	if x := v.Message.GetReactionMessage(); x != nil {
 		return x.GetText()
 	}
+	if x := v.Message.GetButtonsMessage(); x != nil {
+		return fallback(x.GetContentText(), x.GetText())
+	}
+	if x := v.Message.GetButtonsResponseMessage(); x != nil {
+		return fallback(x.GetSelectedDisplayText(), x.GetSelectedButtonID())
+	}
+	if x := v.Message.GetListMessage(); x != nil {
+		return fallback(x.GetTitle(), fallback(x.GetDescription(), x.GetButtonText()))
+	}
+	if x := v.Message.GetListResponseMessage(); x != nil {
+		return fallback(x.GetTitle(), x.GetDescription())
+	}
+	if x := v.Message.GetInteractiveMessage(); x != nil && x.GetBody() != nil {
+		return x.GetBody().GetText()
+	}
+	if x := v.Message.GetInteractiveResponseMessage(); x != nil && x.GetBody() != nil {
+		return x.GetBody().GetText()
+	}
+	if x := v.Message.GetProductMessage(); x != nil {
+		return fallback(x.GetBody(), "Producto")
+	}
+	if x := v.Message.GetOrderMessage(); x != nil {
+		return fallback(x.GetOrderTitle(), fallback(x.GetMessage(), "Pedido de WhatsApp"))
+	}
+	if x := v.Message.GetEventMessage(); x != nil {
+		return fallback(x.GetName(), x.GetDescription())
+	}
+	if x := v.Message.GetInvoiceMessage(); x != nil {
+		return fallback(x.GetTitle(), "Factura")
+	}
 	return ""
 }
 
@@ -596,6 +626,9 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 	case v.Message.GetImageMessage() != nil:
 		x := v.Message.GetImageMessage()
 		meta.Type = "image"
+		if x.GetViewOnce() {
+			meta.Type = "view_once_image"
+		}
 		meta.Caption = x.GetCaption()
 		meta.Body = fallback(meta.Caption, "Imagen")
 		meta.MimeType = x.GetMimetype()
@@ -604,6 +637,12 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 	case v.Message.GetVideoMessage() != nil:
 		x := v.Message.GetVideoMessage()
 		meta.Type = "video"
+		if x.GetGIFPlayback() {
+			meta.Type = "gif"
+		}
+		if x.GetViewOnce() {
+			meta.Type = "view_once_" + meta.Type
+		}
 		meta.Caption = x.GetCaption()
 		meta.Body = fallback(meta.Caption, "Video")
 		meta.MimeType = x.GetMimetype()
@@ -611,7 +650,7 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 		dl = x
 	case v.Message.GetPtvMessage() != nil:
 		x := v.Message.GetPtvMessage()
-		meta.Type = "video"
+		meta.Type = "ptv"
 		meta.Body = "Video circular"
 		meta.MimeType = x.GetMimetype()
 		meta.FileSize = int64(x.GetFileLength())
@@ -620,6 +659,13 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 		x := v.Message.GetAudioMessage()
 		meta.Type = "audio"
 		meta.Body = "Audio"
+		if x.GetPTT() {
+			meta.Type = "ptt"
+			meta.Body = "Nota de voz"
+		}
+		if x.GetViewOnce() {
+			meta.Type = "view_once_" + meta.Type
+		}
 		meta.MimeType = x.GetMimetype()
 		meta.FileSize = int64(x.GetFileLength())
 		dl = x
@@ -645,21 +691,69 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 		meta.Body = fmt.Sprintf("Ubicación · %.6f, %.6f", x.GetDegreesLatitude(), x.GetDegreesLongitude())
 	case v.Message.GetLiveLocationMessage() != nil:
 		x := v.Message.GetLiveLocationMessage()
-		meta.Type = "location"
+		meta.Type = "live_location"
 		meta.Body = fmt.Sprintf("Ubicación en vivo · %.6f, %.6f", x.GetDegreesLatitude(), x.GetDegreesLongitude())
 	case v.Message.GetContactMessage() != nil:
 		x := v.Message.GetContactMessage()
 		meta.Type = "contact"
 		meta.Body = fallback(x.GetDisplayName(), "Contacto")
 	case v.Message.GetContactsArrayMessage() != nil:
-		meta.Type = "contact"
+		meta.Type = "contacts_array"
 		meta.Body = "Contactos"
 	case v.Message.GetReactionMessage() != nil:
 		meta.Type = "reaction"
 		meta.Body = fallback(v.Message.GetReactionMessage().GetText(), "Reacción")
-	case v.Message.GetPollCreationMessage() != nil || v.Message.GetPollCreationMessageV2() != nil || v.Message.GetPollCreationMessageV3() != nil || v.Message.GetPollUpdateMessage() != nil:
+	case v.Message.GetPollCreationMessage() != nil:
 		meta.Type = "poll"
-		meta.Body = "Encuesta"
+		meta.Body = fallback(v.Message.GetPollCreationMessage().GetName(), "Encuesta")
+	case v.Message.GetPollCreationMessageV2() != nil:
+		meta.Type = "poll"
+		meta.Body = fallback(v.Message.GetPollCreationMessageV2().GetName(), "Encuesta")
+	case v.Message.GetPollCreationMessageV3() != nil:
+		meta.Type = "poll"
+		meta.Body = fallback(v.Message.GetPollCreationMessageV3().GetName(), "Encuesta")
+	case v.Message.GetPollCreationMessageV4() != nil:
+		meta.Type = "poll"
+		meta.Body = fallback(v.Message.GetPollCreationMessageV4().GetName(), "Encuesta")
+	case v.Message.GetPollCreationMessageV5() != nil:
+		meta.Type = "poll"
+		meta.Body = fallback(v.Message.GetPollCreationMessageV5().GetName(), "Encuesta")
+	case v.Message.GetPollCreationMessageV6() != nil:
+		meta.Type = "poll"
+		meta.Body = fallback(v.Message.GetPollCreationMessageV6().GetName(), "Encuesta")
+	case v.Message.GetPollUpdateMessage() != nil:
+		meta.Type = "poll_vote"
+		meta.Body = "Voto en encuesta"
+	case v.Message.GetButtonsMessage() != nil:
+		meta.Type = "buttons"
+		meta.Body = fallback(messageText(v), "Mensaje con botones")
+	case v.Message.GetButtonsResponseMessage() != nil:
+		meta.Type = "buttons_response"
+		meta.Body = fallback(messageText(v), "Respuesta de botón")
+	case v.Message.GetListMessage() != nil:
+		meta.Type = "list"
+		meta.Body = fallback(messageText(v), "Lista de opciones")
+	case v.Message.GetListResponseMessage() != nil:
+		meta.Type = "list_response"
+		meta.Body = fallback(messageText(v), "Respuesta de lista")
+	case v.Message.GetInteractiveMessage() != nil:
+		meta.Type = "interactive"
+		meta.Body = fallback(messageText(v), "Mensaje interactivo")
+	case v.Message.GetInteractiveResponseMessage() != nil:
+		meta.Type = "interactive_response"
+		meta.Body = fallback(messageText(v), "Respuesta interactiva")
+	case v.Message.GetProductMessage() != nil:
+		meta.Type = "product"
+		meta.Body = fallback(messageText(v), "Producto")
+	case v.Message.GetOrderMessage() != nil:
+		meta.Type = "order"
+		meta.Body = fallback(messageText(v), "Pedido de WhatsApp")
+	case v.Message.GetEventMessage() != nil:
+		meta.Type = "event"
+		meta.Body = fallback(messageText(v), "Evento")
+	case v.Message.GetInvoiceMessage() != nil:
+		meta.Type = "invoice"
+		meta.Body = fallback(messageText(v), "Factura")
 	default:
 		if meta.Body == "" {
 			meta.Type = "other"
