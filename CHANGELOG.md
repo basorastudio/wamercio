@@ -1,3 +1,9 @@
+# WAMERCIO 1.7.1
+
+- Corrige la compilación del API: restaura el campo interno `Phone string `json:"phone"`` en el payload de registro de comercios.
+- Mantiene WhatsApp como único identificador visible del comerciante.
+- Sin cambios de base de datos, variables de entorno, routing o volúmenes.
+
 # WAMERCIO 1.7.0
 
 ## Canal comercial

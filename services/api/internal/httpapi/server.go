@@ -340,6 +340,7 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name         string `json:"name"`
+		Phone        string `json:"phone"`
 		PIN          string `json:"pin"`
 		BusinessName string `json:"business_name"`
 	}

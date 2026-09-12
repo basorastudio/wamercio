@@ -52,3 +52,8 @@ uploads_data
 ```
 
 Los medios de WhatsApp se almacenan bajo el volumen `uploads_data` y permanecen entre redeploys.
+
+
+## Hotfix 1.7.1
+
+No requiere cambios de `.env`, migraciones nuevas ni Fresh Volumes. Corrige exclusivamente la compilación del endpoint de registro de comercios. Realiza **Rebuild** normal en Dokploy.

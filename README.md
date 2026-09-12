@@ -1,4 +1,4 @@
-# WAMERCIO 1.7.0
+# WAMERCIO 1.7.1
 
 WAMERCIO es una plataforma SaaS de comercio conversacional construida con Next.js, Go, PostgreSQL, Redis y un servicio WhatsApp multisesión propio. Esta versión amplía el Centro de Conversaciones para trabajar con medios reales y añade un WhatsApp independiente para soporte del SuperAdmin.
 
@@ -71,3 +71,8 @@ Consulta también:
 - `docs/CENTRO_CONVERSACIONES.md`
 - `docs/SESION_WHATSAPP.md`
 - `DEPLOY_DOKPLOY.md`
+
+
+## Hotfix 1.7.1
+
+Corrige el contrato de registro de comercios: el backend vuelve a aceptar el campo interno `phone`, que representa el número de WhatsApp normalizado enviado por el onboarding. Este campo no reaparece como campo visual de “Teléfono”; la interfaz sigue mostrando únicamente WhatsApp.
