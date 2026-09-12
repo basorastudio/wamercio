@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto+Condensed:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -76,3 +77,11 @@ button,a,input,select,textarea { touch-action:manipulation; }
 @media (max-width:639px) {
   .mobile-sheet { border-radius:24px 24px 0 0 !important; }
 }
+
+/* Storefront theme engine */
+.storefront input,.storefront textarea,.storefront select{color:var(--store-text);background:var(--store-surface);border-color:var(--store-border)}
+.storefront .label{color:var(--store-text)}
+.storefront-product-card{border-radius:var(--store-radius)}
+
+.storefront .field:focus{border-color:var(--store-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--store-primary) 12%,transparent)}
+.storefront ::selection{background:color-mix(in srgb,var(--store-primary) 22%,white);color:var(--store-text)}

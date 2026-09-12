@@ -78,3 +78,8 @@ SuperAdmin: /admin/login → correo + contraseña
 ```
 
 Consulta `docs/PLANTILLAS_NEGOCIOS_RD.md` para el diseño completo del sistema.
+
+
+## Theme Engine 2.1
+
+WAMERCIO separa las plantillas funcionales de los temas visuales. Cada tienda puede cambiar tema, colores, tipografías, header, hero, categorías, tarjetas, proporción de imágenes, botones, fondo y CSS avanzado sin perder productos ni configuración comercial. Consulta `docs/THEME_ENGINE.md`.

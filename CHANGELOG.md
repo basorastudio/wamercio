@@ -1,3 +1,12 @@
+# WAMERCIO 2.1.0 — Theme Engine
+
+- Separa plantillas funcionales de temas visuales.
+- Añade 8 temas profesionales: Fresh Market, Food Bold, Editorial Fashion, Beauty Soft, Luxury, Tech Modern, Industrial Pro y Minimal Shop.
+- Nuevo editor Diseño y marca con colores, tipografía, header, hero, categorías, productos, botones, fondo y CSS personalizado.
+- La tienda pública interpreta `visual_theme` y `theme_config` mediante design tokens.
+- Las plantillas de negocio asignan un tema recomendado real sin acoplar la lógica comercial al diseño.
+- Migración compatible con tiendas existentes, conservando su color principal.
+
 # WAMERCIO 2.0.2
 
 ## Corrección de compilación

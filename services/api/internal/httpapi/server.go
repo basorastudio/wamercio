@@ -212,6 +212,15 @@ func str(v any) string {
 	return fmt.Sprint(v)
 }
 
+func normalizeVisualTheme(v string) string {
+	v = strings.TrimSpace(strings.ToLower(v))
+	allowed := map[string]bool{"fresh-market": true, "food-bold": true, "editorial-fashion": true, "beauty-soft": true, "luxury": true, "tech-modern": true, "industrial-pro": true, "minimal-shop": true}
+	if !allowed[v] {
+		return "minimal-shop"
+	}
+	return v
+}
+
 func normalizePhone(v string) string {
 	raw := strings.TrimSpace(v)
 	digits := regexp.MustCompile(`\D+`).ReplaceAllString(raw, "")
@@ -667,7 +676,7 @@ func (s *Server) ownerForStore(ctx context.Context, storeID string) (string, err
 
 func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	q := `SELECT st.id,st.name,st.slug,coalesce(st.description,''),coalesce(st.logo_url,''),coalesce(st.whatsapp,''),coalesce(st.address,''),st.currency,st.primary_color,st.is_active,st.created_at,st.business_engine,st.template_config,coalesce(bt.slug,''),coalesce(bt.name,'') FROM stores st LEFT JOIN business_templates bt ON bt.id=st.template_id`
+	q := `SELECT st.id,st.name,st.slug,coalesce(st.description,''),coalesce(st.logo_url,''),coalesce(st.whatsapp,''),coalesce(st.address,''),st.currency,st.primary_color,st.is_active,st.created_at,st.business_engine,st.template_config,coalesce(bt.slug,''),coalesce(bt.name,''),st.visual_theme,st.theme_config FROM stores st LEFT JOIN business_templates bt ON bt.id=st.template_id`
 	args := []any{}
 	if c.Role != "superadmin" {
 		q += ` WHERE st.user_id=$1`
@@ -682,16 +691,18 @@ func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, slug, desc, logo, wa, address, currency, color, engine, templateSlug, templateName string
+		var id, name, slug, desc, logo, wa, address, currency, color, engine, templateSlug, templateName, visualTheme string
 		var active bool
 		var created time.Time
-		var configRaw []byte
-		if rows.Scan(&id, &name, &slug, &desc, &logo, &wa, &address, &currency, &color, &active, &created, &engine, &configRaw, &templateSlug, &templateName) != nil {
+		var configRaw, themeRaw []byte
+		if rows.Scan(&id, &name, &slug, &desc, &logo, &wa, &address, &currency, &color, &active, &created, &engine, &configRaw, &templateSlug, &templateName, &visualTheme, &themeRaw) != nil {
 			continue
 		}
 		var config any = map[string]any{}
+		var themeConfig any = map[string]any{}
 		_ = json.Unmarshal(configRaw, &config)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created, "business_engine": engine, "template_config": config, "template_slug": templateSlug, "template_name": templateName})
+		_ = json.Unmarshal(themeRaw, &themeConfig)
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created, "business_engine": engine, "template_config": config, "template_slug": templateSlug, "template_name": templateName, "visual_theme": visualTheme, "theme_config": themeConfig})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1840,18 +1851,22 @@ func businessOpenNow(raw []byte, timezone string) bool {
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var sid, name, desc, logo, banner, wa, address, currency, color, timezone string
+	var sid, name, desc, logo, banner, wa, address, currency, color, timezone, businessEngine, visualTheme string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer, acceptingOrders bool
-	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
+	var hoursRaw, templateConfigRaw, themeConfigRaw []byte
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),business_engine,template_config,visual_theme,theme_config FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
 	var hours any = map[string]any{}
+	var templateConfig any = map[string]any{}
+	var themeConfig any = map[string]any{}
 	_ = json.Unmarshal(hoursRaw, &hours)
+	_ = json.Unmarshal(templateConfigRaw, &templateConfig)
+	_ = json.Unmarshal(themeConfigRaw, &themeConfig)
 	openNow := acceptingOrders && businessOpenNow(hoursRaw, timezone)
 	cats := []map[string]any{}
 	rows, _ := s.db.Query(r.Context(), `SELECT id,name,slug,coalesce(description,''),coalesce(image_url,'') FROM categories WHERE store_id=$1 AND is_active=true ORDER BY sort_order,name`, sid)
@@ -1890,6 +1905,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		"store": map[string]any{
 			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
 			"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
+			"business_engine": businessEngine, "template_config": templateConfig, "visual_theme": visualTheme, "theme_config": themeConfig,
 			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "accepting_orders": acceptingOrders, "open_now": openNow,
 			"payment_methods": map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer},
 			"bank_transfer":   map[string]any{"bank_name": bankName, "account_name": accountName, "account_number": accountNumber, "account_type": accountType},
@@ -2942,21 +2958,25 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	var name, slug, desc, logo, banner, wa, address, currency, color string
+	var name, slug, desc, logo, banner, wa, address, currency, color, businessEngine, visualTheme string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer, active, acceptingOrders bool
-	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active,accepting_orders FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active, &acceptingOrders)
+	var hoursRaw, templateConfigRaw, themeConfigRaw []byte
+	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active,accepting_orders,business_engine,template_config,visual_theme,theme_config FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active, &acceptingOrders, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
 	var hours any = map[string]any{}
+	var templateConfig any = map[string]any{}
+	var themeConfig any = map[string]any{}
 	_ = json.Unmarshal(hoursRaw, &hours)
+	_ = json.Unmarshal(templateConfigRaw, &templateConfig)
+	_ = json.Unmarshal(themeConfigRaw, &themeConfig)
 	jsonOut(w, 200, map[string]any{
 		"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
-		"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
+		"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum, "business_engine": businessEngine, "template_config": templateConfig, "visual_theme": visualTheme, "theme_config": themeConfig,
 		"pickup_enabled": pickup, "delivery_enabled": delivery, "cash_enabled": cash, "cash_on_delivery_enabled": cod,
 		"bank_transfer_enabled": transfer, "bank_name": bankName, "bank_account_name": accountName, "bank_account_number": accountNumber,
 		"bank_account_type": accountType, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "is_active": active, "accepting_orders": acceptingOrders,
@@ -2995,6 +3015,8 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		OrderNotice           string         `json:"order_notice"`
 		CheckoutMessage       string         `json:"checkout_message"`
 		BusinessHours         map[string]any `json:"business_hours"`
+		VisualTheme           string         `json:"visual_theme"`
+		ThemeConfig           map[string]any `json:"theme_config"`
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
 		jsonErr(w, 400, "Datos de tienda inválidos")
@@ -3014,8 +3036,10 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 	if in.MinimumOrder < 0 {
 		in.MinimumOrder = 0
 	}
+	in.VisualTheme = normalizeVisualTheme(in.VisualTheme)
 	hours, _ := json.Marshal(in.BusinessHours)
-	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=NULL,whatsapp=$6,address=$7,currency=$8,primary_color=$9,minimum_order=$10,pickup_enabled=$11,delivery_enabled=$12,cash_enabled=$13,cash_on_delivery_enabled=$14,bank_transfer_enabled=$15,bank_name=$16,bank_account_name=$17,bank_account_number=$18,bank_account_type=$19,business_hours=$20,order_notice=$21,checkout_message=$22,is_active=$23,accepting_orders=$24,updated_at=now() WHERE id=$25`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, in.AcceptingOrders, id)
+	themeConfig, _ := json.Marshal(in.ThemeConfig)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=NULL,whatsapp=$6,address=$7,currency=$8,primary_color=$9,minimum_order=$10,pickup_enabled=$11,delivery_enabled=$12,cash_enabled=$13,cash_on_delivery_enabled=$14,bank_transfer_enabled=$15,bank_name=$16,bank_account_name=$17,bank_account_number=$18,bank_account_type=$19,business_hours=$20,order_notice=$21,checkout_message=$22,is_active=$23,accepting_orders=$24,visual_theme=$25,theme_config=$26,updated_at=now() WHERE id=$27`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, in.AcceptingOrders, in.VisualTheme, themeConfig, id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar la tienda; verifica el identificador web")
 		return
@@ -4241,7 +4265,8 @@ func (s *Server) applyBusinessTemplate(ctx context.Context, tx pgx.Tx, storeID, 
 		delivery_enabled=coalesce(($4::jsonb->>'delivery_enabled')::boolean,delivery_enabled),
 		pickup_enabled=coalesce(($4::jsonb->>'pickup_enabled')::boolean,pickup_enabled),
 		minimum_order=coalesce(($4::jsonb->>'minimum_order')::numeric,minimum_order),
-		order_notice=coalesce(nullif($4::jsonb->>'order_notice',''),order_notice),updated_at=now() WHERE id=$1`, storeID, templateID, engine, settings)
+		order_notice=coalesce(nullif($4::jsonb->>'order_notice',''),order_notice),
+		visual_theme=coalesce(nullif($4::jsonb->>'visual_theme',''),'minimal-shop'),theme_config='{}'::jsonb,updated_at=now() WHERE id=$1`, storeID, templateID, engine, settings)
 	if err != nil {
 		return err
 	}

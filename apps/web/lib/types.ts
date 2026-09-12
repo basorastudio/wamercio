@@ -3,7 +3,7 @@ export type Store={
   id:string;name:string;slug:string;description:string;logo_url:string;banner_url?:string;whatsapp:string;address:string;
   currency:string;primary_color:string;is_active:boolean;created_at:string;minimum_order?:number;pickup_enabled?:boolean;delivery_enabled?:boolean;
   cash_enabled?:boolean;cash_on_delivery_enabled?:boolean;bank_transfer_enabled?:boolean;bank_name?:string;bank_account_name?:string;bank_account_number?:string;
-  bank_account_type?:string;business_hours?:Record<string,BusinessHoursDay>;order_notice?:string;checkout_message?:string;accepting_orders?:boolean;open_now?:boolean;business_engine?:string;template_config?:Record<string,any>;template_slug?:string;template_name?:string
+  bank_account_type?:string;business_hours?:Record<string,BusinessHoursDay>;order_notice?:string;checkout_message?:string;accepting_orders?:boolean;open_now?:boolean;business_engine?:string;template_config?:Record<string,any>;template_slug?:string;template_name?:string;visual_theme?:string;theme_config?:Record<string,any>
 }
 export type Category={id:string;name:string;slug:string;description:string;image_url:string;sort_order:number;is_active:boolean}
 export type PriceOption={name:string;price:number}
