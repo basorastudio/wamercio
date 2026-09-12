@@ -787,7 +787,7 @@ func (m *Manager) forwardHistory(s *Session, v *events.HistorySync) {
 		return
 	}
 	for _, conv := range v.Data.GetConversations() {
-		jid, err := types.ParseJID(conv.GetId())
+		jid, err := types.ParseJID(conv.GetID())
 		if err != nil {
 			continue
 		}

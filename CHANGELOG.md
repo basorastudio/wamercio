@@ -1,3 +1,8 @@
+# WAMERCIO 1.7.2
+
+- Corrige compatibilidad con el protobuf actual de HistorySync en el bridge de WhatsApp: `Conversation.GetID()` en lugar de `GetId()`.
+- Mantiene intactas las funciones de WhatsApp completo, soporte SaaS y la corrección 1.7.1 del registro por WhatsApp.
+
 # WAMERCIO 1.7.1
 
 - Corrige la compilación del API: restaura el campo interno `Phone string `json:"phone"`` en el payload de registro de comercios.
