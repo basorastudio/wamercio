@@ -1,15 +1,15 @@
-# Despliegue WAMERCIO 2.0.1 en Dokploy
+# Despliegue WAMERCIO 2.0.2 en Dokploy
 
 Esta versión actualiza WAMERCIO 1.9.0 y conserva la infraestructura actual de Cloudflare, Traefik, gateway, PostgreSQL, Redis y WhatsApp.
 
 ## Actualización
 
-1. Reemplaza el contenido del repositorio por WAMERCIO 2.0.0.
+1. Reemplaza el contenido del repositorio por WAMERCIO 2.0.2.
 2. Commit y push:
 
 ```bash
 git add .
-git commit -m "feat: WAMERCIO 2.0 business templates"
+git commit -m "fix: WAMERCIO 2.0.2 storefront archive icon build"
 git push
 ```
 

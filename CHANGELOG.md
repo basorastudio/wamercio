@@ -1,3 +1,11 @@
+# WAMERCIO 2.0.2
+
+## Corrección de compilación
+
+- Corrige el import faltante de `Archive` en la administración de tiendas.
+- Conserva el flujo de archivado/reactivación introducido en 2.0.1.
+- Revisión estática de componentes JSX para evitar referencias visuales sin importar.
+
 # WAMERCIO 2.0.1
 
 ## Corrección de compilación
