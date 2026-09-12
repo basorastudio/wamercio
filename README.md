@@ -1,8 +1,8 @@
-# WAMERCIO 1.6.0
+# WAMERCIO 1.6.1
 
 WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js + Go + PostgreSQL + Redis y un servicio WhatsApp propio, desplegable en Dokploy.
 
-## Novedades 1.6.0
+## Novedades 1.6.1
 
 Esta versión convierte la bandeja de conversaciones en un verdadero centro de atención comercial inspirado en WhatsApp Web y refuerza la identidad WAMERCIO en las vinculaciones de WhatsApp.
 
@@ -26,7 +26,7 @@ Esta versión convierte la bandeja de conversaciones en un verdadero centro de a
 
 Las nuevas vinculaciones se presentan a WhatsApp con el nombre **WAMERCIO**. El servicio mantiene reconexión automática, supervisión del canal y actividad periódica de la sesión sin forzar el estado visible “en línea”.
 
-Las vinculaciones creadas antes de 1.6.0 conservan el nombre con el que fueron emparejadas. Para actualizar una sesión antigua, desvincúlala una vez desde WAMERCIO y vuelve a escanear el QR.
+Las vinculaciones creadas antes de 1.6.1 conservan el nombre con el que fueron emparejadas. Para actualizar una sesión antigua, desvincúlala una vez desde WAMERCIO y vuelve a escanear el QR.
 
 ### Sin referencias técnicas en la experiencia
 

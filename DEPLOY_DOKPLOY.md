@@ -1,10 +1,10 @@
-# Despliegue WAMERCIO 1.6.0 en Dokploy
+# Despliegue WAMERCIO 1.6.1 en Dokploy
 
 Esta versión amplía el servicio WhatsApp y el Centro de Conversaciones. No cambia el routing, los volúmenes ni las variables `.env` existentes.
 
 ## Actualizar
 
-1. Sustituye el contenido del repositorio por WAMERCIO 1.6.0.
+1. Sustituye el contenido del repositorio por WAMERCIO 1.6.1.
 2. Commit y push:
 
 ```bash

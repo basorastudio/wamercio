@@ -107,7 +107,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 10s
+      start_period: 20s
 
   # Stable reverse-proxy endpoint between Dokploy Traefik and Next.js.
   # Traefik never points directly to the recreated Next.js container.
@@ -131,7 +131,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 5s
+      start_period: 10s
 
   # Install the dynamic Traefik config only after the stable gateway is healthy.
   # This prevents a race during Compose recreations that can leave Traefik on 502.

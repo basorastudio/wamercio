@@ -6,8 +6,7 @@ const nextConfig = {
     const api = process.env.INTERNAL_API_URL || 'http://api:8080'
     return [
       { source: '/api/:path*', destination: `${api}/api/:path*` },
-      { source: '/media/:path*', destination: `${api}/media/:path*` },
-      { source: '/health', destination: `${api}/health` }
+      { source: '/media/:path*', destination: `${api}/media/:path*` }
     ]
   }
 }

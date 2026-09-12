@@ -1,4 +1,4 @@
-# WAMERCIO 1.6.0
+# WAMERCIO 1.6.1
 
 ## Centro de Conversaciones
 
@@ -63,3 +63,10 @@
 - No cambia el dominio ni las variables `.env` existentes.
 - No requiere Fresh Volumes.
 
+
+## 1.6.1 - Hotfix de disponibilidad
+- Corrige 502 posteriores a redeploy por caché de la IP interna de `web` en Nginx.
+- Nginx ahora re-resuelve `web` mediante el DNS embebido de Docker (`127.0.0.11`).
+- `/health` de Next.js ahora es local y no depende del API.
+- `/gateway-health` valida de extremo a extremo que el gateway pueda alcanzar al frontend actual.
+- Se añaden reintentos ante 502/503/504 transitorios durante recreaciones de contenedores.
