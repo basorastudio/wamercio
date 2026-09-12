@@ -601,9 +601,32 @@ func messageText(v *events.Message) string {
 		return fallback(x.GetName(), x.GetDescription())
 	}
 	if x := v.Message.GetInvoiceMessage(); x != nil {
-		return fallback(x.GetTitle(), "Factura")
+		return fallback(x.GetNote(), "Factura")
 	}
 	return ""
+}
+
+func pollV4Name(wrapper *waE2E.FutureProofMessage) string {
+	if wrapper == nil || wrapper.GetMessage() == nil {
+		return "Encuesta"
+	}
+	inner := wrapper.GetMessage()
+	if x := inner.GetPollCreationMessage(); x != nil {
+		return fallback(x.GetName(), "Encuesta")
+	}
+	if x := inner.GetPollCreationMessageV2(); x != nil {
+		return fallback(x.GetName(), "Encuesta")
+	}
+	if x := inner.GetPollCreationMessageV3(); x != nil {
+		return fallback(x.GetName(), "Encuesta")
+	}
+	if x := inner.GetPollCreationMessageV5(); x != nil {
+		return fallback(x.GetName(), "Encuesta")
+	}
+	if x := inner.GetPollCreationMessageV6(); x != nil {
+		return fallback(x.GetName(), "Encuesta")
+	}
+	return "Encuesta"
 }
 
 type mediaMeta struct {
@@ -637,7 +660,7 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 	case v.Message.GetVideoMessage() != nil:
 		x := v.Message.GetVideoMessage()
 		meta.Type = "video"
-		if x.GetGIFPlayback() {
+		if x.GetGifPlayback() {
 			meta.Type = "gif"
 		}
 		if x.GetViewOnce() {
@@ -714,7 +737,7 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 		meta.Body = fallback(v.Message.GetPollCreationMessageV3().GetName(), "Encuesta")
 	case v.Message.GetPollCreationMessageV4() != nil:
 		meta.Type = "poll"
-		meta.Body = fallback(v.Message.GetPollCreationMessageV4().GetName(), "Encuesta")
+		meta.Body = pollV4Name(v.Message.GetPollCreationMessageV4())
 	case v.Message.GetPollCreationMessageV5() != nil:
 		meta.Type = "poll"
 		meta.Body = fallback(v.Message.GetPollCreationMessageV5().GetName(), "Encuesta")

@@ -1,4 +1,4 @@
-# WAMERCIO 1.8.2
+# WAMERCIO 1.8.3
 
 WAMERCIO es una plataforma SaaS de comercio conversacional construida con Next.js, Go, PostgreSQL, Redis y un servicio WhatsApp multisesión propio.
 

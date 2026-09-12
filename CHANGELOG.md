@@ -1,3 +1,12 @@
+# WAMERCIO 1.8.3
+
+## Hotfix de compatibilidad con whatsmeow
+
+- Corrige `InvoiceMessage`: se usa `note`, único texto descriptivo disponible en el protobuf actual.
+- Corrige el getter de GIF de `VideoMessage`: `GetGifPlayback()`.
+- Corrige `PollCreationMessageV4`, que llega envuelto en `FutureProofMessage`, desempaquetando su `Message` interno antes de leer el nombre de la encuesta.
+- No incluye migraciones ni cambios de infraestructura.
+
 # WAMERCIO 1.8.2
 
 ## WhatsApp y navegación refinados
