@@ -22,14 +22,14 @@ button,a,input,select,textarea { touch-action:manipulation; }
 ::selection { background:#b4ead6; color:#235e4b; }
 
 @layer components {
-  .card { @apply rounded-lg border border-slate-100 bg-white shadow-soft; }
-  .field { @apply w-full rounded-md border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10; }
+  .card { @apply rounded-2xl border border-slate-100 bg-white shadow-soft; }
+  .field { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10; }
   .label { @apply mb-1.5 block text-sm font-medium text-ink-900; }
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition disabled:pointer-events-none disabled:opacity-50; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[.99] disabled:pointer-events-none disabled:opacity-50; }
   .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600; }
   .btn-secondary { @apply btn border border-brand-500 bg-white text-brand-600 hover:bg-brand-50; }
   .btn-danger { @apply btn bg-rose-50 text-rose-700 hover:bg-rose-100; }
-  .table-wrap { @apply overflow-hidden rounded-lg border border-slate-100 bg-white shadow-soft; }
+  .table-wrap { @apply overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft; }
   .table { @apply w-full text-left text-sm; }
   .table th { @apply bg-[#fafbfe] px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-[#8d92ad]; }
   .table td { @apply border-t border-slate-100 px-4 py-3 align-middle text-ink-900; }
@@ -61,3 +61,15 @@ button,a,input,select,textarea { touch-action:manipulation; }
 .wamercio-phone-input .iti__country-name { color:#2e3154; }
 .wamercio-phone-input .iti__dial-code { color:#858aa7; }
 .iti--fullscreen-popup.iti--detached-country-selector { z-index: 220 !important; }
+
+
+/* Merchant experience 1.8 */
+.soft-panel { @apply rounded-2xl border border-slate-100 bg-white shadow-soft; }
+.section-kicker { @apply text-[10px] font-bold uppercase tracking-[.16em] text-brand-600; }
+.section-title { @apply mt-1 text-xl font-semibold tracking-tight text-ink-900; }
+.section-copy { @apply mt-1 text-sm leading-6 text-[#8d92aa]; }
+.icon-action { @apply grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-[#7f859f] transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700; }
+.merchant-grid-card { @apply overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lg; }
+@media (max-width:639px) {
+  .mobile-sheet { border-radius:24px 24px 0 0 !important; }
+}

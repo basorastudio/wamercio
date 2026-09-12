@@ -4,8 +4,8 @@ import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
 import {
-  LayoutDashboard,Store,Boxes,Tags,ShoppingBag,TicketPercent,Truck,MessagesSquare,Layers3,Settings,LogOut,
-  Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,ReceiptText,LifeBuoy,MoreHorizontal
+  LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,MessagesSquare,Settings,LogOut,
+  Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal
 } from 'lucide-react'
 
 const commerce=[
@@ -17,17 +17,14 @@ const commerce=[
 const catalog=[
   {href:'/catalog/products',label:'Productos',icon:Boxes},
   {href:'/catalog/categories',label:'Categorías',icon:Tags},
-  {href:'/coupons',label:'Cupones',icon:TicketPercent},
 ]
 const storeTools=[
   {href:'/stores',label:'Mis tiendas',icon:Store},
   {href:'/delivery',label:'Delivery',icon:Truck},
-  {href:'/settings/store',label:'Ajustes de tienda',icon:SlidersHorizontal},
+  {href:'/settings/store',label:'Ajustes',icon:SlidersHorizontal},
   {href:'/settings/whatsapp',label:'WhatsApp',icon:MessageCircleMore},
 ]
 const account=[
-  {href:'/transactions',label:'Movimientos',icon:ReceiptText},
-  {href:'/plans',label:'Plan y suscripción',icon:Layers3},
   {href:'/support',label:'Soporte',icon:LifeBuoy},
   {href:'/settings/profile',label:'Mi cuenta',icon:Settings},
 ]

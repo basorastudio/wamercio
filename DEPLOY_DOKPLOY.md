@@ -57,3 +57,12 @@ Los medios de WhatsApp se almacenan bajo el volumen `uploads_data` y permanecen 
 ## Hotfix 1.7.1
 
 No requiere cambios de `.env`, migraciones nuevas ni Fresh Volumes. Corrige exclusivamente la compilación del endpoint de registro de comercios. Realiza **Rebuild** normal en Dokploy.
+
+## Actualización 1.8.0
+
+Esta versión modifica la experiencia visual y automatiza campos técnicos. No añade migraciones ni variables nuevas.
+
+1. Actualiza el repositorio con WAMERCIO 1.8.0.
+2. En Dokploy pulsa **Rebuild**.
+3. No uses **Fresh Volumes**.
+4. Después del despliegue fuerza una recarga de la PWA/navegador si conservas estilos antiguos; el Service Worker cambia a `wamercio-store-v1.8`.

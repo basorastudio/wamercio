@@ -1,58 +1,50 @@
-# WAMERCIO 1.7.2
+# WAMERCIO 1.8.0
 
-- Corrige compatibilidad con el protobuf actual de HistorySync en el bridge de WhatsApp: `Conversation.GetID()` en lugar de `GetId()`.
-- Mantiene intactas las funciones de WhatsApp completo, soporte SaaS y la corrección 1.7.1 del registro por WhatsApp.
+## Experiencia de tienda
 
-# WAMERCIO 1.7.1
+- Simplifica la navegación del comerciante y elimina de la barra principal módulos de baja frecuencia.
+- Rediseña Dashboard con hero operativo, accesos rápidos, métricas compactas y mejores estados vacíos.
+- Moderniza globalmente modales, campos, botones, tarjetas y formularios con comportamiento mobile-first.
 
-- Corrige la compilación del API: restaura el campo interno `Phone string `json:"phone"`` en el payload de registro de comercios.
-- Mantiene WhatsApp como único identificador visible del comerciante.
-- Sin cambios de base de datos, variables de entorno, routing o volúmenes.
+## Productos
 
-# WAMERCIO 1.7.0
+- Elimina de la interfaz normal SKU, etiqueta, precio anterior, orden visual, destacado y otros campos técnicos.
+- Mantiene foto, nombre, categoría, precio y descripción como flujo principal.
+- Mueve inventario, variantes y extras a una sección opcional.
+- Cambia listado tipo tabla por tarjetas visuales.
 
-## Canal comercial
+## Categorías
 
-- Eliminado el campo visible **Teléfono** de tiendas y ajustes.
-- WhatsApp pasa a ser el único canal de contacto visible del comercio.
-- Nuevas tiendas se guardan con `stores.phone = NULL` y `stores.whatsapp` como contacto comercial.
-- La migración limpia el teléfono comercial heredado de tiendas sin borrar el WhatsApp.
+- Elimina slug, orden y URL de imagen de la interfaz.
+- Añade subida directa de imagen desde el placeholder.
+- Genera automáticamente el orden cuando no se envía.
 
-## Conversaciones WhatsApp
+## Tiendas y ajustes
 
-- Recepción y renderizado real de imagen, sticker, video, video circular/PTV, audio, documento, ubicación, ubicación en vivo, contacto, reacción y encuesta.
-- Descarga de medios recibidos al volumen persistente compartido con el API.
-- Envío desde el chat de imágenes, videos, audios y documentos hasta 32 MB.
-- Captura de mensajes enviados desde otros dispositivos vinculados.
-- Estados de entrega/lectura mediante eventos `Receipt`.
-- Marcado real como leído mediante `MarkRead`.
-- Resolución PN↔LID para identificar correctamente contactos modernos de WhatsApp.
-- Historial sincronizado procesado por el mismo pipeline de mensajes.
+- Elimina slug, color hexadecimal, URL del logo y estado técnico del formulario principal.
+- Añade subida directa de logo y portada.
+- Reduce Ajustes de cinco secciones a tres: Mi negocio, Ventas y entrega, Horarios.
+- Oculta moneda/color/slug y conserva valores internamente.
 
-## Actividad del dispositivo
+## Delivery
 
-- Sesión reforzada con `SetPassive(false)` al conectar y durante mantenimiento periódico.
-- Recibos de entrega activos con `SetForceActiveDeliveryReceipts(true)`.
-- Pulso breve de `PresenceAvailable` al conectar/reconectar y regreso inmediato a `PresenceUnavailable` para no mantener la cuenta visible “en línea”.
-- Reconexión automática y recuperación ante fallos repetidos de keep-alive.
+- El formulario se reduce a zona y cargo.
+- El tiempo estimado utiliza el valor interno por defecto si el comerciante no lo modifica.
 
-## Soporte SaaS por WhatsApp
+## Catálogo público
 
-- Nueva sesión independiente `support` para el SuperAdmin.
-- Nueva pantalla `/admin/whatsapp` estilo WhatsApp Web.
-- Listado de comerciantes e inicio de conversación desde su WhatsApp de acceso.
-- Envío y recepción de texto y medios.
-- Indicadores de no leídos y recibos de lectura.
-- Nueva tarjeta **Soporte directo por WhatsApp** en `/support` para comerciantes cuando el canal oficial está conectado.
+- Nueva portada más visual.
+- Categorías horizontales con imagen opcional.
+- Buscador y tarjetas de producto rediseñados.
+- Mejor experiencia responsive y estados vacíos.
+- Cupón deja de ocupar espacio en el checkout simplificado.
 
-## Datos
+## PWA
 
-- Nueva migración `000009_whatsapp_full_support`.
-- Nuevas tablas para sesión, conversaciones y mensajes WhatsApp del soporte SaaS.
-- Nuevos campos de medios en `messages`.
+- Cache actualizado a `wamercio-store-v1.8`.
 
 ## Compatibilidad
 
-- Sin cambios en `.env`.
-- Sin cambios en Cloudflare, Traefik, Nginx gateway, PostgreSQL, Redis o volúmenes existentes.
-- No requiere **Fresh Volumes**.
+- Sin migraciones nuevas.
+- Sin cambios de `.env`.
+- Sin cambios en Traefik/gateway/volúmenes.

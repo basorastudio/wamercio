@@ -695,6 +695,9 @@ func (s *Server) createCategory(w http.ResponseWriter, r *http.Request) {
 	if in.Slug == "" {
 		in.Slug = slugify(in.Name)
 	}
+	if in.SortOrder <= 0 {
+		_ = s.db.QueryRow(r.Context(), `SELECT COALESCE(MAX(sort_order),0)+10 FROM categories WHERE store_id=$1`, in.StoreID).Scan(&in.SortOrder)
+	}
 	var id string
 	err := s.db.QueryRow(r.Context(), `INSERT INTO categories(store_id,name,slug,description,image_url,sort_order) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, in.StoreID, in.Name, slugify(in.Slug), in.Description, in.ImageURL, in.SortOrder).Scan(&id)
 	if err != nil {
@@ -722,6 +725,9 @@ func (s *Server) updateCategory(w http.ResponseWriter, r *http.Request) {
 	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
+	}
+	if strings.TrimSpace(in.Slug) == "" {
+		in.Slug = slugify(in.Name)
 	}
 	_, err := s.db.Exec(r.Context(), `UPDATE categories SET name=$1,slug=$2,description=$3,image_url=$4,sort_order=$5,is_active=$6 WHERE id=$7 AND store_id=$8`, in.Name, slugify(in.Slug), in.Description, in.ImageURL, in.SortOrder, in.IsActive, id, in.StoreID)
 	if err != nil {
@@ -830,6 +836,9 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	var cat any = nil
 	if in.CategoryID != "" {
 		cat = in.CategoryID
+	}
+	if in.SortOrder <= 0 {
+		_ = s.db.QueryRow(r.Context(), `SELECT COALESCE(MAX(sort_order),0)+10 FROM products WHERE store_id=$1`, in.StoreID).Scan(&in.SortOrder)
 	}
 	var id string
 	err := s.db.QueryRow(r.Context(), `INSERT INTO products(store_id,category_id,name,slug,sku,description,image_url,price,compare_price,stock,track_stock,variants,extras,tag,is_featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`, in.StoreID, cat, in.Name, slugify(firstNonEmpty(in.Slug, in.Name)), in.SKU, in.Description, in.ImageURL, in.Price, in.ComparePrice, in.Stock, in.TrackStock, in.Variants, in.Extras, in.Tag, in.IsFeatured, in.SortOrder).Scan(&id)
