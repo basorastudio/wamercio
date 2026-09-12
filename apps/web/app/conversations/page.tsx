@@ -4,7 +4,7 @@ import {useEffect,useMemo,useRef,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money} from '@/lib/api'
 import {
-  ArrowLeft,CheckCheck,ClipboardList,Info,MessageCircleMore,Paperclip,RefreshCw,Search,Send,X
+  ArrowLeft,CheckCheck,ClipboardList,Info,MessageCircleMore,Paperclip,RefreshCw,Search,Send,X,ShoppingCart,Plus,Minus,Trash2,Package2,Zap
 } from 'lucide-react'
 import {WhatsAppMessageContent,type WhatsAppMessage} from '@/components/whatsapp-message-content'
 
@@ -16,7 +16,11 @@ type Msg=WhatsAppMessage
 type Customer={id:string;name:string;phone:string;address:string;notes:string;status:string;order_count:number;total_spent:number;last_order_at?:string|null}
 type Detail={id:string;remote_jid:string;display_name:string;phone:string;status:string;customer:Customer;orders:any[];metrics:{messages:number;incoming:number;outgoing:number;images:number;videos:number;audios:number;documents:number;first_interaction?:string|null;last_interaction?:string|null}}
 type Note={id:string;note:string;author?:string;created_at:string}
-type Panel='contact'|'records'|null
+type Panel='contact'|'records'|'sale'|null
+type Product={id:string;name:string;price:number;image_url?:string;description?:string;stock?:number;track_stock?:boolean;variants?:{name:string;price:number}[];extras?:{name:string;price:number}[]}
+type Zone={id:string;name:string;charge:number}
+type QuickReply={id:string;title:string;body:string}
+type CartItem={product:Product;quantity:number;variant_name?:string;extras?:{name:string;price:number}[]}
 
 const label=(c:Conv)=>c.display_name||c.phone||c.remote_jid.split('@')[0]
 const time=(v?:string|null)=>v?new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}):''
@@ -40,6 +44,15 @@ export default function Conversations(){
   const[noteText,setNoteText]=useState('')
   const[savingContact,setSavingContact]=useState(false)
   const[contactForm,setContactForm]=useState({name:'',address:'',notes:'',status:'active'})
+  const[catalog,setCatalog]=useState<Product[]>([])
+  const[zones,setZones]=useState<Zone[]>([])
+  const[quickReplies,setQuickReplies]=useState<QuickReply[]>([])
+  const[showQuick,setShowQuick]=useState(false)
+  const[productSearch,setProductSearch]=useState('')
+  const[cart,setCart]=useState<CartItem[]>([])
+  const[creatingOrder,setCreatingOrder]=useState(false)
+  const[orderMessage,setOrderMessage]=useState('')
+  const[orderForm,setOrderForm]=useState({delivery_type:'delivery',shipping_zone_id:'',payment_method:'cash_on_delivery',delivery_address:'',notes:''})
   const bottom=useRef<HTMLDivElement>(null)
 
   const loadConvs=async()=>{
@@ -67,19 +80,32 @@ export default function Conversations(){
       const d=await api<Detail>(`/conversations/${x.id}/details`)
       setDetail(d)
       setContactForm({name:d.customer?.name||d.display_name||'',address:d.customer?.address||'',notes:d.customer?.notes||'',status:d.customer?.status||'active'})
+      setOrderForm(v=>({...v,delivery_address:v.delivery_address||d.customer?.address||''}))
     }catch{}
   }
   const loadNotes=async(c?:Conv|null)=>{
     const x=c||selected;if(!x)return
     try{setNotes(await api<Note[]>(`/conversations/${x.id}/notes`))}catch{}
   }
+  const loadCatalog=async()=>{
+    if(!store)return
+    try{const [p,z,q]=await Promise.all([api<Product[]>(`/products?store_id=${store}`),api<Zone[]>(`/shipping?store_id=${store}`),api<QuickReply[]>(`/quick-replies?store_id=${store}`)]);setCatalog(p.filter(x=>(x as any).is_active!==false));setZones(z.filter(x=>(x as any).is_active!==false));setQuickReplies(q)}catch{}
+  }
 
-  useEffect(()=>{setSelected(null);setMessages([]);setPanel(null);setDetail(null);loadConvs()},[store])
-  useEffect(()=>{const t=setInterval(()=>{loadConvs();if(selected){loadMsgs(selected);if(panel)loadDetails(selected);if(panel==='records')loadNotes(selected)}},3000);return()=>clearInterval(t)},[store,selected?.id,panel])
+  useEffect(()=>{setSelected(null);setMessages([]);setPanel(null);setDetail(null);setCart([]);loadConvs();loadCatalog()},[store])
+  useEffect(()=>{
+    if(!store)return
+    const refresh=()=>{loadConvs();if(selected){loadMsgs(selected);if(panel)loadDetails(selected);if(panel==='records')loadNotes(selected)}}
+    const fallback=setInterval(refresh,30000)
+    const stream=new EventSource(`/api/v1/events?store_id=${encodeURIComponent(store)}`)
+    stream.onmessage=refresh
+    stream.onerror=()=>{}
+    return()=>{clearInterval(fallback);stream.close()}
+  },[store,selected?.id,panel])
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'})},[messages.length])
 
-  const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);void loadMsgs(c)}
-  const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);void loadDetails();if(mode==='records')void loadNotes()}
+  const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);setShowQuick(false);void loadMsgs(c)}
+  const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);setOrderMessage('');void loadDetails().then(()=>{});if(mode==='records')void loadNotes();if(mode==='sale'){void loadCatalog();setOrderForm(v=>({...v,delivery_address:detail?.customer?.address||v.delivery_address}))}}
   const send=async(e:React.FormEvent)=>{
     e.preventDefault();if(!selected||!text.trim())return
     const body=text.trim();setSending(true);setText('')
@@ -122,6 +148,33 @@ export default function Conversations(){
     try{const n=await api<Note>(`/conversations/${selected.id}/notes`,{method:'POST',body:JSON.stringify({note:body})});setNotes(v=>[{...n,author:'Tú'},...v])}catch(e:any){alert(e.message);setNoteText(body)}
   }
 
+  const addProduct=(product:Product)=>setCart(items=>{
+    const existing=items.find(x=>x.product.id===product.id)
+    if(existing)return items.map(x=>x.product.id===product.id?{...x,quantity:x.quantity+1}:x)
+    const firstVariant=product.variants?.[0]?.name||''
+    return [...items,{product,quantity:1,variant_name:firstVariant,extras:[]}]
+  })
+  const changeQty=(id:string,delta:number)=>setCart(items=>items.map(x=>x.product.id===id?{...x,quantity:Math.max(0,x.quantity+delta)}:x).filter(x=>x.quantity>0))
+  const setVariant=(id:string,name:string)=>setCart(items=>items.map(x=>x.product.id===id?{...x,variant_name:name}:x))
+  const toggleExtra=(id:string,extra:{name:string;price:number})=>setCart(items=>items.map(x=>{if(x.product.id!==id)return x;const has=(x.extras||[]).some(e=>e.name===extra.name);return {...x,extras:has?(x.extras||[]).filter(e=>e.name!==extra.name):[...(x.extras||[]),extra]}}))
+  const cartUnit=(item:CartItem)=>{
+    const variant=item.product.variants?.find(v=>v.name===item.variant_name)
+    const base=variant&&Number(variant.price)>0?Number(variant.price):Number(item.product.price)||0
+    return base+(item.extras||[]).reduce((n,e)=>n+(Number(e.price)||0),0)
+  }
+  const cartSubtotal=useMemo(()=>cart.reduce((sum,item)=>sum+cartUnit(item)*item.quantity,0),[cart])
+  const selectedZone=zones.find(z=>z.id===orderForm.shipping_zone_id)
+  const orderTotal=cartSubtotal+(orderForm.delivery_type==='delivery'?(selectedZone?.charge||0):0)
+  const visibleProducts=useMemo(()=>catalog.filter(p=>(p.name+' '+(p.description||'')).toLowerCase().includes(productSearch.toLowerCase())),[catalog,productSearch])
+  const createOrder=async()=>{
+    if(!selected||cart.length===0)return
+    setCreatingOrder(true);setOrderMessage('')
+    try{
+      const out=await api<any>(`/conversations/${selected.id}/orders`,{method:'POST',body:JSON.stringify({customer_name:detail?.customer?.name||selected.display_name||selected.phone,delivery_address:orderForm.delivery_address,delivery_type:orderForm.delivery_type,shipping_zone_id:orderForm.shipping_zone_id,payment_method:orderForm.payment_method,notes:orderForm.notes,items:cart.map(x=>({product_id:x.product.id,quantity:x.quantity,variant_name:x.variant_name||'',extras:x.extras||[]}))})})
+      setCart([]);setOrderMessage(`Pedido #${out.number} creado y enviado por WhatsApp.`);await loadDetails();setTimeout(()=>loadMsgs(selected),500)
+    }catch(e:any){setOrderMessage(e.message||'No se pudo crear el pedido')}finally{setCreatingOrder(false)}
+  }
+
   const filtered=useMemo(()=>convs.filter(c=>(!onlyUnread||c.unread_count>0)&&(label(c)+' '+c.last_message+' '+(c.phone||'')).toLowerCase().includes(search.toLowerCase())),[convs,search,onlyUnread])
   const paneOpen=!!panel&&!!selected
 
@@ -147,13 +200,15 @@ export default function Conversations(){
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#dfe5e7] font-semibold text-[#54656f]">{label(selected).slice(0,1).toUpperCase()}</div>
               <div className="min-w-0"><div className="truncate text-[15px] font-medium text-[#111b21]">{label(selected)}</div><div className="truncate text-xs text-[#667781]">{selected.phone?`+${selected.phone}`:selected.remote_jid.split('@')[0]} · {statusLabel(selected.status)}</div></div>
             </button>
-            <div className="hidden items-center gap-1 sm:flex"><button title="Datos del contacto" onClick={()=>openPanel('contact')} className={`rounded-full p-2.5 ${panel==='contact'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><Info className="h-5 w-5"/></button><button title="Registros de atención" onClick={()=>openPanel('records')} className={`rounded-full p-2.5 ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button></div>
+            <div className="flex items-center gap-1"><button title="Crear pedido" onClick={()=>openPanel('sale')} className={`rounded-full p-2.5 ${panel==='sale'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ShoppingCart className="h-5 w-5"/></button><button title="Datos del contacto" onClick={()=>openPanel('contact')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='contact'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><Info className="h-5 w-5"/></button><button title="Registros de atención" onClick={()=>openPanel('records')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button></div>
           </header>
           <div className="relative flex-1 overflow-y-auto px-3 py-4 sm:px-6" style={{backgroundColor:'#efeae2',backgroundImage:'radial-gradient(circle at 20px 20px,rgba(17,27,33,.025) 1px,transparent 1px)',backgroundSize:'32px 32px'}}>
             <div className="mx-auto max-w-4xl space-y-1.5">{messages.map(m=><div key={m.id} className={`flex ${m.direction==='out'?'justify-end':'justify-start'}`}><div className={`relative max-w-[88%] rounded-[10px] px-2.5 py-1.5 shadow-[0_1px_1px_rgba(11,20,26,.13)] sm:max-w-[72%] ${m.direction==='out'?'bg-[#d9fdd3]':'bg-white'}`}><WhatsAppMessageContent m={m}/><div className="ml-8 mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none text-[#667781]"><span>{time(m.occurred_at)}</span>{m.direction==='out'&&<CheckCheck className={`h-3.5 w-3.5 ${m.status==='read'?'text-[#53bdeb]':''}`}/>}</div></div></div>)}<div ref={bottom}/></div>
           </div>
-          <form onSubmit={send} className="flex shrink-0 items-end gap-2 border-t border-[#dfe3e6] bg-[#f0f2f5] px-3 py-2.5">
+          <form onSubmit={send} className="relative flex shrink-0 items-end gap-2 border-t border-[#dfe3e6] bg-[#f0f2f5] px-3 py-2.5">
+            {showQuick&&<div className="absolute bottom-[66px] left-3 z-30 w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-[#dfe3e6] bg-white shadow-[0_14px_40px_rgba(17,27,33,.18)]"><div className="flex items-center justify-between border-b border-[#eef0f2] px-4 py-3"><div><p className="text-sm font-semibold text-[#111b21]">Respuestas rápidas</p><p className="text-[11px] text-[#8696a0]">Un toque para completar el mensaje</p></div><button type="button" onClick={()=>setShowQuick(false)} className="rounded-full p-1.5 text-[#667781] hover:bg-[#f0f2f5]"><X className="h-4 w-4"/></button></div><div className="max-h-64 overflow-y-auto p-2">{quickReplies.map(q=><button type="button" key={q.id} onClick={()=>{setText(q.body);setShowQuick(false)}} className="block w-full rounded-xl px-3 py-2.5 text-left hover:bg-[#f5f6f6]"><span className="block text-xs font-semibold text-[#008069]">{q.title}</span><span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#667781]">{q.body}</span></button>)}{quickReplies.length===0&&<p className="p-4 text-center text-xs text-[#8696a0]">No hay respuestas guardadas.</p>}</div></div>}
             <input ref={fileInput} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" onChange={e=>void sendMedia(e.target.files?.[0])}/>
+            <button type="button" onClick={()=>setShowQuick(v=>!v)} title="Respuestas rápidas" className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${showQuick?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e1e5e7]'}`}><Zap className="h-5 w-5"/></button>
             <button type="button" disabled={sendingMedia} onClick={()=>fileInput.current?.click()} title="Adjuntar archivo" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#e1e5e7] disabled:opacity-40"><Paperclip className="h-5 w-5"/></button>
             <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-white px-1.5 py-1"><textarea rows={1} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[20px] border-0 bg-transparent px-3 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder={sendingMedia?'Enviando archivo...':'Escribe un mensaje'}/></div>
             <button disabled={sending||sendingMedia||!text.trim()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm disabled:opacity-40"><Send className="h-4 w-4"/></button>
@@ -162,12 +217,21 @@ export default function Conversations(){
       </section>
 
       {paneOpen&&selected&&<aside className="absolute inset-0 z-20 flex flex-col border-l border-[#dfe3e6] bg-white md:left-[340px] xl:static xl:w-[390px] xl:shrink-0">
-        <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[#e9edef] bg-[#f0f2f5] px-4"><button onClick={()=>setPanel(null)} className="rounded-full p-2 text-[#54656f] hover:bg-white"><X className="h-5 w-5"/></button><h2 className="text-[16px] font-medium text-[#111b21]">{panel==='contact'?'Datos del contacto':'Registros de atención'}</h2></div>
+        <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[#e9edef] bg-[#f0f2f5] px-4"><button onClick={()=>setPanel(null)} className="rounded-full p-2 text-[#54656f] hover:bg-white"><X className="h-5 w-5"/></button><h2 className="text-[16px] font-medium text-[#111b21]">{panel==='contact'?'Datos del contacto':panel==='sale'?'Crear pedido':'Registros de atención'}</h2></div>
         {!detail?<div className="grid flex-1 place-items-center text-sm text-[#8696a0]">Cargando...</div>:panel==='contact'?<div className="flex-1 overflow-y-auto bg-[#f0f2f5]">
           <div className="bg-white px-5 py-7 text-center"><div className="mx-auto grid h-24 w-24 place-items-center rounded-full bg-[#dfe5e7] text-3xl font-medium text-[#54656f]">{(contactForm.name||label(selected)).slice(0,1).toUpperCase()}</div><div className="mt-4 text-xl font-medium text-[#111b21]">{contactForm.name||label(selected)}</div><div className="mt-1 text-sm text-[#667781]">+{detail.customer?.phone||detail.phone}</div></div>
           <div className="mt-2 bg-white p-5"><div className="grid grid-cols-2 gap-3"><div className="rounded-lg bg-[#f7f8fa] p-3 text-center"><div className="text-lg font-semibold text-[#111b21]">{detail.customer?.order_count||0}</div><div className="text-[11px] text-[#667781]">Pedidos</div></div><div className="rounded-lg bg-[#f7f8fa] p-3 text-center"><div className="text-lg font-semibold text-[#111b21]">{money(detail.customer?.total_spent||0)}</div><div className="text-[11px] text-[#667781]">Compras</div></div></div></div>
           <div className="mt-2 space-y-4 bg-white p-5"><div><label className="mb-1 block text-xs font-medium text-[#667781]">Nombre</label><input className="field" value={contactForm.name} onChange={e=>setContactForm({...contactForm,name:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Dirección</label><textarea className="field min-h-20 resize-none" value={contactForm.address} onChange={e=>setContactForm({...contactForm,address:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Notas del cliente</label><textarea className="field min-h-24 resize-none" value={contactForm.notes} onChange={e=>setContactForm({...contactForm,notes:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Estado del cliente</label><select className="field" value={contactForm.status} onChange={e=>setContactForm({...contactForm,status:e.target.value})}><option value="active">Activo</option><option value="blocked">Bloqueado</option></select></div><button disabled={savingContact||!contactForm.name.trim()} onClick={saveContact} className="btn-primary w-full">{savingContact?'Guardando...':detail.customer?.id?'Guardar cambios':'Guardar contacto'}</button></div>
           <div className="mt-2 bg-white p-5"><h3 className="text-sm font-medium text-[#111b21]">Pedidos recientes</h3><div className="mt-3 space-y-2">{detail.orders?.length?detail.orders.map(o=><div key={o.id} className="flex items-center justify-between rounded-lg border border-[#e9edef] p-3"><div><div className="text-sm font-medium">Pedido #{o.number}</div><div className="mt-0.5 text-[11px] text-[#8696a0]">{dayTime(o.created_at)}</div></div><div className="text-right"><div className="text-sm font-medium">{money(o.total)}</div><div className="text-[10px] capitalize text-[#667781]">{o.status}</div></div></div>):<p className="py-3 text-sm text-[#8696a0]">Todavía no tiene pedidos vinculados.</p>}</div></div>
+        </div>:panel==='sale'?<div className="flex-1 overflow-y-auto bg-[#f0f2f5]">
+          <div className="bg-white p-4">
+            <div className="rounded-xl bg-[#e7fce7] p-3"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#008069]">Venta por WhatsApp</p><p className="mt-1 text-sm font-medium text-[#111b21]">{detail.customer?.name||detail.display_name||'Cliente'}</p><p className="mt-0.5 text-xs text-[#667781]">Crea el pedido sin salir de la conversación.</p></div>
+            {orderMessage&&<div className={`mt-3 rounded-xl px-3 py-2.5 text-xs ${orderMessage.includes('creado')?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{orderMessage}</div>}
+          </div>
+          <div className="mt-2 bg-white p-4"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8696a0]"/><input value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="field pl-10" placeholder="Buscar producto..."/></div><div className="mt-3 max-h-56 space-y-2 overflow-y-auto">{visibleProducts.slice(0,30).map(product=><button type="button" key={product.id} onClick={()=>addProduct(product)} className="flex w-full items-center gap-3 rounded-xl border border-[#e9edef] p-2.5 text-left hover:bg-[#f7f9f8]"><div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#eef2f1]">{product.image_url?<img src={product.image_url} className="h-full w-full object-cover"/>:<Package2 className="h-4 w-4 text-[#8696a0]"/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#111b21]">{product.name}</div><div className="mt-0.5 text-xs text-[#667781]">{money(product.price)}</div></div><Plus className="h-4 w-4 text-[#00a884]"/></button>)}{visibleProducts.length===0&&<p className="py-5 text-center text-xs text-[#8696a0]">No hay productos para mostrar.</p>}</div></div>
+          <div className="mt-2 bg-white p-4"><div className="flex items-center justify-between"><h3 className="text-sm font-medium text-[#111b21]">Pedido</h3><span className="text-xs text-[#667781]">{cart.reduce((n,x)=>n+x.quantity,0)} artículos</span></div><div className="mt-3 space-y-2">{cart.length?cart.map(item=><div key={item.product.id} className="rounded-xl bg-[#f7f9f8] p-2.5"><div className="flex items-center gap-2"><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#111b21]">{item.product.name}</div><div className="text-xs text-[#667781]">{money(cartUnit(item)*item.quantity)}</div></div><button type="button" onClick={()=>changeQty(item.product.id,-1)} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#54656f]"><Minus className="h-3.5 w-3.5"/></button><span className="w-6 text-center text-sm font-semibold">{item.quantity}</span><button type="button" onClick={()=>changeQty(item.product.id,1)} className="grid h-8 w-8 place-items-center rounded-full bg-white text-[#008069]"><Plus className="h-3.5 w-3.5"/></button><button type="button" onClick={()=>setCart(v=>v.filter(x=>x.product.id!==item.product.id))} className="grid h-8 w-8 place-items-center rounded-full text-[#8696a0] hover:text-rose-600"><Trash2 className="h-3.5 w-3.5"/></button></div>{(item.product.variants?.length||0)>0&&<select value={item.variant_name||''} onChange={e=>setVariant(item.product.id,e.target.value)} className="mt-2 w-full rounded-lg border border-[#dfe3e6] bg-white px-2.5 py-2 text-xs text-[#3b4a54] outline-none">{item.product.variants?.map(v=><option key={v.name} value={v.name}>{v.name}{Number(v.price)>0?` · ${money(v.price)}`:''}</option>)}</select>}{(item.product.extras?.length||0)>0&&<div className="mt-2 flex flex-wrap gap-1.5">{item.product.extras?.map(extra=>{const active=(item.extras||[]).some(e=>e.name===extra.name);return <button type="button" key={extra.name} onClick={()=>toggleExtra(item.product.id,extra)} className={`rounded-full border px-2.5 py-1 text-[10px] font-medium ${active?'border-[#00a884] bg-[#e7fce7] text-[#008069]':'border-[#dfe3e6] bg-white text-[#667781]'}`}>{extra.name}{Number(extra.price)>0?` +${money(extra.price)}`:''}</button>})}</div>}</div>):<p className="rounded-xl border border-dashed border-[#dfe3e6] p-4 text-center text-xs text-[#8696a0]">Agrega productos desde el catálogo.</p>}</div></div>
+          <div className="mt-2 space-y-3 bg-white p-4"><div className="grid grid-cols-2 gap-2"><button type="button" onClick={()=>setOrderForm({...orderForm,delivery_type:'delivery'})} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${orderForm.delivery_type==='delivery'?'border-[#00a884] bg-[#e7fce7] text-[#008069]':'border-[#dfe3e6] text-[#667781]'}`}>Delivery</button><button type="button" onClick={()=>setOrderForm({...orderForm,delivery_type:'pickup',shipping_zone_id:''})} className={`rounded-xl border px-3 py-2 text-xs font-semibold ${orderForm.delivery_type==='pickup'?'border-[#00a884] bg-[#e7fce7] text-[#008069]':'border-[#dfe3e6] text-[#667781]'}`}>Recoger</button></div>{orderForm.delivery_type==='delivery'&&<><textarea className="field min-h-20 resize-none" value={orderForm.delivery_address} onChange={e=>setOrderForm({...orderForm,delivery_address:e.target.value})} placeholder="Dirección de entrega"/>{zones.length>0&&<select className="field" value={orderForm.shipping_zone_id} onChange={e=>setOrderForm({...orderForm,shipping_zone_id:e.target.value})}><option value="">Selecciona zona de delivery</option>{zones.map(z=><option value={z.id} key={z.id}>{z.name} · {money(z.charge)}</option>)}</select>}</>}<select className="field" value={orderForm.payment_method} onChange={e=>setOrderForm({...orderForm,payment_method:e.target.value})}><option value="cash_on_delivery">Pago al recibir</option><option value="cash">Efectivo</option><option value="bank_transfer">Transferencia</option></select><textarea className="field min-h-16 resize-none" value={orderForm.notes} onChange={e=>setOrderForm({...orderForm,notes:e.target.value})} placeholder="Nota opcional del pedido"/></div>
+          <div className="sticky bottom-0 border-t border-[#e9edef] bg-white p-4 shadow-[0_-8px_20px_rgba(17,27,33,.04)]"><div className="mb-3 space-y-1 text-xs text-[#667781]"><div className="flex justify-between"><span>Subtotal</span><strong className="text-[#111b21]">{money(cartSubtotal)}</strong></div>{orderForm.delivery_type==='delivery'&&<div className="flex justify-between"><span>Delivery</span><strong className="text-[#111b21]">{money(selectedZone?.charge||0)}</strong></div>}<div className="flex justify-between border-t border-[#eef0f2] pt-2 text-sm"><span className="font-medium text-[#111b21]">Total</span><strong className="text-[#008069]">{money(orderTotal)}</strong></div></div><button disabled={creatingOrder||cart.length===0||(orderForm.delivery_type==='delivery'&&!orderForm.delivery_address.trim())} onClick={createOrder} className="btn-primary w-full"><ShoppingCart className="h-4 w-4"/>{creatingOrder?'Creando pedido...':'Crear y enviar pedido'}</button></div>
         </div>:<div className="flex-1 overflow-y-auto bg-[#f0f2f5]">
           <div className="bg-white p-5"><div className="flex items-center justify-between"><span className="text-sm font-medium text-[#111b21]">Estado de atención</span><select value={detail.status||'open'} onChange={e=>setConversationStatus(e.target.value)} className="rounded-lg border border-[#dfe3e6] bg-white px-3 py-2 text-xs outline-none"><option value="open">Abierta</option><option value="pending">Pendiente</option><option value="closed">Cerrada</option></select></div></div>
           <div className="mt-2 bg-white p-5"><h3 className="text-sm font-medium text-[#111b21]">Resumen de la conversación</h3><div className="mt-4 grid grid-cols-2 gap-3">{[['Mensajes',detail.metrics.messages],['Recibidos',detail.metrics.incoming],['Enviados',detail.metrics.outgoing],['Imágenes',detail.metrics.images],['Videos',detail.metrics.videos],['Audios',detail.metrics.audios],['Documentos',detail.metrics.documents]].map(([k,v])=><div key={String(k)} className="rounded-lg bg-[#f7f8fa] p-3"><div className="text-lg font-semibold text-[#111b21]">{v as any}</div><div className="text-[11px] text-[#667781]">{k}</div></div>)}</div><div className="mt-4 border-t border-[#eef0f2] pt-4 text-xs text-[#667781]"><div className="flex justify-between gap-3 py-1"><span>Primera interacción</span><strong className="text-right font-medium text-[#3b4a54]">{dayTime(detail.metrics.first_interaction)}</strong></div><div className="flex justify-between gap-3 py-1"><span>Última interacción</span><strong className="text-right font-medium text-[#3b4a54]">{dayTime(detail.metrics.last_interaction)}</strong></div></div></div>

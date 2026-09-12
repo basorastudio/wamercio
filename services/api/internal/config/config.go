@@ -1,6 +1,9 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 type Config struct {
 	Port                  string
@@ -14,6 +17,7 @@ type Config struct {
 	AppURL                string
 	WhatsAppBridgeURL     string
 	UploadDir             string
+	AllowedOrigins        []string
 }
 
 func Load() Config {
@@ -29,7 +33,20 @@ func Load() Config {
 		AppURL:                env("APP_URL", "http://localhost:3000"),
 		WhatsAppBridgeURL:     env("WHATSAPP_BRIDGE_URL", "http://whatsapp:8090"),
 		UploadDir:             env("UPLOAD_DIR", "/app/data/uploads"),
+		AllowedOrigins:        splitCSV(env("CORS_ALLOWED_ORIGINS", env("APP_URL", "http://localhost:3000"))),
 	}
+}
+
+func splitCSV(v string) []string {
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func env(key, fallback string) string {

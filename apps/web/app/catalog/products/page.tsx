@@ -1,6 +1,7 @@
 'use client'
 import {useEffect,useMemo,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
+import CatalogNav from '@/components/catalog-nav'
 import {api,money,upload} from '@/lib/api'
 import {Alert,ImagePicker,Loading,Modal,OptionEditor,PageEmpty,SearchBox,Status,Switch} from '@/components/ui'
 import type {Category,PriceOption,Product} from '@/lib/types'
@@ -20,6 +21,7 @@ export default function Products(){
  const categoryName=cats.find(c=>c.id===form.category_id)?.name||'Sin categoría'
 
  return <StoreShell title="Productos" subtitle="Tu catálogo, sin configuraciones técnicas" context={<StoreSelector value={store} onChange={setStore}/>} actions={<button disabled={!store} onClick={()=>start()} className="btn-primary"><Plus className="h-4 w-4"/> Nuevo producto</button>}>
+  <CatalogNav/>
   <div className="mb-5"><SearchBox value={search} onChange={setSearch} placeholder="Buscar productos..."/></div>
   {!store?<PageEmpty title="Selecciona una tienda" detail="Elige la tienda cuyo catálogo quieres administrar."/>:loading?<Loading/>:filtered.length===0?<PageEmpty title="Tu catálogo está listo para crecer" detail="Agrega tu primer producto. WAMERCIO se ocupa del identificador, orden y demás datos técnicos." action={<button className="btn-primary" onClick={()=>start()}>Agregar producto</button>}/>:<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{filtered.map(x=>{
    const cat=cats.find(c=>c.id===x.category_id)?.name||'Sin categoría'

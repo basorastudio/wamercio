@@ -1,6 +1,7 @@
 'use client'
 import { useEffect,useState } from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
+import CatalogNav from '@/components/catalog-nav'
 import {api,upload} from '@/lib/api'
 import {Alert,ImagePicker,Loading,Modal,PageEmpty,Status,Switch} from '@/components/ui'
 import type {Category} from '@/lib/types'
@@ -16,6 +17,7 @@ export default function Categories(){
  const del=async(x:Category)=>{if(!confirm(`¿Eliminar ${x.name}?`))return;await api(`/categories/${x.id}`,{method:'DELETE'}).catch((e)=>alert(e.message));load()}
  const pick=async(f:File)=>{setUp(true);try{const url=await upload(f);setForm((v:any)=>({...v,image_url:url}))}catch(e:any){setErr(e.message)}finally{setUp(false)}}
  return <StoreShell title="Categorías" subtitle="Organiza tu catálogo de forma simple" context={<StoreSelector value={store} onChange={setStore}/>} actions={<button disabled={!store} onClick={()=>start()} className="btn-primary"><Plus className="h-4 w-4"/> Nueva categoría</button>}>
+  <CatalogNav/>
   
   {!store?<PageEmpty title="Selecciona una tienda" detail="Elige la tienda cuyo catálogo quieres organizar."/>:loading?<Loading/>:rows.length===0?<PageEmpty title="Crea tu primera categoría" detail="Agrupa tus productos de una forma que tus clientes entiendan fácilmente." action={<button className="btn-primary" onClick={()=>start()}>Crear categoría</button>}/>:<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{rows.map(x=><article key={x.id} className="card flex items-center gap-4 p-4"><div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#f3f5f7]">{x.image_url?<img src={x.image_url} className="h-full w-full object-cover"/>:<Tags className="h-6 w-6 text-[#a7acbb]"/>}</div><div className="min-w-0 flex-1"><div className="flex items-center gap-2"><h3 className="truncate font-semibold text-ink-900">{x.name}</h3><Status value={x.is_active?'active':'inactive'}/></div><p className="mt-1 line-clamp-2 text-sm leading-5 text-[#8d92aa]">{x.description||'Categoría del catálogo'}</p></div><div className="flex shrink-0 gap-1"><button onClick={()=>start(x)} className="icon-action"><Pencil className="h-4 w-4"/></button><button onClick={()=>del(x)} className="icon-action hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4"/></button></div></article>)}</div>}
   <Modal open={open} onClose={()=>setOpen(false)} title={edit?'Editar categoría':'Nueva categoría'} subtitle="El identificador y el orden se gestionan automáticamente.">

@@ -11,9 +11,7 @@ const nav=[
  {href:'/admin/stores',label:'Tiendas',icon:Building2},
  {href:'/admin/plans',label:'Planes',icon:BadgeDollarSign},
  {href:'/admin/subscriptions',label:'Solicitudes',icon:Layers3},
- {href:'/admin/transactions',label:'Movimientos',icon:ReceiptText},
- {href:'/admin/whatsapp',label:'WhatsApp soporte',icon:MessageCircleMore},
- {href:'/admin/tickets',label:'Tickets',icon:LifeBuoy},
+ {href:'/admin/whatsapp',label:'Soporte WhatsApp',icon:MessageCircleMore},
 ]
 export default function SuperAdminShell({children,title,subtitle,actions}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode}){
  const path=usePathname(),router=useRouter();const[open,setOpen]=useState(false),[me,setMe]=useState<any>(null)

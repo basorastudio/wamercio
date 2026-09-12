@@ -1,3 +1,31 @@
+# WAMERCIO 1.9.0
+
+## Cierre del flujo comercial
+
+- Convierte WhatsApp en un punto de venta conversacional: desde el chat se pueden buscar productos, seleccionar variantes/extras, armar el pedido y enviarlo al cliente sin salir de la conversación.
+- Pedidos creados desde WhatsApp quedan vinculados a la conversación y al CRM del cliente.
+- Añade seguimiento público de pedidos mediante enlace seguro sin necesidad de crear una cuenta.
+- Agrega comprobantes de transferencia: el cliente puede subir imagen/PDF desde el seguimiento y el comercio puede revisarlo desde Pedidos.
+- Mejora los estados operativos: Pendiente, Confirmado, Preparando, Listo, En camino, Entregado/Recogido y Cancelado.
+- Elimina el bloqueo de ventas por límite mensual de pedidos; WhatsApp pasa a ser una capacidad base de todos los planes.
+- Dashboard enfocado en operación diaria: pedidos y ventas de hoy, pedidos por atender, WhatsApp sin leer y alerta de inventario bajo.
+- Catálogo agrupa Productos/Categorías; Delivery pasa a Ajustes → Zonas de entrega y el menú diario queda más limpio.
+- Añade pausa de pedidos y cumplimiento real de horarios comerciales en el checkout público.
+- Añade respuestas rápidas predeterminadas por tienda para WhatsApp.
+- Añade eventos en tiempo real vía Redis + Server-Sent Events para el Centro de WhatsApp, manteniendo un refresco de respaldo.
+- Mensajes automáticos usan una outbox persistente con reintentos y backoff para evitar perder confirmaciones por desconexiones temporales.
+- CORS utiliza `CORS_ALLOWED_ORIGINS` en lugar de permitir todos los orígenes.
+- Login WhatsApp+PIN y SuperAdmin incorporan rate limiting con Redis.
+- Las tiendas ya no se borran: se archivan para preservar pedidos, clientes e historial y pueden reactivarse.
+- Mi cuenta concentra perfil, PIN, plan y acceso directo al soporte por WhatsApp.
+- Cache PWA actualizado a `wamercio-store-v1.9`.
+- Añade CI con GitHub Actions para compilar frontend, API, bridge de WhatsApp y validar Docker Compose antes de desplegar.
+- Añade pruebas unitarias iniciales para normalización de WhatsApp, PIN y slugs.
+
+## Base de datos
+
+Incluye la migración `000010_commerce_flow`, que añade disponibilidad de pedidos, vínculo pedido↔conversación, token público de seguimiento, outbox fiable y respuestas rápidas.
+
 # WAMERCIO 1.8.3
 
 ## Hotfix de compatibilidad con whatsmeow

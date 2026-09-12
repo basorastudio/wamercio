@@ -1,35 +1,35 @@
-# WAMERCIO 1.8.3
+# WAMERCIO 1.9.0
 
-WAMERCIO es una plataforma SaaS de comercio conversacional construida con Next.js, Go, PostgreSQL, Redis y un servicio WhatsApp multisesión propio.
+WAMERCIO es una plataforma SaaS de **comercio conversacional por WhatsApp** construida con Next.js, Go, PostgreSQL, Redis y un bridge multisesión propio.
 
-## Novedad 1.8: panel de comercio simplificado
+## Flujo principal
 
-Esta versión reorganiza la experiencia del comerciante alrededor de un principio: **menos configuración, más operación**.
+```text
+Crear comercio → Cargar catálogo → Conectar WhatsApp
+       ↓
+Conversar con el cliente → Crear pedido desde el chat
+       ↓
+Cobrar / preparar / entregar → conservar historial del cliente
+```
 
-El panel ya no expone campos técnicos como slug, orden visual, SKU, color hexadecimal o URLs de imágenes. WAMERCIO genera o conserva esos valores internamente.
+La versión 1.9 prioriza cerrar este ciclo antes de añadir módulos secundarios.
 
-### Formularios más simples
+### Novedades principales
 
-- Productos: foto, nombre, categoría, precio y descripción; inventario/variantes/extras quedan como opciones.
-- Categorías: imagen, nombre y descripción; slug/orden automáticos.
-- Tiendas: logo, nombre, WhatsApp, dirección y descripción.
-- Delivery: zona y costo; valores técnicos quedan automáticos.
-- Ajustes: solo `Mi negocio`, `Ventas y entrega` y `Horarios`.
-
-### Subida de imágenes
-
-Logo, portada, categorías y productos se cargan tocando directamente el bloque visual de la imagen. Ya no se solicitan URLs.
-
-### Frontend modernizado
-
-- modales mobile-first tipo bottom-sheet;
-- tarjetas con jerarquía visual más clara;
-- campos y acciones rediseñados;
-- Dashboard con accesos rápidos;
-- catálogo público más visual y responsive;
-- navegación del comerciante reducida a módulos operativos esenciales.
-
-Consulta `docs/EXPERIENCIA_COMERCIO_1_8.md` para la matriz completa de cambios.
+- pedido directamente desde una conversación de WhatsApp;
+- selector de productos, variantes y extras dentro del chat;
+- respuesta automática con resumen y enlace de seguimiento;
+- tracking público sin cuenta;
+- comprobante de transferencia;
+- horarios y pausa de pedidos aplicados al checkout;
+- estados operativos de preparación/entrega;
+- respuestas rápidas;
+- eventos de WhatsApp en tiempo real mediante Redis/SSE;
+- outbox con reintentos para mensajes automáticos;
+- rate limiting de acceso;
+- CORS restringido por configuración;
+- tienda archivada en lugar de borrado destructivo;
+- navegación comercial simplificada.
 
 ## Accesos
 
@@ -40,15 +40,18 @@ SuperAdmin: /admin/login → correo + contraseña
 
 ## Infraestructura
 
-Se mantiene la ruta estable:
-
 ```text
 Cloudflare → Traefik → wamercio-gateway:8080 → web:3000 → Go API
                                            ↘ WhatsApp bridge
+                         PostgreSQL + Redis
 ```
 
-La actualización 1.8 no requiere cambios de `.env`, volúmenes ni migraciones de base de datos.
+## Actualización desde 1.8.x
 
-## Actualización
+1. Sube el contenido de esta versión al mismo repositorio.
+2. Conserva el `.env` actual; asegúrate de mantener `CORS_ALLOWED_ORIGINS=https://wamercio.com,https://www.wamercio.com`.
+3. En Dokploy usa **Rebuild**.
+4. **No uses Fresh Volumes.**
+5. Al arrancar el API se aplicará automáticamente `000010_commerce_flow`.
 
-Sube el código al mismo repositorio y ejecuta **Rebuild** en Dokploy. No uses **Fresh Volumes**.
+No se eliminan pedidos, clientes, productos ni conversaciones existentes.

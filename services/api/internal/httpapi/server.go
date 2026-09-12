@@ -21,6 +21,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 
 	authpkg "wamercio/services/api/internal/auth"
@@ -28,9 +29,10 @@ import (
 )
 
 type Server struct {
-	cfg  config.Config
-	db   *pgxpool.Pool
-	http *http.Client
+	cfg   config.Config
+	db    *pgxpool.Pool
+	cache *redis.Client
+	http  *http.Client
 }
 type ctxKey string
 
@@ -38,12 +40,18 @@ const claimsKey ctxKey = "claims"
 
 func New(cfg config.Config, db *pgxpool.Pool) *Server {
 	_ = os.MkdirAll(cfg.UploadDir, 0755)
-	return &Server{cfg: cfg, db: db, http: &http.Client{Timeout: 12 * time.Second}}
+	var cache *redis.Client
+	if opt, err := redis.ParseURL(cfg.RedisURL); err == nil {
+		cache = redis.NewClient(opt)
+	}
+	srv := &Server{cfg: cfg, db: db, cache: cache, http: &http.Client{Timeout: 12 * time.Second}}
+	go srv.outboxLoop()
+	return srv
 }
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
-	r.Use(cors.Handler(cors.Options{AllowedOrigins: []string{"*"}, AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Internal-Secret"}, AllowCredentials: true, MaxAge: 300}))
+	r.Use(cors.Handler(cors.Options{AllowedOrigins: s.cfg.AllowedOrigins, AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Internal-Secret"}, AllowCredentials: true, MaxAge: 300}))
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 200, map[string]any{"ok": true, "service": "wamercio-api"})
 	})
@@ -65,6 +73,8 @@ func (s *Server) Router() http.Handler {
 		api.Get("/plans", s.listPlans)
 		api.Get("/public/stores/{slug}", s.publicStore)
 		api.Post("/public/stores/{slug}/checkout", s.checkout)
+		api.Get("/public/orders/{token}", s.publicOrder)
+		api.Post("/public/orders/{token}/proof", s.publicOrderProof)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
 		api.Post("/internal/whatsapp/receipts", s.whatsappReceipt)
 
@@ -74,6 +84,7 @@ func (s *Server) Router() http.Handler {
 			p.Patch("/me", s.updateMe)
 			p.Post("/me/pin", s.changePIN)
 			p.Get("/dashboard", s.dashboard)
+			p.Get("/events", s.storeEvents)
 			p.Get("/stores", s.listStores)
 			p.Post("/stores", s.createStore)
 			p.Put("/stores/{id}", s.updateStore)
@@ -96,6 +107,10 @@ func (s *Server) Router() http.Handler {
 			p.Post("/shipping", s.createShipping)
 			p.Put("/shipping/{id}", s.updateShipping)
 			p.Delete("/shipping/{id}", s.deleteShipping)
+			p.Get("/quick-replies", s.listQuickReplies)
+			p.Post("/quick-replies", s.createQuickReply)
+			p.Put("/quick-replies/{id}", s.updateQuickReply)
+			p.Delete("/quick-replies/{id}", s.deleteQuickReply)
 			p.Get("/orders", s.listOrders)
 			p.Get("/orders/{id}", s.getOrder)
 			p.Patch("/orders/{id}/status", s.updateOrderStatus)
@@ -123,6 +138,7 @@ func (s *Server) Router() http.Handler {
 			p.Patch("/conversations/{id}/read", s.readConversation)
 			p.Post("/conversations/{id}/send", s.sendConversationMessage)
 			p.Post("/conversations/{id}/send-media", s.sendConversationMedia)
+			p.Post("/conversations/{id}/orders", s.createConversationOrder)
 			p.Post("/uploads", s.upload)
 			p.Get("/whatsapp/{storeID}/status", s.whatsappStatus)
 			p.Post("/whatsapp/{storeID}/connect", s.whatsappConnect)
@@ -198,6 +214,40 @@ func normalizePhone(v string) string {
 	return digits
 }
 
+func clientIP(r *http.Request) string {
+	if v := strings.TrimSpace(strings.Split(r.Header.Get("CF-Connecting-IP"), ",")[0]); v != "" {
+		return v
+	}
+	if v := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]); v != "" {
+		return v
+	}
+	host := r.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i > -1 {
+		host = host[:i]
+	}
+	return strings.Trim(host, "[]")
+}
+
+func (s *Server) allowAttempt(ctx context.Context, key string, limit int64, window time.Duration) bool {
+	if s.cache == nil {
+		return true
+	}
+	n, err := s.cache.Incr(ctx, key).Result()
+	if err != nil {
+		return true
+	}
+	if n == 1 {
+		_ = s.cache.Expire(ctx, key, window).Err()
+	}
+	return n <= limit
+}
+
+func (s *Server) resetAttempts(ctx context.Context, key string) {
+	if s.cache != nil {
+		_ = s.cache.Del(ctx, key).Err()
+	}
+}
+
 func (s *Server) metaCountry(w http.ResponseWriter, r *http.Request) {
 	country := strings.ToLower(strings.TrimSpace(r.Header.Get("CF-IPCountry")))
 	if !regexp.MustCompile(`^[a-z]{2}$`).MatchString(country) || country == "xx" {
@@ -269,6 +319,10 @@ func (s *Server) storeLookup(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Ingresa un número de WhatsApp válido")
 		return
 	}
+	if !s.allowAttempt(r.Context(), "rl:store-lookup:"+clientIP(r), 30, time.Minute) {
+		jsonErr(w, http.StatusTooManyRequests, "Demasiados intentos. Espera un momento e inténtalo de nuevo")
+		return
+	}
 	var exists bool
 	err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1)`, phone).Scan(&exists)
 	if err != nil {
@@ -288,6 +342,11 @@ func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	phone := normalizePhone(in.Phone)
+	attemptKey := "rl:store-login:" + clientIP(r) + ":" + phone
+	if !s.allowAttempt(r.Context(), attemptKey, 8, 15*time.Minute) {
+		jsonErr(w, http.StatusTooManyRequests, "Demasiados intentos. Espera unos minutos antes de volver a intentar")
+		return
+	}
 	var id, name, storedPhone, pinHash, status string
 	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(phone,''),coalesce(pin_hash,''),status FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 ORDER BY created_at LIMIT 1`, phone).Scan(&id, &name, &storedPhone, &pinHash, &status)
 	if err != nil || status != "active" {
@@ -302,6 +361,7 @@ func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 401, "WhatsApp o PIN incorrecto")
 		return
 	}
+	s.resetAttempts(r.Context(), attemptKey)
 	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "owner")
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la sesión")
@@ -321,12 +381,18 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Correo y contraseña son obligatorios")
 		return
 	}
+	adminAttemptKey := "rl:admin-login:" + clientIP(r) + ":" + strings.ToLower(strings.TrimSpace(in.Email))
+	if !s.allowAttempt(r.Context(), adminAttemptKey, 8, 15*time.Minute) {
+		jsonErr(w, http.StatusTooManyRequests, "Demasiados intentos. Espera unos minutos")
+		return
+	}
 	var id, name, email, hash, status string
 	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(email,''),password_hash,status FROM users WHERE role='superadmin' AND lower(email)=lower($1)`, strings.TrimSpace(in.Email)).Scan(&id, &name, &email, &hash, &status)
 	if err != nil || status != "active" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
 		jsonErr(w, 401, "Credenciales administrativas inválidas")
 		return
 	}
+	s.resetAttempts(r.Context(), adminAttemptKey)
 	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "superadmin")
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la sesión")
@@ -366,12 +432,6 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo proteger el PIN")
 		return
 	}
-	// Owners don't use passwords to sign in. Keep an unusable random hash for schema compatibility.
-	randomHash, err := bcrypt.GenerateFromPassword([]byte(uuid.NewString()+uuid.NewString()), bcrypt.DefaultCost)
-	if err != nil {
-		jsonErr(w, 500, "No se pudo crear la cuenta")
-		return
-	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la cuenta")
@@ -379,7 +439,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var id string
-	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,$3,$4,now(),'owner','active') RETURNING id`, name, phone, string(randomHash), string(pinHash)).Scan(&id)
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active') RETURNING id`, name, phone, string(pinHash)).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el WhatsApp")
 		return
@@ -440,15 +500,75 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "phone": phone, "role": role, "created_at": created})
 }
 
+func (s *Server) publishStoreEvent(ctx context.Context, storeID, event string, payload any) {
+	if s.cache == nil || strings.TrimSpace(storeID) == "" {
+		return
+	}
+	body, _ := json.Marshal(map[string]any{"event": event, "payload": payload, "at": time.Now().UTC()})
+	_ = s.cache.Publish(ctx, "wamercio:store:"+storeID, string(body)).Err()
+}
+
+func (s *Server) storeEvents(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	storeID := strings.TrimSpace(r.URL.Query().Get("store_id"))
+	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		jsonErr(w, 500, "Streaming no disponible")
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	fmt.Fprintf(w, "event: ready\ndata: {\"ok\":true}\n\n")
+	flusher.Flush()
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	var ch <-chan *redis.Message
+	var sub *redis.PubSub
+	if s.cache != nil {
+		sub = s.cache.Subscribe(r.Context(), "wamercio:store:"+storeID)
+		defer sub.Close()
+		ch = sub.Channel()
+	}
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+			fmt.Fprintf(w, ": heartbeat\n\n")
+			flusher.Flush()
+		case msg, open := <-ch:
+			if !open && ch != nil {
+				ch = nil
+				continue
+			}
+			if msg != nil {
+				fmt.Fprintf(w, "data: %s\n\n", msg.Payload)
+				flusher.Flush()
+			}
+		}
+	}
+}
+
 func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	var stores, products, orders, customers int
-	var revenue float64
+	var stores, products, customers int
+	var ordersToday, pendingOrders, unreadChats, lowStock int
+	var revenueToday float64
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM stores WHERE user_id=$1`, c.UserID).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM products p JOIN stores s ON s.id=p.store_id WHERE s.user_id=$1`, c.UserID).Scan(&products)
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*),coalesce(sum(o.total) FILTER (WHERE o.status!='canceled'),0) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1`, c.UserID).Scan(&orders, &revenue)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM customers cu JOIN stores s ON s.id=cu.store_id WHERE s.user_id=$1`, c.UserID).Scan(&customers)
-	rows, _ := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.total,o.status,o.created_at,s.name FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 ORDER BY o.created_at DESC LIMIT 8`, c.UserID)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*),coalesce(sum(o.total) FILTER (WHERE o.status<>'canceled'),0) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.created_at>=date_trunc('day',now())`, c.UserID).Scan(&ordersToday, &revenueToday)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.status IN ('pending','confirmed','processing','preparing','ready','out_for_delivery')`, c.UserID).Scan(&pendingOrders)
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(sum(c.unread_count),0) FROM conversations c JOIN stores s ON s.id=c.store_id WHERE s.user_id=$1`, c.UserID).Scan(&unreadChats)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM products p JOIN stores s ON s.id=p.store_id WHERE s.user_id=$1 AND p.track_stock=true AND coalesce(p.stock,0)<=5`, c.UserID).Scan(&lowStock)
+
+	rows, _ := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.total,o.status,o.created_at,s.name,o.source FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 ORDER BY o.created_at DESC LIMIT 8`, c.UserID)
 	defer func() {
 		if rows != nil {
 			rows.Close()
@@ -457,15 +577,22 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	recent := []map[string]any{}
 	if rows != nil {
 		for rows.Next() {
-			var id, customer, status, store string
+			var id, customer, status, store, source string
 			var num int64
 			var total float64
 			var created time.Time
-			_ = rows.Scan(&id, &num, &customer, &total, &status, &created, &store)
-			recent = append(recent, map[string]any{"id": id, "number": num, "customer": customer, "total": total, "status": status, "created_at": created, "store": store})
+			_ = rows.Scan(&id, &num, &customer, &total, &status, &created, &store, &source)
+			recent = append(recent, map[string]any{"id": id, "number": num, "customer": customer, "total": total, "status": status, "created_at": created, "store": store, "source": source})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"metrics": map[string]any{"stores": stores, "products": products, "orders": orders, "customers": customers, "revenue": revenue}, "recent_orders": recent})
+	jsonOut(w, 200, map[string]any{
+		"metrics": map[string]any{
+			"stores": stores, "products": products, "customers": customers,
+			"orders_today": ordersToday, "revenue_today": revenueToday,
+			"pending_orders": pendingOrders, "unread_chats": unreadChats, "low_stock": lowStock,
+		},
+		"recent_orders": recent,
+	})
 }
 
 func slugify(s string) string {
@@ -563,7 +690,7 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 	if c.Role != "superadmin" {
 		limits := s.limitsForUser(r.Context(), c.UserID)
 		var count int
-		_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM stores WHERE user_id=$1`, c.UserID).Scan(&count)
+		_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM stores WHERE user_id=$1 AND is_active=true`, c.UserID).Scan(&count)
 		if count >= limits.MaxStores {
 			jsonErr(w, 403, "Has alcanzado el límite de tiendas de tu plan")
 			return
@@ -629,12 +756,12 @@ func (s *Server) deleteStore(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	_, err := s.db.Exec(r.Context(), `DELETE FROM stores WHERE id=$1`, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET is_active=false,accepting_orders=false,updated_at=now() WHERE id=$1`, id)
 	if err != nil {
-		jsonErr(w, 409, "La tienda tiene información que impide eliminarla")
+		jsonErr(w, 500, "No se pudo archivar la tienda")
 		return
 	}
-	jsonOut(w, 200, map[string]bool{"ok": true})
+	jsonOut(w, 200, map[string]any{"ok": true, "archived": true})
 }
 
 func storeIDFrom(r *http.Request) string { return r.URL.Query().Get("store_id") }
@@ -1093,6 +1220,102 @@ func (s *Server) deleteStoreChild(w http.ResponseWriter, r *http.Request, table 
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
+func (s *Server) listQuickReplies(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	storeID := strings.TrimSpace(r.URL.Query().Get("store_id"))
+	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	var count int
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM quick_replies WHERE store_id=$1`, storeID).Scan(&count)
+	if count == 0 {
+		defaults := [][2]string{
+			{"Saludo", "¡Hola! 👋 Gracias por escribirnos. ¿En qué podemos ayudarte?"},
+			{"Disponible", "Sí, tenemos disponible. Si deseas, puedo prepararte el pedido por aquí."},
+			{"Entrega", "Claro. ¿En qué zona o dirección deseas recibir tu pedido?"},
+		}
+		for i, item := range defaults {
+			_, _ = s.db.Exec(r.Context(), `INSERT INTO quick_replies(store_id,title,body,sort_order) VALUES($1,$2,$3,$4)`, storeID, item[0], item[1], (i+1)*10)
+		}
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT id::text,title,body,sort_order FROM quick_replies WHERE store_id=$1 ORDER BY sort_order,title`, storeID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar las respuestas rápidas")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, title, body string
+		var order int
+		if rows.Scan(&id, &title, &body, &order) == nil {
+			out = append(out, map[string]any{"id": id, "title": title, "body": body, "sort_order": order})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) createQuickReply(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	var in struct {
+		StoreID string `json:"store_id"`
+		Title   string `json:"title"`
+		Body    string `json:"body"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Title) == "" || strings.TrimSpace(in.Body) == "" {
+		jsonErr(w, 400, "Completa título y mensaje")
+		return
+	}
+	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	var id string
+	err := s.db.QueryRow(r.Context(), `INSERT INTO quick_replies(store_id,title,body,sort_order) VALUES($1,$2,$3,coalesce((SELECT max(sort_order)+10 FROM quick_replies WHERE store_id=$1),10)) RETURNING id`, in.StoreID, strings.TrimSpace(in.Title), strings.TrimSpace(in.Body)).Scan(&id)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar la respuesta")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": id, "title": strings.TrimSpace(in.Title), "body": strings.TrimSpace(in.Body)})
+}
+
+func (s *Server) updateQuickReply(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	var storeID string
+	if s.db.QueryRow(r.Context(), `SELECT store_id::text FROM quick_replies WHERE id=$1`, id).Scan(&storeID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+		jsonErr(w, 404, "Respuesta no encontrada")
+		return
+	}
+	var in struct {
+		Title string `json:"title"`
+		Body  string `json:"body"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Title) == "" || strings.TrimSpace(in.Body) == "" {
+		jsonErr(w, 400, "Completa título y mensaje")
+		return
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE quick_replies SET title=$1,body=$2,updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Title), strings.TrimSpace(in.Body), id)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar la respuesta")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) deleteQuickReply(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	var storeID string
+	if s.db.QueryRow(r.Context(), `SELECT store_id::text FROM quick_replies WHERE id=$1`, id).Scan(&storeID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+		jsonErr(w, 404, "Respuesta no encontrada")
+		return
+	}
+	_, _ = s.db.Exec(r.Context(), `DELETE FROM quick_replies WHERE id=$1`, id)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
 func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	sid, ok := s.assertStore(w, r)
 	if !ok {
@@ -1160,7 +1383,7 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
 	}
-	valid := map[string]bool{"pending": true, "processing": true, "out_for_delivery": true, "delivered": true, "canceled": true}
+	valid := map[string]bool{"pending": true, "confirmed": true, "processing": true, "preparing": true, "ready": true, "out_for_delivery": true, "delivered": true, "picked_up": true, "canceled": true}
 	if !valid[in.Status] {
 		jsonErr(w, 400, "Estado no válido")
 		return
@@ -1201,6 +1424,7 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
+	s.publishStoreEvent(r.Context(), sid, "order_status", map[string]any{"id": id, "number": num, "status": in.Status})
 	go s.trySendWhatsApp(context.Background(), sid, phone, fmt.Sprintf("Actualización de tu pedido #%d: %s", num, spanishStatus(in.Status)))
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
@@ -1209,12 +1433,18 @@ func spanishStatus(status string) string {
 	switch status {
 	case "pending":
 		return "Pendiente"
-	case "processing":
-		return "En proceso"
+	case "confirmed":
+		return "Confirmado"
+	case "processing", "preparing":
+		return "Preparando"
+	case "ready":
+		return "Listo"
 	case "out_for_delivery":
 		return "En camino"
 	case "delivered":
 		return "Entregado"
+	case "picked_up":
+		return "Recogido"
 	case "canceled":
 		return "Cancelado"
 	default:
@@ -1481,20 +1711,66 @@ func (s *Server) sendConversationMessage(w http.ResponseWriter, r *http.Request)
 	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "occurred_at": now})
 }
 
+func businessOpenNow(raw []byte, timezone string) bool {
+	if len(raw) == 0 || string(raw) == "{}" || string(raw) == "null" {
+		return true
+	}
+	loc, err := time.LoadLocation(strings.TrimSpace(timezone))
+	if err != nil {
+		loc, _ = time.LoadLocation("America/Santo_Domingo")
+	}
+	now := time.Now().In(loc)
+	keys := map[time.Weekday]string{
+		time.Monday: "mon", time.Tuesday: "tue", time.Wednesday: "wed", time.Thursday: "thu",
+		time.Friday: "fri", time.Saturday: "sat", time.Sunday: "sun",
+	}
+	var hours map[string]struct {
+		Enabled bool   `json:"enabled"`
+		Open    string `json:"open"`
+		Close   string `json:"close"`
+	}
+	if json.Unmarshal(raw, &hours) != nil || len(hours) == 0 {
+		return true
+	}
+	day, ok := hours[keys[now.Weekday()]]
+	if !ok {
+		return true
+	}
+	if !day.Enabled {
+		return false
+	}
+	openAt, err1 := time.ParseInLocation("15:04", day.Open, loc)
+	closeAt, err2 := time.ParseInLocation("15:04", day.Close, loc)
+	if err1 != nil || err2 != nil {
+		return true
+	}
+	current := now.Hour()*60 + now.Minute()
+	openMin := openAt.Hour()*60 + openAt.Minute()
+	closeMin := closeAt.Hour()*60 + closeAt.Minute()
+	if closeMin == openMin {
+		return true
+	}
+	if closeMin > openMin {
+		return current >= openMin && current < closeMin
+	}
+	return current >= openMin || current < closeMin
+}
+
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var sid, name, desc, logo, banner, wa, address, currency, color string
+	var sid, name, desc, logo, banner, wa, address, currency, color, timezone string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
-	var pickup, delivery, cash, cod, transfer bool
+	var pickup, delivery, cash, cod, transfer, acceptingOrders bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
 	var hours any = map[string]any{}
 	_ = json.Unmarshal(hoursRaw, &hours)
+	openNow := acceptingOrders && businessOpenNow(hoursRaw, timezone)
 	cats := []map[string]any{}
 	rows, _ := s.db.Query(r.Context(), `SELECT id,name,slug,coalesce(description,''),coalesce(image_url,'') FROM categories WHERE store_id=$1 AND is_active=true ORDER BY sort_order,name`, sid)
 	if rows != nil {
@@ -1532,11 +1808,48 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		"store": map[string]any{
 			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
 			"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
-			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage,
+			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "accepting_orders": acceptingOrders, "open_now": openNow,
 			"payment_methods": map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer},
 			"bank_transfer":   map[string]any{"bank_name": bankName, "account_name": accountName, "account_number": accountNumber, "account_type": accountType},
 		},
 		"categories": cats, "products": prods, "shipping_zones": zones,
+	})
+}
+
+func (s *Server) publicOrder(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(chi.URLParam(r, "token"))
+	if token == "" {
+		jsonErr(w, 404, "Pedido no encontrado")
+		return
+	}
+	var id, storeName, storeWhatsapp, customerName, deliveryType, paymentMethod, paymentStatus, status, paymentProof string
+	var number int64
+	var subtotal, discount, shipping, total float64
+	var created, updated time.Time
+	err := s.db.QueryRow(r.Context(), `SELECT o.id::text,st.name,coalesce(st.whatsapp,''),o.order_number,o.customer_name,o.delivery_type,o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.status,coalesce(o.payment_proof_url,''),o.created_at,o.updated_at FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.public_token::text=$1`, token).Scan(&id, &storeName, &storeWhatsapp, &number, &customerName, &deliveryType, &subtotal, &discount, &shipping, &total, &paymentMethod, &paymentStatus, &status, &paymentProof, &created, &updated)
+	if err != nil {
+		jsonErr(w, 404, "Pedido no encontrado")
+		return
+	}
+	items := []map[string]any{}
+	rows, _ := s.db.Query(r.Context(), `SELECT product_name,coalesce(variant_name,''),extras,unit_price,quantity,line_total FROM order_items WHERE order_id=$1 ORDER BY id`, id)
+	if rows != nil {
+		defer rows.Close()
+		for rows.Next() {
+			var name, variant string
+			var extrasRaw []byte
+			var unit, qty, line float64
+			_ = rows.Scan(&name, &variant, &extrasRaw, &unit, &qty, &line)
+			var extras any = []any{}
+			_ = json.Unmarshal(extrasRaw, &extras)
+			items = append(items, map[string]any{"product_name": name, "variant_name": variant, "extras": extras, "unit_price": unit, "quantity": qty, "line_total": line})
+		}
+	}
+	jsonOut(w, 200, map[string]any{
+		"id": id, "number": number, "store_name": storeName, "store_whatsapp": storeWhatsapp, "customer_name": customerName,
+		"delivery_type": deliveryType, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total,
+		"payment_method": paymentMethod, "payment_status": paymentStatus, "payment_proof_url": paymentProof, "status": status, "created_at": created, "updated_at": updated,
+		"items": items,
 	})
 }
 
@@ -1545,6 +1858,289 @@ type checkoutItem struct {
 	Quantity    float64          `json:"quantity"`
 	VariantName string           `json:"variant_name"`
 	Extras      []map[string]any `json:"extras"`
+}
+
+func allowedPaymentProof(h *multipart.FileHeader) bool {
+	t := strings.ToLower(h.Header.Get("Content-Type"))
+	return (strings.HasPrefix(t, "image/") || t == "application/pdf") && h.Size <= 8<<20
+}
+
+func (s *Server) publicOrderProof(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimSpace(chi.URLParam(r, "token"))
+	if token == "" {
+		jsonErr(w, 404, "Pedido no encontrado")
+		return
+	}
+	var orderID, method, status string
+	if s.db.QueryRow(r.Context(), `SELECT id::text,payment_method,payment_status FROM orders WHERE public_token::text=$1`, token).Scan(&orderID, &method, &status) != nil {
+		jsonErr(w, 404, "Pedido no encontrado")
+		return
+	}
+	if method != "bank_transfer" {
+		jsonErr(w, 400, "Este pedido no utiliza transferencia bancaria")
+		return
+	}
+	if status == "paid" || status == "refunded" {
+		jsonErr(w, 409, "El estado de pago ya no permite cambiar el comprobante")
+		return
+	}
+	if err := r.ParseMultipartForm(9 << 20); err != nil {
+		jsonErr(w, 400, "El comprobante es demasiado grande")
+		return
+	}
+	f, h, err := r.FormFile("file")
+	if err != nil || h == nil || !allowedPaymentProof(h) {
+		jsonErr(w, 400, "Envía una imagen o PDF de hasta 8 MB")
+		return
+	}
+	defer f.Close()
+	ext := strings.ToLower(filepath.Ext(h.Filename))
+	if ext == "" {
+		if strings.EqualFold(h.Header.Get("Content-Type"), "application/pdf") {
+			ext = ".pdf"
+		} else {
+			ext = ".webp"
+		}
+	}
+	name := randomName(ext)
+	dst, err := os.Create(filepath.Join(s.cfg.UploadDir, name))
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar el comprobante")
+		return
+	}
+	if _, err = io.Copy(dst, io.LimitReader(f, 8<<20)); err != nil {
+		dst.Close()
+		_ = os.Remove(filepath.Join(s.cfg.UploadDir, name))
+		jsonErr(w, 500, "No se pudo guardar el comprobante")
+		return
+	}
+	_ = dst.Close()
+	url := "/media/" + name
+	if _, err = s.db.Exec(r.Context(), `UPDATE orders SET payment_proof_url=$1,updated_at=now() WHERE id=$2`, url, orderID); err != nil {
+		_ = os.Remove(filepath.Join(s.cfg.UploadDir, name))
+		jsonErr(w, 500, "No se pudo asociar el comprobante")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"ok": true, "url": url})
+}
+
+func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	conversationID := chi.URLParam(r, "id")
+	storeID, remoteJID, ok := s.conversationOwned(r.Context(), c, conversationID)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		CustomerName    string         `json:"customer_name"`
+		DeliveryAddress string         `json:"delivery_address"`
+		DeliveryType    string         `json:"delivery_type"`
+		ShippingZoneID  string         `json:"shipping_zone_id"`
+		PaymentMethod   string         `json:"payment_method"`
+		Notes           string         `json:"notes"`
+		Items           []checkoutItem `json:"items"`
+	}
+	if decode(r, &in) != nil || len(in.Items) == 0 {
+		jsonErr(w, 400, "Agrega al menos un producto")
+		return
+	}
+	phone := conversationPhone(remoteJID)
+	var displayName, customerID string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(display_name,''),coalesce(customer_id::text,'') FROM conversations WHERE id=$1`, conversationID).Scan(&displayName, &customerID)
+	if strings.TrimSpace(in.CustomerName) == "" {
+		in.CustomerName = strings.TrimSpace(displayName)
+	}
+	if in.CustomerName == "" {
+		in.CustomerName = phone
+	}
+	if phone == "" {
+		jsonErr(w, 400, "No se pudo determinar el WhatsApp del cliente")
+		return
+	}
+
+	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
+	if s.db.QueryRow(r.Context(), `SELECT pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	if !acceptingOrders {
+		jsonErr(w, 409, "La tienda tiene los pedidos pausados")
+		return
+	}
+	if in.DeliveryType == "" {
+		if deliveryEnabled {
+			in.DeliveryType = "delivery"
+		} else {
+			in.DeliveryType = "pickup"
+		}
+	}
+	if in.DeliveryType == "delivery" && !deliveryEnabled {
+		jsonErr(w, 400, "Delivery no disponible")
+		return
+	}
+	if in.DeliveryType == "pickup" && !pickupEnabled {
+		jsonErr(w, 400, "Recogida no disponible")
+		return
+	}
+	allowedPayments := map[string]bool{"cash": cashEnabled, "cash_on_delivery": codEnabled, "bank_transfer": transferEnabled}
+	if !allowedPayments[in.PaymentMethod] {
+		for _, method := range []string{"cash_on_delivery", "cash", "bank_transfer"} {
+			if allowedPayments[method] {
+				in.PaymentMethod = method
+				break
+			}
+		}
+	}
+	if in.PaymentMethod == "" || !allowedPayments[in.PaymentMethod] {
+		jsonErr(w, 400, "No hay un método de pago disponible")
+		return
+	}
+
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo iniciar el pedido")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	if customerID == "" {
+		err = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,address,status) VALUES($1,$2,$3,$4,'active') ON CONFLICT(store_id,phone) DO UPDATE SET name=excluded.name,address=coalesce(nullif(excluded.address,''),customers.address),updated_at=now() RETURNING id`, storeID, strings.TrimSpace(in.CustomerName), phone, strings.TrimSpace(in.DeliveryAddress)).Scan(&customerID)
+		if err != nil {
+			jsonErr(w, 500, "No se pudo preparar el cliente")
+			return
+		}
+		_, _ = tx.Exec(r.Context(), `UPDATE conversations SET customer_id=$1,display_name=$2,updated_at=now() WHERE id=$3`, customerID, strings.TrimSpace(in.CustomerName), conversationID)
+	} else {
+		_, _ = tx.Exec(r.Context(), `UPDATE customers SET name=$1,address=coalesce(nullif($2,''),address),updated_at=now() WHERE id=$3`, strings.TrimSpace(in.CustomerName), strings.TrimSpace(in.DeliveryAddress), customerID)
+	}
+
+	type priceOption struct {
+		Name  string  `json:"name"`
+		Price float64 `json:"price"`
+	}
+	type resolvedItem struct {
+		pid, name, variant string
+		extras             []map[string]any
+		unit, qty, line    float64
+		trackStock         bool
+	}
+	resolvedItems := []resolvedItem{}
+	subtotal := 0.0
+	for _, item := range in.Items {
+		if item.Quantity <= 0 || item.Quantity > 999 {
+			continue
+		}
+		var name string
+		var base, stock float64
+		var active, trackStock bool
+		var variantsRaw, extrasRaw []byte
+		if tx.QueryRow(r.Context(), `SELECT name,price,coalesce(stock,0),track_stock,is_active,variants,extras FROM products WHERE id=$1 AND store_id=$2 FOR UPDATE`, item.ProductID, storeID).Scan(&name, &base, &stock, &trackStock, &active, &variantsRaw, &extrasRaw) != nil || !active {
+			jsonErr(w, 400, "Uno de los productos ya no está disponible")
+			return
+		}
+		if trackStock && stock < item.Quantity {
+			jsonErr(w, 400, "No hay existencia suficiente de "+name)
+			return
+		}
+		var variants, allowedExtras []priceOption
+		_ = json.Unmarshal(variantsRaw, &variants)
+		_ = json.Unmarshal(extrasRaw, &allowedExtras)
+		unit := base
+		variantName := ""
+		if strings.TrimSpace(item.VariantName) != "" {
+			found := false
+			for _, variant := range variants {
+				if variant.Name == item.VariantName {
+					found = true
+					variantName = variant.Name
+					if variant.Price > 0 {
+						unit = variant.Price
+					}
+					break
+				}
+			}
+			if !found {
+				jsonErr(w, 400, "Variante inválida para "+name)
+				return
+			}
+		}
+		normalizedExtras := []map[string]any{}
+		for _, requested := range item.Extras {
+			reqName := strings.TrimSpace(fmt.Sprint(requested["name"]))
+			if reqName == "" {
+				continue
+			}
+			found := false
+			for _, allowed := range allowedExtras {
+				if allowed.Name == reqName {
+					found = true
+					unit += allowed.Price
+					normalizedExtras = append(normalizedExtras, map[string]any{"name": allowed.Name, "price": allowed.Price})
+					break
+				}
+			}
+			if !found {
+				jsonErr(w, 400, "Adicional inválido para "+name)
+				return
+			}
+		}
+		line := unit * item.Quantity
+		subtotal += line
+		resolvedItems = append(resolvedItems, resolvedItem{item.ProductID, name, variantName, normalizedExtras, unit, item.Quantity, line, trackStock})
+	}
+	if len(resolvedItems) == 0 {
+		jsonErr(w, 400, "El pedido no contiene productos válidos")
+		return
+	}
+
+	shipping := 0.0
+	var zone any = nil
+	if in.DeliveryType == "delivery" {
+		if strings.TrimSpace(in.DeliveryAddress) == "" {
+			jsonErr(w, 400, "Indica la dirección de entrega")
+			return
+		}
+		if in.ShippingZoneID != "" {
+			if tx.QueryRow(r.Context(), `SELECT charge FROM shipping_zones WHERE id=$1 AND store_id=$2 AND is_active=true`, in.ShippingZoneID, storeID).Scan(&shipping) != nil {
+				jsonErr(w, 400, "Zona de delivery inválida")
+				return
+			}
+			zone = in.ShippingZoneID
+		}
+	}
+	total := subtotal + shipping
+	var orderID, publicToken string
+	var number int64
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,conversation_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,'whatsapp') RETURNING id,order_number,public_token::text`, storeID, customerID, conversationID, strings.TrimSpace(in.CustomerName), phone, strings.TrimSpace(in.DeliveryAddress), in.DeliveryType, zone, subtotal, shipping, total, in.PaymentMethod, strings.TrimSpace(in.Notes)).Scan(&orderID, &number, &publicToken)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo crear el pedido")
+		return
+	}
+	for _, item := range resolvedItems {
+		extrasJSON, _ := json.Marshal(item.extras)
+		if _, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,variant_name,extras,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, item.pid, item.name, item.variant, extrasJSON, item.unit, item.qty, item.line); err != nil {
+			jsonErr(w, 500, "No se pudieron guardar los productos")
+			return
+		}
+		if item.trackStock {
+			_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, item.qty, item.pid)
+		}
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar el pedido")
+		return
+	}
+	s.refreshCustomerStats(r.Context(), customerID)
+	s.publishStoreEvent(r.Context(), storeID, "order", map[string]any{"id": orderID, "number": number, "source": "whatsapp"})
+	lines := make([]string, 0, len(resolvedItems))
+	for _, item := range resolvedItems {
+		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
+	}
+	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
+	message := fmt.Sprintf("Pedido #%d creado en WAMERCIO\n%s\n\nTotal: RD$ %.2f\nEstado: Pendiente\nSeguimiento: %s", number, strings.Join(lines, "\n"), total, trackingURL)
+	_ = s.queueWhatsApp(context.Background(), storeID, conversationID, remoteJID, message, "order")
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": number, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "shipping": shipping, "total": total, "status": "pending", "payment_status": "pending", "source": "whatsapp"})
 }
 
 func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
@@ -1564,20 +2160,23 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Completa cliente, WhatsApp y productos")
 		return
 	}
-	var sid, ownerID string
+	var sid, ownerID, timezone string
 	var minimum float64
-	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled bool
-	if s.db.QueryRow(r.Context(), `SELECT id,user_id,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &ownerID, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled) != nil {
+	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
+	var hoursRaw []byte
+	if s.db.QueryRow(r.Context(), `SELECT id,user_id,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &ownerID, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	limits := s.limitsForUser(r.Context(), ownerID)
-	var monthOrders int
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM orders o JOIN stores st ON st.id=o.store_id WHERE st.user_id=$1 AND o.created_at>=date_trunc('month',now())`, ownerID).Scan(&monthOrders)
-	if monthOrders >= limits.MaxOrders {
-		jsonErr(w, 403, "Esta tienda alcanzó temporalmente el límite de pedidos de su plan")
+	if !acceptingOrders {
+		jsonErr(w, 409, "La tienda pausó temporalmente la recepción de pedidos")
 		return
 	}
+	if !businessOpenNow(hoursRaw, timezone) {
+		jsonErr(w, 409, "La tienda está fuera de su horario de pedidos")
+		return
+	}
+	_ = ownerID
 
 	in.CustomerName = strings.TrimSpace(in.CustomerName)
 	in.CustomerPhone = strings.TrimSpace(in.CustomerPhone)
@@ -1763,9 +2362,9 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	total := subtotal - discount + shipping
-	var orderID string
+	var orderID, publicToken string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'web') RETURNING id,order_number`, sid, customerID, in.CustomerName, in.CustomerPhone, in.DeliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num)
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'web') RETURNING id,order_number,public_token::text`, sid, customerID, in.CustomerName, in.CustomerPhone, in.DeliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num, &publicToken)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
@@ -1785,8 +2384,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
-	go s.trySendWhatsApp(context.Background(), sid, in.CustomerPhone, fmt.Sprintf("¡Gracias %s! Recibimos tu pedido #%d por RD$ %.2f. Estado: Pendiente.", in.CustomerName, num, total))
-	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType})
+	s.publishStoreEvent(r.Context(), sid, "order", map[string]any{"id": orderID, "number": num, "source": "web"})
+	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
+	_ = s.queueWhatsApp(context.Background(), sid, "", in.CustomerPhone, fmt.Sprintf("¡Gracias %s! Recibimos tu pedido #%d por RD$ %.2f. Estado: Pendiente.\nSeguimiento: %s", in.CustomerName, num, total, trackingURL), "order")
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType})
 }
 
 func (s *Server) listPlans(w http.ResponseWriter, r *http.Request) {
@@ -1932,7 +2533,77 @@ func (s *Server) trySendWhatsApp(ctx context.Context, storeID, phone, text strin
 	if phone == "" || text == "" {
 		return
 	}
-	_, _ = s.bridgeReq(ctx, "POST", "/sessions/"+storeID+"/messages", map[string]any{"to": phone, "text": text})
+	_ = s.queueWhatsApp(ctx, storeID, "", phone, text, "system")
+}
+
+func (s *Server) queueWhatsApp(ctx context.Context, storeID, conversationID, destination, text, kind string) error {
+	destination = strings.TrimSpace(destination)
+	text = strings.TrimSpace(text)
+	if storeID == "" || destination == "" || text == "" {
+		return nil
+	}
+	if kind == "" {
+		kind = "system"
+	}
+	var conv any
+	if conversationID != "" {
+		conv = conversationID
+	}
+	var id string
+	err := s.db.QueryRow(ctx, `INSERT INTO message_outbox(store_id,conversation_id,destination,body,kind,status) VALUES($1,$2,$3,$4,$5,'pending') RETURNING id`, storeID, conv, destination, text, kind).Scan(&id)
+	if err != nil {
+		return err
+	}
+	go s.deliverOutbox(id)
+	return nil
+}
+
+func (s *Server) deliverOutbox(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	var storeID, conversationID, destination, body string
+	err := s.db.QueryRow(ctx, `SELECT store_id::text,coalesce(conversation_id::text,''),destination,body FROM message_outbox WHERE id=$1 AND status IN ('pending','retry') AND available_at<=now()`, id).Scan(&storeID, &conversationID, &destination, &body)
+	if err != nil {
+		return
+	}
+	out, sendErr := s.bridgeReq(ctx, "POST", "/sessions/"+storeID+"/messages", map[string]any{"to": destination, "text": body})
+	if sendErr != nil {
+		_, _ = s.db.Exec(ctx, `UPDATE message_outbox SET status='retry',attempts=attempts+1,last_error=$1,available_at=now()+LEAST(interval '30 seconds' * power(2,LEAST(attempts,5)), interval '15 minutes'),updated_at=now() WHERE id=$2`, sendErr.Error(), id)
+		return
+	}
+	_, _ = s.db.Exec(ctx, `UPDATE message_outbox SET status='sent',attempts=attempts+1,last_error=NULL,sent_at=now(),updated_at=now() WHERE id=$1`, id)
+	if conversationID != "" {
+		msgID := strings.TrimSpace(fmt.Sprint(out["id"]))
+		if msgID == "" || msgID == "<nil>" {
+			msgID = "outbox-" + id
+		}
+		now := time.Now()
+		_, _ = s.db.Exec(ctx, `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,'out','text',$3,'sent',$4) ON CONFLICT(conversation_id,message_id) DO NOTHING`, conversationID, msgID, body, now)
+		_, _ = s.db.Exec(ctx, `UPDATE conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, body, now, conversationID)
+	}
+}
+
+func (s *Server) outboxLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		rows, err := s.db.Query(ctx, `SELECT id::text FROM message_outbox WHERE status IN ('pending','retry') AND available_at<=now() AND attempts<10 ORDER BY created_at LIMIT 50`)
+		ids := []string{}
+		if err == nil {
+			for rows.Next() {
+				var id string
+				if rows.Scan(&id) == nil {
+					ids = append(ids, id)
+				}
+			}
+			rows.Close()
+		}
+		cancel()
+		for _, id := range ids {
+			go s.deliverOutbox(id)
+		}
+	}
 }
 
 func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
@@ -2015,6 +2686,7 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,file_size,caption,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),messages.file_name),file_size=GREATEST(messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),messages.caption)`, convID, in.MessageID, in.Direction, in.Type, in.Body, status, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt)
 	_ = tx.Commit(r.Context())
+	s.publishStoreEvent(r.Context(), in.StoreID, "message", map[string]any{"conversation_id": convID, "direction": in.Direction, "type": in.Type})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2191,9 +2863,9 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 	var name, slug, desc, logo, banner, wa, address, currency, color string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
-	var pickup, delivery, cash, cod, transfer, active bool
+	var pickup, delivery, cash, cod, transfer, active, acceptingOrders bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active)
+	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active,accepting_orders FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active, &acceptingOrders)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -2205,7 +2877,7 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 		"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 		"pickup_enabled": pickup, "delivery_enabled": delivery, "cash_enabled": cash, "cash_on_delivery_enabled": cod,
 		"bank_transfer_enabled": transfer, "bank_name": bankName, "bank_account_name": accountName, "bank_account_number": accountNumber,
-		"bank_account_type": accountType, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "is_active": active,
+		"bank_account_type": accountType, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "is_active": active, "accepting_orders": acceptingOrders,
 	})
 }
 
@@ -2233,6 +2905,7 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		CashOnDeliveryEnabled bool           `json:"cash_on_delivery_enabled"`
 		BankTransferEnabled   bool           `json:"bank_transfer_enabled"`
 		IsActive              bool           `json:"is_active"`
+		AcceptingOrders       bool           `json:"accepting_orders"`
 		BankName              string         `json:"bank_name"`
 		BankAccountName       string         `json:"bank_account_name"`
 		BankAccountNumber     string         `json:"bank_account_number"`
@@ -2260,7 +2933,7 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		in.MinimumOrder = 0
 	}
 	hours, _ := json.Marshal(in.BusinessHours)
-	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=NULL,whatsapp=$6,address=$7,currency=$8,primary_color=$9,minimum_order=$10,pickup_enabled=$11,delivery_enabled=$12,cash_enabled=$13,cash_on_delivery_enabled=$14,bank_transfer_enabled=$15,bank_name=$16,bank_account_name=$17,bank_account_number=$18,bank_account_type=$19,business_hours=$20,order_notice=$21,checkout_message=$22,is_active=$23,updated_at=now() WHERE id=$24`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=NULL,whatsapp=$6,address=$7,currency=$8,primary_color=$9,minimum_order=$10,pickup_enabled=$11,delivery_enabled=$12,cash_enabled=$13,cash_on_delivery_enabled=$14,bank_transfer_enabled=$15,bank_name=$16,bank_account_name=$17,bank_account_number=$18,bank_account_type=$19,business_hours=$20,order_notice=$21,checkout_message=$22,is_active=$23,accepting_orders=$24,updated_at=now() WHERE id=$25`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, in.AcceptingOrders, id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar la tienda; verifica el identificador web")
 		return
@@ -2387,7 +3060,7 @@ func (s *Server) updateOrderPayment(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Estado inválido")
 		return
 	}
-	allowed := map[string]bool{"pending": true, "paid": true, "failed": true, "refunded": true}
+	allowed := map[string]bool{"pending": true, "paid": true, "refunded": true}
 	if !allowed[in.Status] {
 		jsonErr(w, 400, "Estado de pago no permitido")
 		return
@@ -2418,6 +3091,7 @@ func (s *Server) updateOrderPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
+	s.publishStoreEvent(r.Context(), storeID, "payment_status", map[string]any{"id": id, "number": number, "status": in.Status})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2435,7 +3109,7 @@ func (s *Server) subscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var stores, products, monthOrders int
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM stores WHERE user_id=$1`, c.UserID).Scan(&stores)
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM stores WHERE user_id=$1 AND is_active=true`, c.UserID).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM products p JOIN stores st ON st.id=p.store_id WHERE st.user_id=$1`, c.UserID).Scan(&products)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM orders o JOIN stores st ON st.id=o.store_id WHERE st.user_id=$1 AND o.created_at>=date_trunc('month',now())`, c.UserID).Scan(&monthOrders)
 	jsonOut(w, 200, map[string]any{"id": id, "status": status, "starts_at": starts, "ends_at": ends, "plan": map[string]any{"id": planID, "name": name, "slug": slug, "price": price, "billing_period": billing, "max_stores": maxStores, "max_products": maxProducts, "max_orders": maxOrders, "whatsapp_enabled": wa}, "usage": map[string]any{"stores": stores, "products": products, "orders": monthOrders}})
