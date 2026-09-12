@@ -70,7 +70,10 @@ services:
       DATABASE_URL: ${WHATSAPP_DATABASE_URL}
       CORE_WEBHOOK_URL: ${CORE_WEBHOOK_URL}
       INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
+      UPLOAD_DIR: /app/data/uploads
       TZ: ${TZ:-America/Santo_Domingo}
+    volumes:
+      - uploads_data:/app/data/uploads
     depends_on:
       postgres:
         condition: service_healthy

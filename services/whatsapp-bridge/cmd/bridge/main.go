@@ -17,12 +17,12 @@ func main() {
 	db := os.Getenv("DATABASE_URL")
 	core := getenv("CORE_WEBHOOK_URL", "http://api:8080")
 	secret := os.Getenv("INTERNAL_WEBHOOK_SECRET")
+	uploadDir := getenv("UPLOAD_DIR", "/app/data/uploads")
 	if db == "" || secret == "" {
 		log.Fatal("DATABASE_URL e INTERNAL_WEBHOOK_SECRET son obligatorios")
 	}
-
 	ctx := context.Background()
-	mgr, err := bridge.New(ctx, db, core, secret)
+	mgr, err := bridge.New(ctx, db, core, secret, uploadDir)
 	if err != nil {
 		log.Fatalf("whatsapp bridge: %v", err)
 	}
@@ -30,7 +30,6 @@ func main() {
 	if err := mgr.Restore(ctx); err != nil {
 		log.Printf("restore sessions: %v", err)
 	}
-
 	srv := &http.Server{Addr: ":" + port, Handler: mgr.Router(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		log.Printf("WAMERCIO WhatsApp bridge en :%s", port)

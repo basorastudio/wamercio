@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -65,6 +66,7 @@ func (s *Server) Router() http.Handler {
 		api.Get("/public/stores/{slug}", s.publicStore)
 		api.Post("/public/stores/{slug}/checkout", s.checkout)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
+		api.Post("/internal/whatsapp/receipts", s.whatsappReceipt)
 
 		api.Group(func(p chi.Router) {
 			p.Use(s.requireStoreAuth)
@@ -110,6 +112,7 @@ func (s *Server) Router() http.Handler {
 			p.Get("/tickets/{id}", s.getTicket)
 			p.Post("/tickets/{id}/reply", s.replyTicket)
 			p.Patch("/tickets/{id}/close", s.closeTicket)
+			p.Get("/support/whatsapp", s.supportWhatsAppInfo)
 			p.Get("/conversations", s.listConversations)
 			p.Get("/conversations/{id}/messages", s.listMessages)
 			p.Get("/conversations/{id}/details", s.conversationDetails)
@@ -119,6 +122,7 @@ func (s *Server) Router() http.Handler {
 			p.Post("/conversations/{id}/notes", s.createConversationNote)
 			p.Patch("/conversations/{id}/read", s.readConversation)
 			p.Post("/conversations/{id}/send", s.sendConversationMessage)
+			p.Post("/conversations/{id}/send-media", s.sendConversationMedia)
 			p.Post("/uploads", s.upload)
 			p.Get("/whatsapp/{storeID}/status", s.whatsappStatus)
 			p.Post("/whatsapp/{storeID}/connect", s.whatsappConnect)
@@ -147,6 +151,15 @@ func (s *Server) Router() http.Handler {
 			a.Get("/admin/tickets/{id}", s.adminTicket)
 			a.Post("/admin/tickets/{id}/reply", s.adminReplyTicket)
 			a.Patch("/admin/tickets/{id}/status", s.adminTicketStatus)
+			a.Get("/admin/whatsapp/status", s.adminWhatsAppStatus)
+			a.Post("/admin/whatsapp/connect", s.adminWhatsAppConnect)
+			a.Post("/admin/whatsapp/disconnect", s.adminWhatsAppDisconnect)
+			a.Get("/admin/whatsapp/conversations", s.adminWhatsAppConversations)
+			a.Post("/admin/whatsapp/conversations", s.adminWhatsAppEnsureConversation)
+			a.Get("/admin/whatsapp/conversations/{id}/messages", s.adminWhatsAppMessages)
+			a.Patch("/admin/whatsapp/conversations/{id}/read", s.adminWhatsAppRead)
+			a.Post("/admin/whatsapp/conversations/{id}/send", s.adminWhatsAppSend)
+			a.Post("/admin/whatsapp/conversations/{id}/send-media", s.adminWhatsAppSendMedia)
 		})
 	})
 	return r
@@ -327,7 +340,6 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name         string `json:"name"`
-		Phone        string `json:"phone"`
 		PIN          string `json:"pin"`
 		BusinessName string `json:"business_name"`
 	}
@@ -378,7 +390,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	businessName := strings.TrimSpace(in.BusinessName)
 	if businessName != "" {
 		slug := slugify(businessName)
-		_, _ = tx.Exec(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,$4,$4)`, id, businessName, slug, phone)
+		_, _ = tx.Exec(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4)`, id, businessName, slug, phone)
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		jsonErr(w, 500, "No se pudo confirmar la cuenta")
@@ -509,7 +521,7 @@ func (s *Server) ownerForStore(ctx context.Context, storeID string) (string, err
 
 func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	q := `SELECT id,name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,is_active,created_at FROM stores`
+	q := `SELECT id,name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,is_active,created_at FROM stores`
 	args := []any{}
 	if c.Role != "superadmin" {
 		q += ` WHERE user_id=$1`
@@ -524,11 +536,11 @@ func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, slug, desc, logo, phone, wa, address, currency, color string
+		var id, name, slug, desc, logo, wa, address, currency, color string
 		var active bool
 		var created time.Time
-		_ = rows.Scan(&id, &name, &slug, &desc, &logo, &phone, &wa, &address, &currency, &color, &active, &created)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "phone": phone, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created})
+		_ = rows.Scan(&id, &name, &slug, &desc, &logo, &wa, &address, &currency, &color, &active, &created)
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created})
 	}
 	jsonOut(w, 200, out)
 }
@@ -539,7 +551,6 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		Slug         string `json:"slug"`
 		Description  string `json:"description"`
 		LogoURL      string `json:"logo_url"`
-		Phone        string `json:"phone"`
 		Whatsapp     string `json:"whatsapp"`
 		Address      string `json:"address"`
 		PrimaryColor string `json:"primary_color"`
@@ -566,7 +577,7 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		in.PrimaryColor = "#36b385"
 	}
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,description,logo_url,phone,whatsapp,address,primary_color) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, c.UserID, in.Name, in.Slug, in.Description, in.LogoURL, in.Phone, in.Whatsapp, in.Address, in.PrimaryColor).Scan(&id)
+	err := s.db.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,description,logo_url,phone,whatsapp,address,primary_color) VALUES($1,$2,$3,$4,$5,NULL,$6,$7,$8) RETURNING id`, c.UserID, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo crear la tienda; verifica que el identificador sea único")
 		return
@@ -585,7 +596,6 @@ func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
 		Slug         string `json:"slug"`
 		Description  string `json:"description"`
 		LogoURL      string `json:"logo_url"`
-		Phone        string `json:"phone"`
 		Whatsapp     string `json:"whatsapp"`
 		Address      string `json:"address"`
 		PrimaryColor string `json:"primary_color"`
@@ -604,7 +614,7 @@ func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
 	} else {
 		in.Slug = slugify(in.Slug)
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,phone=$5,whatsapp=$6,address=$7,primary_color=$8,is_active=$9,updated_at=now() WHERE id=$10`, in.Name, in.Slug, in.Description, in.LogoURL, in.Phone, in.Whatsapp, in.Address, in.PrimaryColor, active, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,phone=NULL,whatsapp=$5,address=$6,primary_color=$7,is_active=$8,updated_at=now() WHERE id=$9`, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor, active, id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar la tienda")
 		return
@@ -1244,7 +1254,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,coalesce(message_id,''),direction,type,coalesce(body,''),coalesce(status,''),occurred_at FROM messages WHERE conversation_id=$1 ORDER BY occurred_at ASC LIMIT 1000`, id)
+	rows, err := s.db.Query(r.Context(), `SELECT id,coalesce(message_id,''),direction,type,coalesce(body,''),coalesce(status,''),coalesce(media_url,''),coalesce(mime_type,''),coalesce(file_name,''),coalesce(file_size,0),coalesce(caption,''),occurred_at FROM messages WHERE conversation_id=$1 ORDER BY occurred_at ASC LIMIT 1000`, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los mensajes")
 		return
@@ -1252,10 +1262,11 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var mid, msgid, dir, typ, body, status string
+		var mid, msgid, dir, typ, body, status, mediaURL, mimeType, fileName, caption string
+		var fileSize int64
 		var at time.Time
-		_ = rows.Scan(&mid, &msgid, &dir, &typ, &body, &status, &at)
-		out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "occurred_at": at})
+		_ = rows.Scan(&mid, &msgid, &dir, &typ, &body, &status, &mediaURL, &mimeType, &fileName, &fileSize, &caption, &at)
+		out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "media_url": mediaURL, "mime_type": mimeType, "file_name": fileName, "file_size": fileSize, "caption": caption, "occurred_at": at})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1410,10 +1421,25 @@ func (s *Server) createConversationNote(w http.ResponseWriter, r *http.Request) 
 func (s *Server) readConversation(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
 	if !ok {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
+	}
+	rows, _ := s.db.Query(r.Context(), `SELECT message_id FROM messages WHERE conversation_id=$1 AND direction='in' AND coalesce(message_id,'')<>'' AND coalesce(status,'')<>'read' ORDER BY occurred_at DESC LIMIT 100`, id)
+	ids := []string{}
+	if rows != nil {
+		for rows.Next() {
+			var mid string
+			if rows.Scan(&mid) == nil {
+				ids = append(ids, mid)
+			}
+		}
+		rows.Close()
+	}
+	if len(ids) > 0 {
+		_, _ = s.bridgeReq(r.Context(), "POST", "/sessions/"+sid+"/read", map[string]any{"chat": jid, "message_ids": ids})
+		_, _ = s.db.Exec(r.Context(), `UPDATE messages SET status='read' WHERE conversation_id=$1 AND direction='in' AND message_id=ANY($2::text[])`, id, ids)
 	}
 	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET unread_count=0,updated_at=now() WHERE id=$1`, id)
 	jsonOut(w, 200, map[string]bool{"ok": true})
@@ -1447,12 +1473,12 @@ func (s *Server) sendConversationMessage(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var sid, name, desc, logo, banner, phone, wa, address, currency, color string
+	var sid, name, desc, logo, banner, wa, address, currency, color string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,'') FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -1495,7 +1521,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]any{
 		"store": map[string]any{
 			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
-			"phone": phone, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
+			"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage,
 			"payment_methods": map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer},
 			"bank_transfer":   map[string]any{"bank_name": bankName, "account_name": accountName, "account_number": accountNumber, "account_type": accountType},
@@ -1525,7 +1551,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		Items           []checkoutItem `json:"items"`
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.CustomerName) == "" || strings.TrimSpace(in.CustomerPhone) == "" || len(in.Items) == 0 {
-		jsonErr(w, 400, "Completa cliente, teléfono y productos")
+		jsonErr(w, 400, "Completa cliente, WhatsApp y productos")
 		return
 	}
 	var sid, ownerID string
@@ -1906,6 +1932,7 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		StoreID     string    `json:"store_id"`
+		SessionKey  string    `json:"session_key"`
 		RemoteJID   string    `json:"remote_jid"`
 		MessageID   string    `json:"message_id"`
 		Body        string    `json:"body"`
@@ -1913,11 +1940,19 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		Type        string    `json:"type"`
 		DisplayName string    `json:"display_name"`
 		Phone       string    `json:"phone"`
+		MediaURL    string    `json:"media_url"`
+		MimeType    string    `json:"mime_type"`
+		FileName    string    `json:"file_name"`
+		FileSize    int64     `json:"file_size"`
+		Caption     string    `json:"caption"`
 		OccurredAt  time.Time `json:"occurred_at"`
 	}
-	if decode(r, &in) != nil || in.StoreID == "" || in.RemoteJID == "" {
+	if decode(r, &in) != nil || in.RemoteJID == "" {
 		jsonErr(w, 400, "Evento inválido")
 		return
+	}
+	if in.SessionKey == "" {
+		in.SessionKey = in.StoreID
 	}
 	if in.Direction == "" {
 		in.Direction = "in"
@@ -1927,6 +1962,14 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.OccurredAt.IsZero() {
 		in.OccurredAt = time.Now()
+	}
+	if in.SessionKey == "support" {
+		s.supportWhatsAppEvent(r.Context(), w, in.RemoteJID, in.MessageID, in.Body, in.Direction, in.Type, in.DisplayName, in.Phone, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt)
+		return
+	}
+	if in.StoreID == "" {
+		jsonErr(w, 400, "Tienda inválida")
+		return
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
@@ -1956,8 +1999,80 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo registrar conversación")
 		return
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(conversation_id,message_id) DO NOTHING`, convID, in.MessageID, in.Direction, in.Type, in.Body, map[bool]string{true: "sent", false: "received"}[in.Direction == "out"], in.OccurredAt)
+	status := "received"
+	if in.Direction == "out" {
+		status = "sent"
+	}
+	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,file_size,caption,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),messages.file_name),file_size=GREATEST(messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),messages.caption)`, convID, in.MessageID, in.Direction, in.Type, in.Body, status, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt)
 	_ = tx.Commit(r.Context())
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) supportWhatsAppEvent(ctx context.Context, w http.ResponseWriter, remoteJID, messageID, body, direction, typ, displayName, phone, mediaURL, mimeType, fileName string, fileSize int64, caption string, occurredAt time.Time) {
+	phone = normalizePhone(phone)
+	if phone == "" {
+		phone = conversationPhone(remoteJID)
+	}
+	var ownerID any
+	var ownerName string
+	if phone != "" {
+		var id string
+		if s.db.QueryRow(ctx, `SELECT id,name FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 LIMIT 1`, phone).Scan(&id, &ownerName) == nil {
+			ownerID = id
+		}
+	}
+	if strings.TrimSpace(displayName) == "" {
+		displayName = ownerName
+	}
+	if strings.TrimSpace(displayName) == "" && phone != "" {
+		displayName = "+" + phone
+	}
+	unread := 0
+	if direction != "out" {
+		unread = 1
+	}
+	var convID string
+	err := s.db.QueryRow(ctx, `INSERT INTO support_whatsapp_conversations(owner_id,remote_jid,whatsapp,display_name,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(remote_jid) DO UPDATE SET owner_id=coalesce(support_whatsapp_conversations.owner_id,EXCLUDED.owner_id),whatsapp=coalesce(nullif(EXCLUDED.whatsapp,''),support_whatsapp_conversations.whatsapp),display_name=coalesce(nullif(EXCLUDED.display_name,''),support_whatsapp_conversations.display_name),unread_count=support_whatsapp_conversations.unread_count+$5,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, ownerID, remoteJID, phone, displayName, unread, body, occurredAt).Scan(&convID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo registrar conversación de soporte")
+		return
+	}
+	status := "received"
+	if direction == "out" {
+		status = "sent"
+	}
+	_, _ = s.db.Exec(ctx, `INSERT INTO support_whatsapp_messages(conversation_id,message_id,direction,type,body,media_url,mime_type,file_name,file_size,caption,status,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),support_whatsapp_messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),support_whatsapp_messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),support_whatsapp_messages.file_name),file_size=GREATEST(support_whatsapp_messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),support_whatsapp_messages.caption)`, convID, messageID, direction, typ, body, mediaURL, mimeType, fileName, fileSize, caption, status, occurredAt)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) whatsappReceipt(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Internal-Secret") != s.cfg.InternalWebhookSecret || s.cfg.InternalWebhookSecret == "" {
+		jsonErr(w, 403, "No autorizado")
+		return
+	}
+	var in struct {
+		SessionKey string   `json:"session_key"`
+		MessageIDs []string `json:"message_ids"`
+		Type       string   `json:"type"`
+	}
+	if decode(r, &in) != nil || len(in.MessageIDs) == 0 {
+		jsonErr(w, 400, "Recibo inválido")
+		return
+	}
+	status := "delivered"
+	if in.Type == "read" || in.Type == "read-self" || in.Type == "played" {
+		status = "read"
+	}
+	if in.Type == "retry" {
+		status = "retry"
+	}
+	for _, id := range in.MessageIDs {
+		if in.SessionKey == "support" {
+			_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_messages SET status=$1 WHERE message_id=$2`, status, id)
+		} else {
+			_, _ = s.db.Exec(r.Context(), `UPDATE messages SET status=$1 WHERE message_id=$2 AND conversation_id IN (SELECT id FROM conversations WHERE store_id=$3)`, status, id, in.SessionKey)
+		}
+	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2063,12 +2178,12 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	var name, slug, desc, logo, banner, phone, wa, address, currency, color string
+	var name, slug, desc, logo, banner, wa, address, currency, color string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer, active bool
 	var hoursRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(phone,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &phone, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active)
+	err := s.db.QueryRow(r.Context(), `SELECT name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),is_active FROM stores WHERE id=$1`, id).Scan(&name, &slug, &desc, &logo, &banner, &wa, &address, &currency, &color, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &active)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -2077,7 +2192,7 @@ func (s *Server) getStoreSettings(w http.ResponseWriter, r *http.Request) {
 	_ = json.Unmarshal(hoursRaw, &hours)
 	jsonOut(w, 200, map[string]any{
 		"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
-		"phone": phone, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
+		"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 		"pickup_enabled": pickup, "delivery_enabled": delivery, "cash_enabled": cash, "cash_on_delivery_enabled": cod,
 		"bank_transfer_enabled": transfer, "bank_name": bankName, "bank_account_name": accountName, "bank_account_number": accountNumber,
 		"bank_account_type": accountType, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "is_active": active,
@@ -2097,7 +2212,6 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		Description           string         `json:"description"`
 		LogoURL               string         `json:"logo_url"`
 		BannerURL             string         `json:"banner_url"`
-		Phone                 string         `json:"phone"`
 		Whatsapp              string         `json:"whatsapp"`
 		Address               string         `json:"address"`
 		Currency              string         `json:"currency"`
@@ -2136,7 +2250,7 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		in.MinimumOrder = 0
 	}
 	hours, _ := json.Marshal(in.BusinessHours)
-	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=$6,whatsapp=$7,address=$8,currency=$9,primary_color=$10,minimum_order=$11,pickup_enabled=$12,delivery_enabled=$13,cash_enabled=$14,cash_on_delivery_enabled=$15,bank_transfer_enabled=$16,bank_name=$17,bank_account_name=$18,bank_account_number=$19,bank_account_type=$20,business_hours=$21,order_notice=$22,checkout_message=$23,is_active=$24,updated_at=now() WHERE id=$25`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Phone, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, id)
+	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,banner_url=$5,phone=NULL,whatsapp=$6,address=$7,currency=$8,primary_color=$9,minimum_order=$10,pickup_enabled=$11,delivery_enabled=$12,cash_enabled=$13,cash_on_delivery_enabled=$14,bank_transfer_enabled=$15,bank_name=$16,bank_account_name=$17,bank_account_number=$18,bank_account_type=$19,business_hours=$20,order_notice=$21,checkout_message=$22,is_active=$23,updated_at=now() WHERE id=$24`, strings.TrimSpace(in.Name), in.Slug, in.Description, in.LogoURL, in.BannerURL, in.Whatsapp, in.Address, in.Currency, in.PrimaryColor, in.MinimumOrder, in.PickupEnabled, in.DeliveryEnabled, in.CashEnabled, in.CashOnDeliveryEnabled, in.BankTransferEnabled, in.BankName, in.BankAccountName, in.BankAccountNumber, in.BankAccountType, hours, in.OrderNotice, in.CheckoutMessage, in.IsActive, id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar la tienda; verifica el identificador web")
 		return
@@ -2967,4 +3081,283 @@ func (s *Server) adminTicketStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) supportWhatsAppInfo(w http.ResponseWriter, r *http.Request) {
+	var whatsapp, status string
+	var lastSeen *time.Time
+	err := s.db.QueryRow(r.Context(), `SELECT coalesce(whatsapp,''),status,last_seen_at FROM support_whatsapp_session WHERE singleton=true`).Scan(&whatsapp, &status, &lastSeen)
+	if err != nil {
+		jsonOut(w, 200, map[string]any{"connected": false, "whatsapp": "", "status": "disconnected"})
+		return
+	}
+	jsonOut(w, 200, map[string]any{"connected": status == "connected" && whatsapp != "", "whatsapp": whatsapp, "status": status, "last_seen_at": lastSeen})
+}
+
+// bridgeMediaReq forwards a browser upload to the internal WhatsApp service without
+// exposing the WhatsApp session service to the public network.
+func (s *Server) bridgeMediaReq(ctx context.Context, sessionKey, to, caption string, f multipart.File, h *multipart.FileHeader) (map[string]any, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	_ = mw.WriteField("to", to)
+	_ = mw.WriteField("caption", caption)
+	_ = mw.WriteField("mime_type", h.Header.Get("Content-Type"))
+	part, err := mw.CreateFormFile("file", h.Filename)
+	if err != nil {
+		return nil, err
+	}
+	if _, err = io.Copy(part, io.LimitReader(f, 32<<20)); err != nil {
+		return nil, err
+	}
+	_ = mw.Close()
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(s.cfg.WhatsAppBridgeURL, "/")+"/sessions/"+sessionKey+"/media", &buf)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("X-Internal-Secret", s.cfg.InternalWebhookSecret)
+	resp, err := s.http.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	if resp.StatusCode >= 300 {
+		return out, fmt.Errorf("bridge status %d", resp.StatusCode)
+	}
+	return out, nil
+}
+
+func (s *Server) sendConversationMedia(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	if err := r.ParseMultipartForm(33 << 20); err != nil {
+		jsonErr(w, 400, "Archivo demasiado grande")
+		return
+	}
+	f, h, err := r.FormFile("file")
+	if err != nil {
+		jsonErr(w, 400, "Selecciona un archivo")
+		return
+	}
+	defer f.Close()
+	caption := strings.TrimSpace(r.FormValue("caption"))
+	out, err := s.bridgeMediaReq(r.Context(), sid, jid, caption, f, h)
+	if err != nil {
+		jsonErr(w, 502, "No se pudo enviar el archivo por WhatsApp")
+		return
+	}
+	msgID := fmt.Sprint(out["id"])
+	typ := fmt.Sprint(out["type"])
+	mediaURL := fmt.Sprint(out["media_url"])
+	mimeType := fmt.Sprint(out["mime_type"])
+	fileName := fmt.Sprint(out["file_name"])
+	body := caption
+	if body == "" {
+		body = fileName
+	}
+	if body == "" {
+		body = strings.Title(typ)
+	}
+	now := time.Now()
+	_, _ = s.db.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,caption,occurred_at) VALUES($1,$2,'out',$3,$4,'sent',$5,$6,$7,$8,$9) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, typ, body, mediaURL, mimeType, fileName, caption, now)
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, body, now, id)
+	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "type": typ, "body": body, "media_url": mediaURL, "mime_type": mimeType, "file_name": fileName, "caption": caption, "occurred_at": now})
+}
+
+// --- SuperAdmin WhatsApp support center -------------------------------------
+
+func (s *Server) adminWhatsAppStatus(w http.ResponseWriter, r *http.Request) {
+	out, err := s.bridgeReq(r.Context(), "GET", "/sessions/support/status", nil)
+	if err != nil {
+		jsonOut(w, 200, map[string]any{"status": "unavailable", "connected": false, "message": "Servicio WhatsApp no disponible"})
+		return
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminWhatsAppConnect(w http.ResponseWriter, r *http.Request) {
+	out, err := s.bridgeReq(r.Context(), "POST", "/sessions/support/connect", map[string]any{})
+	if err != nil {
+		jsonErr(w, 502, "No se pudo iniciar el WhatsApp de soporte")
+		return
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminWhatsAppDisconnect(w http.ResponseWriter, r *http.Request) {
+	out, err := s.bridgeReq(r.Context(), "POST", "/sessions/support/disconnect", map[string]any{})
+	if err != nil {
+		jsonErr(w, 502, "No se pudo desvincular el WhatsApp de soporte")
+		return
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT coalesce(c.id::text,''),u.id::text,u.name,coalesce(u.phone,''),coalesce(c.remote_jid,''),coalesce(c.display_name,u.name),coalesce(c.unread_count,0),coalesce(c.last_message,''),c.last_message_at,u.status FROM users u LEFT JOIN LATERAL (SELECT * FROM support_whatsapp_conversations x WHERE x.owner_id=u.id ORDER BY x.last_message_at DESC NULLS LAST LIMIT 1) c ON true WHERE u.role='owner' ORDER BY coalesce(c.last_message_at,u.created_at) DESC`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los comercios")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, ownerID, name, wa, jid, display, last, status string
+		var unread int
+		var lastAt *time.Time
+		if rows.Scan(&id, &ownerID, &name, &wa, &jid, &display, &unread, &last, &lastAt, &status) == nil {
+			out = append(out, map[string]any{"id": id, "owner_id": ownerID, "name": name, "whatsapp": wa, "remote_jid": jid, "display_name": display, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "owner_status": status})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminWhatsAppEnsureConversation(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		OwnerID string `json:"owner_id"`
+	}
+	if decode(r, &in) != nil || in.OwnerID == "" {
+		jsonErr(w, 400, "Comerciante inválido")
+		return
+	}
+	var name, phone string
+	if s.db.QueryRow(r.Context(), `SELECT name,coalesce(phone,'') FROM users WHERE id=$1 AND role='owner'`, in.OwnerID).Scan(&name, &phone) != nil {
+		jsonErr(w, 404, "Comerciante no encontrado")
+		return
+	}
+	phone = normalizePhone(phone)
+	if phone == "" {
+		jsonErr(w, 400, "El comerciante no tiene WhatsApp configurado")
+		return
+	}
+	var id, jid string
+	if s.db.QueryRow(r.Context(), `SELECT id::text,remote_jid FROM support_whatsapp_conversations WHERE owner_id=$1 ORDER BY last_message_at DESC NULLS LAST LIMIT 1`, in.OwnerID).Scan(&id, &jid) == nil {
+		jsonOut(w, 200, map[string]any{"id": id, "remote_jid": jid, "owner_id": in.OwnerID, "display_name": name, "whatsapp": phone})
+		return
+	}
+	jid = phone + "@s.whatsapp.net"
+	if s.db.QueryRow(r.Context(), `INSERT INTO support_whatsapp_conversations(owner_id,remote_jid,whatsapp,display_name) VALUES($1,$2,$3,$4) ON CONFLICT(remote_jid) DO UPDATE SET owner_id=excluded.owner_id,whatsapp=excluded.whatsapp,display_name=excluded.display_name,updated_at=now() RETURNING id`, in.OwnerID, jid, phone, name).Scan(&id) != nil {
+		jsonErr(w, 500, "No se pudo iniciar la conversación")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": id, "remote_jid": jid, "owner_id": in.OwnerID, "display_name": name, "whatsapp": phone})
+}
+func (s *Server) adminWhatsAppMessages(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var exists bool
+	_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM support_whatsapp_conversations WHERE id=$1)`, id).Scan(&exists)
+	if !exists {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT id,coalesce(message_id,''),direction,type,coalesce(body,''),coalesce(status,''),coalesce(media_url,''),coalesce(mime_type,''),coalesce(file_name,''),coalesce(file_size,0),coalesce(caption,''),occurred_at FROM support_whatsapp_messages WHERE conversation_id=$1 ORDER BY occurred_at ASC LIMIT 1500`, id)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los mensajes")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var mid, msgid, dir, typ, body, status, url, mime, file, caption string
+		var size int64
+		var at time.Time
+		if rows.Scan(&mid, &msgid, &dir, &typ, &body, &status, &url, &mime, &file, &size, &caption, &at) == nil {
+			out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "media_url": url, "mime_type": mime, "file_name": file, "file_size": size, "caption": caption, "occurred_at": at})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminWhatsAppRead(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var jid string
+	if s.db.QueryRow(r.Context(), `SELECT remote_jid FROM support_whatsapp_conversations WHERE id=$1`, id).Scan(&jid) != nil {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	rows, _ := s.db.Query(r.Context(), `SELECT message_id FROM support_whatsapp_messages WHERE conversation_id=$1 AND direction='in' AND coalesce(message_id,'')<>'' AND coalesce(status,'')<>'read' ORDER BY occurred_at DESC LIMIT 100`, id)
+	ids := []string{}
+	if rows != nil {
+		for rows.Next() {
+			var mid string
+			if rows.Scan(&mid) == nil {
+				ids = append(ids, mid)
+			}
+		}
+		rows.Close()
+	}
+	if len(ids) > 0 {
+		_, _ = s.bridgeReq(r.Context(), "POST", "/sessions/support/read", map[string]any{"chat": jid, "message_ids": ids})
+		_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_messages SET status='read' WHERE conversation_id=$1 AND direction='in' AND message_id=ANY($2::text[])`, id, ids)
+	}
+	_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_conversations SET unread_count=0,updated_at=now() WHERE id=$1`, id)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+func (s *Server) adminWhatsAppSend(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var jid string
+	if s.db.QueryRow(r.Context(), `SELECT remote_jid FROM support_whatsapp_conversations WHERE id=$1`, id).Scan(&jid) != nil {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		Text string `json:"text"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Text) == "" {
+		jsonErr(w, 400, "Escribe un mensaje")
+		return
+	}
+	in.Text = strings.TrimSpace(in.Text)
+	out, err := s.bridgeReq(r.Context(), "POST", "/sessions/support/messages", map[string]any{"to": jid, "text": in.Text})
+	if err != nil {
+		jsonErr(w, 502, "No se pudo enviar por WhatsApp")
+		return
+	}
+	msgID := fmt.Sprint(out["id"])
+	now := time.Now()
+	_, _ = s.db.Exec(r.Context(), `INSERT INTO support_whatsapp_messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,'out','text',$3,'sent',$4) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, in.Text, now)
+	_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, in.Text, now, id)
+	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "occurred_at": now})
+}
+func (s *Server) adminWhatsAppSendMedia(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var jid string
+	if s.db.QueryRow(r.Context(), `SELECT remote_jid FROM support_whatsapp_conversations WHERE id=$1`, id).Scan(&jid) != nil {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	if err := r.ParseMultipartForm(33 << 20); err != nil {
+		jsonErr(w, 400, "Archivo demasiado grande")
+		return
+	}
+	f, h, err := r.FormFile("file")
+	if err != nil {
+		jsonErr(w, 400, "Selecciona un archivo")
+		return
+	}
+	defer f.Close()
+	caption := strings.TrimSpace(r.FormValue("caption"))
+	out, err := s.bridgeMediaReq(r.Context(), "support", jid, caption, f, h)
+	if err != nil {
+		jsonErr(w, 502, "No se pudo enviar el archivo por WhatsApp")
+		return
+	}
+	msgID := fmt.Sprint(out["id"])
+	typ := fmt.Sprint(out["type"])
+	url := fmt.Sprint(out["media_url"])
+	mime := fmt.Sprint(out["mime_type"])
+	file := fmt.Sprint(out["file_name"])
+	body := caption
+	if body == "" {
+		body = file
+	}
+	if body == "" {
+		body = typ
+	}
+	now := time.Now()
+	_, _ = s.db.Exec(r.Context(), `INSERT INTO support_whatsapp_messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,caption,occurred_at) VALUES($1,$2,'out',$3,$4,'sent',$5,$6,$7,$8,$9) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, typ, body, url, mime, file, caption, now)
+	_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, body, now, id)
+	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "type": typ, "body": body, "media_url": url, "mime_type": mime, "file_name": file, "caption": caption, "occurred_at": now})
 }

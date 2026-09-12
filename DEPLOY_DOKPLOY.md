@@ -1,59 +1,54 @@
-# Despliegue WAMERCIO 1.6.1 en Dokploy
+# Despliegue WAMERCIO 1.7.0 en Dokploy
 
-Esta versión amplía el servicio WhatsApp y el Centro de Conversaciones. No cambia el routing, los volúmenes ni las variables `.env` existentes.
+Esta actualización es compatible con la instalación 1.6.1 existente y no requiere nuevas variables de entorno.
 
-## Actualizar
+## Actualización
 
-1. Sustituye el contenido del repositorio por WAMERCIO 1.6.1.
+1. Reemplaza el contenido del repositorio por WAMERCIO 1.7.0.
 2. Commit y push:
 
 ```bash
 git add .
-git commit -m "feat: WAMERCIO 1.6 conversational center and device identity"
+git commit -m "feat: WAMERCIO 1.7 full WhatsApp and SaaS support chat"
 git push
 ```
 
 3. En Dokploy pulsa **Rebuild**.
-4. **No uses Fresh Volumes**.
-5. No cambies el `.env`.
+4. **No uses Fresh Volumes.**
 
-## Migración automática
+El API ejecutará automáticamente `000009_whatsapp_full_support` antes de quedar saludable.
 
-El API aplicará:
+## Pruebas después del Rebuild
 
-```text
-000008_conversation_center
-```
-
-Añade `customer_id` y `status` a conversaciones y crea `conversation_notes`. Los mensajes y clientes existentes se conservan.
-
-## Dispositivo vinculado
-
-Las nuevas sesiones se emparejan como **WAMERCIO**. Si una sesión fue creada antes de esta versión y WhatsApp todavía muestra un nombre anterior:
-
-1. entra a **Ajustes → WhatsApp**;
-2. pulsa **Desvincular**;
-3. genera un nuevo QR;
-4. vuelve a vincular desde **WhatsApp → Dispositivos vinculados**.
-
-El nombre del dispositivo se asigna durante el emparejamiento, por lo que una sesión antigua no cambia de nombre retroactivamente.
-
-## Routing
-
-Se mantiene exactamente:
+Comprueba primero:
 
 ```text
-Cloudflare → Traefik → wamercio-gateway:8080 → web:3000
+https://wamercio.com/
+https://wamercio.com/settings/store
+https://wamercio.com/settings/whatsapp
+https://wamercio.com/conversations
+https://wamercio.com/support
+https://wamercio.com/admin/whatsapp
 ```
 
-## Pruebas recomendadas
+En el chat de una tienda envía desde el móvil una imagen, video, audio y PDF y confirma que se rendericen. Luego envía esos mismos tipos desde WAMERCIO.
 
-- Confirmar que `/settings/whatsapp` muestra únicamente identidad WAMERCIO.
-- Vincular una sesión nueva y confirmar que el teléfono muestra **WAMERCIO**.
-- Enviar un mensaje desde otro número y confirmar que aparece en `/conversations`.
-- Responder desde WAMERCIO y confirmar recepción en el teléfono.
-- Enviar imagen/audio/documento y comprobar que aparece su tipo, no una etiqueta genérica.
-- Pulsar nombre/avatar del contacto y comprobar que el panel derecho se abre sin overlay en escritorio.
-- Editar el nombre del contacto y verificar que la cabecera/lista se actualicen inmediatamente.
-- Abrir **Registros de atención**, cambiar estado y agregar una nota.
-- Confirmar que el CRM de Clientes reutiliza el mismo número y muestra pedidos recientes.
+En `/admin/whatsapp`, vincula un **número independiente de soporte WAMERCIO**. Después abre `/support` como comerciante y utiliza **Abrir WhatsApp** para iniciar la conversación. Debe aparecer en el centro de soporte del SuperAdmin.
+
+## Sesión vinculada
+
+Después del Rebuild el servicio reconecta las sesiones existentes y registra actividad. Si una sesión antigua continúa mostrando una advertencia de inactividad en la aplicación móvil, desvincúlala y vuelve a escanear el QR una vez para iniciar una vinculación limpia con esta versión.
+
+La advertencia de inactividad es emitida por los servidores de WhatsApp; WAMERCIO puede reforzar actividad, keep-alive y estado del dispositivo, pero no puede suprimir por fuerza una advertencia que WhatsApp decida mostrar.
+
+## Persistencia
+
+No se borran:
+
+```text
+postgres_data
+redis_data
+uploads_data
+```
+
+Los medios de WhatsApp se almacenan bajo el volumen `uploads_data` y permanecen entre redeploys.

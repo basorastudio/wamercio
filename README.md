@@ -1,76 +1,73 @@
-# WAMERCIO 1.6.1
+# WAMERCIO 1.7.0
 
-WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js + Go + PostgreSQL + Redis y un servicio WhatsApp propio, desplegable en Dokploy.
+WAMERCIO es una plataforma SaaS de comercio conversacional construida con Next.js, Go, PostgreSQL, Redis y un servicio WhatsApp multisesión propio. Esta versión amplía el Centro de Conversaciones para trabajar con medios reales y añade un WhatsApp independiente para soporte del SuperAdmin.
 
-## Novedades 1.6.1
+## WhatsApp como único canal comercial
 
-Esta versión convierte la bandeja de conversaciones en un verdadero centro de atención comercial inspirado en WhatsApp Web y refuerza la identidad WAMERCIO en las vinculaciones de WhatsApp.
+La tienda ya no muestra un campo separado de teléfono. El único canal de contacto del comercio es **WhatsApp**, con selector internacional, bandera y número normalizado. Los campos internos heredados se conservan únicamente cuando son necesarios para compatibilidad de datos, pero no forman parte de la experiencia de usuario.
 
-### Centro de Conversaciones
+## WhatsApp completo en conversaciones
 
-- lista de conversaciones con búsqueda y no leídos;
-- chat con diseño tipo WhatsApp Web;
-- clasificación de imágenes, videos, audios, documentos, ubicación, sticker y reacción;
-- panel derecho inline para datos del contacto, sin overlay ni blur en escritorio;
-- panel de **Registros de atención** en la misma estructura;
-- estado de atención: abierta, pendiente o cerrada;
-- notas internas cronológicas;
-- métricas de mensajes recibidos/enviados y archivos;
-- primera y última interacción;
-- enlace automático del número de WhatsApp con el CRM de Clientes;
-- edición de nombre, dirección, notas y estado del cliente desde el chat;
-- pedidos recientes y total comprado dentro de la ficha del contacto;
-- actualización del nombre/contacto en la interfaz sin refrescar el navegador.
+La bandeja comercial y el centro de soporte SaaS ahora procesan y muestran:
 
-### Dispositivo WAMERCIO
+- texto y texto extendido;
+- imágenes y stickers;
+- videos, incluidos videos circulares/PTV;
+- audios/notas de voz;
+- documentos;
+- ubicación y ubicación en vivo;
+- contactos;
+- reacciones;
+- encuestas como evento de conversación;
+- estados de entrega/lectura y marcado como leído.
 
-Las nuevas vinculaciones se presentan a WhatsApp con el nombre **WAMERCIO**. El servicio mantiene reconexión automática, supervisión del canal y actividad periódica de la sesión sin forzar el estado visible “en línea”.
+Las imágenes, videos, audios y documentos recibidos se descargan al volumen persistente de WAMERCIO y se renderizan dentro del chat. También se pueden enviar imágenes, videos, audios y documentos desde el panel.
 
-Las vinculaciones creadas antes de 1.6.1 conservan el nombre con el que fueron emparejadas. Para actualizar una sesión antigua, desvincúlala una vez desde WAMERCIO y vuelve a escanear el QR.
+## Sesión vinculada
 
-### Sin referencias técnicas en la experiencia
+El dispositivo se presenta a WhatsApp como **WAMERCIO**. Al conectar o reconectar se refuerza el estado no pasivo, se registra una actividad breve y se mantienen recibos de entrega activos sin dejar al comerciante permanentemente “en línea”. El cliente mantiene reconexión automática y supervisa los keep-alives.
 
-La interfaz, documentación comercial y estados muestran únicamente la identidad **WAMERCIO**. Los nombres internos de librerías de transporte quedan limitados al código del servicio y no forman parte de la experiencia del comerciante.
+La advertencia de inactividad que decide mostrar WhatsApp es controlada por el propio servicio de WhatsApp. WAMERCIO implementa las señales de actividad disponibles en la API multidevice, pero no puede garantizar que el servidor de WhatsApp nunca muestre una advertencia de inactividad.
 
-## Acceso comercial
+## Soporte por WhatsApp para SuperAdmin
 
-El comerciante utiliza:
+El SuperAdmin dispone de una sesión WhatsApp independiente en:
 
 ```text
-WhatsApp + PIN de 4 dígitos
+/admin/whatsapp
 ```
 
-El SuperAdmin utiliza exclusivamente:
+Desde allí puede vincular el número oficial de soporte WAMERCIO, ver todos los comerciantes, iniciar conversaciones, responder mensajes y enviar/recibir medios. El panel comercial muestra un botón **Abrir WhatsApp** en Centro de soporte cuando el número oficial está conectado.
+
+## Accesos
 
 ```text
-/admin/login → correo + contraseña
+Comerciante: WhatsApp + PIN de 4 dígitos
+SuperAdmin: /admin/login → correo + contraseña
 ```
-
-## Teléfonos internacionales
-
-Los campos de WhatsApp usan selector internacional con bandera, código de marcación, búsqueda de país y formato E.164. El país inicial usa Cloudflare `CF-IPCountry`, locale del navegador y República Dominicana como respaldo.
 
 ## Infraestructura
 
-Se conserva la ruta estable de producción:
+Se mantiene la ruta estable:
 
 ```text
-Cloudflare → Traefik → wamercio-gateway:8080 → web:3000
+Cloudflare → Traefik → wamercio-gateway:8080 → web:3000 → Go API
+                                           ↘ WhatsApp bridge
 ```
 
-No se modifican los volúmenes persistentes ni las variables `.env` actuales.
+No se cambian las variables `.env` ni los volúmenes existentes.
 
-## Migraciones nuevas
+## Migración nueva
 
 ```text
-000008_conversation_center
+000009_whatsapp_full_support
 ```
 
-Añade vínculo conversación-cliente, estado operativo de conversación y registros internos de atención.
+Añade metadatos de medios a los mensajes, crea el Centro WhatsApp de soporte SaaS y deja `stores.whatsapp` como canal comercial visible/canónico.
 
-Consulta:
+Consulta también:
 
+- `docs/WHATSAPP_COMPLETO_Y_SOPORTE.md`
 - `docs/CENTRO_CONVERSACIONES.md`
 - `docs/SESION_WHATSAPP.md`
-- `docs/ARQUITECTURA.md`
 - `DEPLOY_DOKPLOY.md`

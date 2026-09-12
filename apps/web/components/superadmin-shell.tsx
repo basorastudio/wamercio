@@ -3,7 +3,7 @@ import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useState} from 'react'
 import {api} from '@/lib/api'
-import {LayoutDashboard,UsersRound,Building2,BadgeDollarSign,Layers3,ReceiptText,LifeBuoy,ShieldCheck,LogOut,Menu,X,UserRound} from 'lucide-react'
+import {LayoutDashboard,UsersRound,Building2,BadgeDollarSign,Layers3,ReceiptText,LifeBuoy,ShieldCheck,LogOut,Menu,X,UserRound,MessageCircleMore} from 'lucide-react'
 
 const nav=[
  {href:'/admin',label:'Resumen SaaS',icon:LayoutDashboard},
@@ -12,7 +12,8 @@ const nav=[
  {href:'/admin/plans',label:'Planes',icon:BadgeDollarSign},
  {href:'/admin/subscriptions',label:'Solicitudes',icon:Layers3},
  {href:'/admin/transactions',label:'Movimientos',icon:ReceiptText},
- {href:'/admin/tickets',label:'Soporte',icon:LifeBuoy},
+ {href:'/admin/whatsapp',label:'WhatsApp soporte',icon:MessageCircleMore},
+ {href:'/admin/tickets',label:'Tickets',icon:LifeBuoy},
 ]
 export default function SuperAdminShell({children,title,subtitle,actions}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode}){
  const path=usePathname(),router=useRouter();const[open,setOpen]=useState(false),[me,setMe]=useState<any>(null)

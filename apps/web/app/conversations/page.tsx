@@ -4,15 +4,15 @@ import {useEffect,useMemo,useRef,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money} from '@/lib/api'
 import {
-  ArrowLeft,CheckCheck,ClipboardList,FileText,Image as ImageIcon,Info,MapPin,
-  MessageCircleMore,Mic,RefreshCw,Search,Send,Sticker,Video,X
+  ArrowLeft,CheckCheck,ClipboardList,Info,MessageCircleMore,Paperclip,RefreshCw,Search,Send,X
 } from 'lucide-react'
+import {WhatsAppMessageContent,type WhatsAppMessage} from '@/components/whatsapp-message-content'
 
 type Conv={
   id:string;remote_jid:string;display_name:string;unread_count:number;last_message:string;
   last_message_at?:string|null;created_at:string;customer_id?:string;status?:string;phone?:string
 }
-type Msg={id:string;message_id:string;direction:'in'|'out';type:string;body:string;status:string;occurred_at:string}
+type Msg=WhatsAppMessage
 type Customer={id:string;name:string;phone:string;address:string;notes:string;status:string;order_count:number;total_spent:number;last_order_at?:string|null}
 type Detail={id:string;remote_jid:string;display_name:string;phone:string;status:string;customer:Customer;orders:any[];metrics:{messages:number;incoming:number;outgoing:number;images:number;videos:number;audios:number;documents:number;first_interaction?:string|null;last_interaction?:string|null}}
 type Note={id:string;note:string;author?:string;created_at:string}
@@ -22,13 +22,6 @@ const label=(c:Conv)=>c.display_name||c.phone||c.remote_jid.split('@')[0]
 const time=(v?:string|null)=>v?new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}):''
 const dayTime=(v?:string|null)=>v?new Date(v).toLocaleString('es-DO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'
 const statusLabel=(v?:string)=>v==='closed'?'Cerrada':v==='pending'?'Pendiente':'Abierta'
-
-function MessageContent({m}:{m:Msg}){
-  const type=(m.type||'text').toLowerCase()
-  const Icon=type.includes('image')?ImageIcon:type.includes('video')?Video:type.includes('aud')||type.includes('ptt')?Mic:type.includes('document')?FileText:type.includes('location')?MapPin:type.includes('sticker')?Sticker:null
-  if(Icon)return <div className="flex items-center gap-2 text-[14px] leading-[19px] text-[#111b21]"><Icon className="h-4 w-4 shrink-0 text-[#667781]"/><span className="whitespace-pre-wrap break-words">{m.body||'Contenido de WhatsApp'}</span></div>
-  return <p className="whitespace-pre-wrap break-words text-[14px] leading-[19px] text-[#111b21]">{m.body||'Mensaje de WhatsApp'}</p>
-}
 
 
 export default function Conversations(){
@@ -40,6 +33,8 @@ export default function Conversations(){
   const[search,setSearch]=useState('')
   const[onlyUnread,setOnlyUnread]=useState(false)
   const[sending,setSending]=useState(false)
+  const[sendingMedia,setSendingMedia]=useState(false)
+  const fileInput=useRef<HTMLInputElement>(null)
   const[panel,setPanel]=useState<Panel>(null)
   const[detail,setDetail]=useState<Detail|null>(null)
   const[notes,setNotes]=useState<Note[]>([])
@@ -95,6 +90,18 @@ export default function Conversations(){
       void loadConvs()
     }catch(e:any){alert(e.message);setText(body)}finally{setSending(false)}
   }
+  const sendMedia=async(file?:File)=>{
+    if(!selected||!file)return
+    if(file.size>32*1024*1024){alert('El archivo supera el límite de 32 MB.');return}
+    setSendingMedia(true)
+    try{
+      const form=new FormData();form.append('file',file);if(text.trim())form.append('caption',text.trim())
+      const out=await api<Msg>(`/conversations/${selected.id}/send-media`,{method:'POST',body:form})
+      setText('')
+      setMessages(v=>[...v,{...out,direction:'out',status:'sent'} as Msg])
+      void loadConvs()
+    }catch(e:any){alert(e.message)}finally{setSendingMedia(false);if(fileInput.current)fileInput.current.value=''}
+  }
   const saveContact=async()=>{
     if(!selected||!contactForm.name.trim())return
     setSavingContact(true)
@@ -145,9 +152,14 @@ export default function Conversations(){
             <button title="Registros de atención" onClick={()=>openPanel('records')} className={`rounded-full p-2.5 ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button>
           </header>
           <div className="relative flex-1 overflow-y-auto px-3 py-4 sm:px-6" style={{backgroundColor:'#efeae2',backgroundImage:'radial-gradient(circle at 20px 20px,rgba(17,27,33,.025) 1px,transparent 1px)',backgroundSize:'32px 32px'}}>
-            <div className="mx-auto max-w-4xl space-y-1.5">{messages.map(m=><div key={m.id} className={`flex ${m.direction==='out'?'justify-end':'justify-start'}`}><div className={`relative max-w-[88%] rounded-[8px] px-2.5 py-1.5 shadow-[0_1px_1px_rgba(11,20,26,.13)] sm:max-w-[70%] ${m.direction==='out'?'bg-[#d9fdd3]':'bg-white'}`}><MessageContent m={m}/><div className="ml-8 mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none text-[#667781]"><span>{time(m.occurred_at)}</span>{m.direction==='out'&&<CheckCheck className={`h-3.5 w-3.5 ${m.status==='read'?'text-[#53bdeb]':''}`}/>}</div></div></div>)}<div ref={bottom}/></div>
+            <div className="mx-auto max-w-4xl space-y-1.5">{messages.map(m=><div key={m.id} className={`flex ${m.direction==='out'?'justify-end':'justify-start'}`}><div className={`relative max-w-[88%] rounded-[8px] px-2.5 py-1.5 shadow-[0_1px_1px_rgba(11,20,26,.13)] sm:max-w-[70%] ${m.direction==='out'?'bg-[#d9fdd3]':'bg-white'}`}><WhatsAppMessageContent m={m}/><div className="ml-8 mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none text-[#667781]"><span>{time(m.occurred_at)}</span>{m.direction==='out'&&<CheckCheck className={`h-3.5 w-3.5 ${m.status==='read'?'text-[#53bdeb]':''}`}/>}</div></div></div>)}<div ref={bottom}/></div>
           </div>
-          <form onSubmit={send} className="flex shrink-0 items-end gap-2 border-t border-[#dfe3e6] bg-[#f0f2f5] px-3 py-2.5"><textarea rows={1} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder="Escribe un mensaje"/><button disabled={sending||!text.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white disabled:opacity-40"><Send className="h-4 w-4"/></button></form>
+          <form onSubmit={send} className="flex shrink-0 items-end gap-2 border-t border-[#dfe3e6] bg-[#f0f2f5] px-3 py-2.5">
+            <input ref={fileInput} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" onChange={e=>void sendMedia(e.target.files?.[0])}/>
+            <button type="button" disabled={sendingMedia} onClick={()=>fileInput.current?.click()} title="Adjuntar archivo" className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#e1e5e7] disabled:opacity-40"><Paperclip className="h-5 w-5"/></button>
+            <textarea rows={1} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-lg border-0 bg-white px-4 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder={sendingMedia?'Enviando archivo...':'Escribe un mensaje'}/>
+            <button disabled={sending||sendingMedia||!text.trim()} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#00a884] text-white disabled:opacity-40"><Send className="h-4 w-4"/></button>
+          </form>
         </>:<div className="grid h-full place-items-center bg-[#f7f8fa] text-center"><div className="max-w-sm px-6"><div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MessageCircleMore className="h-9 w-9"/></div><h3 className="mt-5 text-xl font-medium text-[#3b4a54]">WAMERCIO Conversaciones</h3><p className="mt-2 text-sm leading-6 text-[#667781]">Selecciona una conversación para atender a tu cliente desde un espacio familiar, inspirado en WhatsApp Web.</p></div></div>}
       </section>
 
