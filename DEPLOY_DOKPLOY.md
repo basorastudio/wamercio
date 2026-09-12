@@ -1,83 +1,52 @@
-# Despliegue WAMERCIO 1.9.0 en Dokploy
+# Despliegue WAMERCIO 2.0.0 en Dokploy
 
-WAMERCIO 1.9.0 consolida el flujo de comercio conversacional. La actualización mantiene los volúmenes y la infraestructura de la rama 1.8.x y añade la migración `000010_commerce_flow`.
-
-## Antes del Rebuild
-
-Conserva tu `.env` actual. Verifica especialmente:
-
-```env
-APP_URL=https://wamercio.com
-NEXT_PUBLIC_APP_URL=https://wamercio.com
-CORS_ALLOWED_ORIGINS=https://wamercio.com,https://www.wamercio.com
-REDIS_URL=redis://redis:6379/0
-```
-
-No es necesario crear nuevas variables para las funciones incluidas en 1.9.0.
+Esta versión actualiza WAMERCIO 1.9.0 y conserva la infraestructura actual de Cloudflare, Traefik, gateway, PostgreSQL, Redis y WhatsApp.
 
 ## Actualización
 
-Reemplaza el contenido del repositorio por esta versión y ejecuta:
+1. Reemplaza el contenido del repositorio por WAMERCIO 2.0.0.
+2. Commit y push:
 
 ```bash
 git add .
-git commit -m "feat: WAMERCIO 1.9 close conversational commerce flow"
+git commit -m "feat: WAMERCIO 2.0 business templates"
 git push
 ```
 
-En Dokploy pulsa **Rebuild**.
+3. En Dokploy pulsa **Rebuild**.
+4. **No uses Fresh Volumes**.
 
-**No uses Fresh Volumes.**
+No requiere nuevas variables `.env`.
 
-El API aplicará automáticamente:
+## Base de datos
+
+El API ejecutará después de la migración 1.9:
 
 ```text
 000010_commerce_flow
+000011_business_templates
 ```
 
-La migración conserva pedidos, productos, clientes, conversaciones y sesiones existentes. Las tiendas eliminadas desde la interfaz pasan a archivarse en lugar de perder su historial.
+`000011_business_templates` crea el catálogo maestro de plantillas y añade a tiendas/productos los campos necesarios para clonar configuraciones sectoriales. No borra pedidos, clientes, conversaciones ni productos existentes.
 
 ## Pruebas recomendadas
 
-Después del despliegue comprueba:
+Después del Rebuild:
 
-```text
-https://wamercio.com/
-https://wamercio.com/dashboard
-https://wamercio.com/conversations
-https://wamercio.com/orders
-https://wamercio.com/catalog/products
-https://wamercio.com/settings/store
-https://wamercio.com/settings/whatsapp
-https://wamercio.com/admin/login
-```
-
-### Flujo principal
-
-1. Abre una conversación de WhatsApp.
-2. Pulsa el carrito y agrega uno o más productos.
-3. Selecciona delivery o recogida, método de pago y crea el pedido.
-4. Verifica que el pedido aparezca en **Pedidos** y que el cliente reciba el resumen con su enlace de seguimiento.
-5. Abre el enlace público `/order/<token>` sin iniciar sesión.
-6. Para transferencia bancaria, sube una imagen o PDF como comprobante y confirma que aparezca en el detalle del pedido del comercio.
-7. Cambia el estado del pedido y confirma la notificación por WhatsApp.
-
-### Tiempo real
-
-Envía un mensaje desde el teléfono al WhatsApp conectado y confirma que la bandeja se actualice sin recargar manualmente. Redis/SSE se utiliza para el evento inmediato y existe un refresco de respaldo.
-
-### Horarios y pausa
-
-En **Ajustes → Ventas y cobro** desactiva **Aceptar pedidos** y confirma que el catálogo público continúe visible pero el checkout no permita finalizar la compra. Reactiva la opción y valida también el horario comercial.
+1. Abre `https://wamercio.com` con un WhatsApp que no tenga cuenta.
+2. Verifica que aparezca **¿Qué tipo de negocio tienes?**.
+3. Crea una tienda usando, por ejemplo, `Boutique` o `Pizzería`.
+4. Comprueba categorías, productos demo y respuestas rápidas en WhatsApp.
+5. Crea una segunda tienda desde **Mis tiendas** y confirma que también permite elegir plantilla.
+6. Entra como SuperAdmin y abre `/admin/templates`.
+7. Edita una plantilla maestra y confirma que una tienda ya creada no cambia automáticamente.
 
 ## Persistencia
 
-No se borran los volúmenes:
+No elimines:
 
 ```text
 postgres_data
 redis_data
 uploads_data
 ```
-
-El Service Worker utiliza la caché `wamercio-store-v1.9`, por lo que después del despliegue una recarga completa del navegador/PWA puede ser necesaria si quedara una versión visual anterior en caché.

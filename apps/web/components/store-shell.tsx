@@ -94,10 +94,11 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  </div>
 }
 
-export function StoreSelector({value,onChange,className=''}:{value:string;onChange:(id:string)=>void;className?:string}){
+export function StoreSelector({value,onChange,onStoreChange,className=''}:{value:string;onChange:(id:string)=>void;onStoreChange?:(store:any|null)=>void;className?:string}){
  const[stores,setStores]=useState<any[]>([])
- useEffect(()=>{api<any[]>('/stores').then(x=>{setStores(x);if(!value&&x[0]){const remembered=typeof window!=='undefined'?localStorage.getItem('wamercio_store_id'):'';const selected=x.some(s=>s.id===remembered)?remembered!:x[0].id;onChange(selected)}}).catch(()=>{})},[])
- const change=(id:string)=>{if(typeof window!=='undefined'){if(id)localStorage.setItem('wamercio_store_id',id);else localStorage.removeItem('wamercio_store_id')}onChange(id)}
+ useEffect(()=>{api<any[]>('/stores').then(x=>{setStores(x);if(!value&&x[0]){const remembered=typeof window!=='undefined'?localStorage.getItem('wamercio_store_id'):'';const selected=x.some(s=>s.id===remembered)?remembered!:x[0].id;onChange(selected);onStoreChange?.(x.find(s=>s.id===selected)||null)}else if(value){onStoreChange?.(x.find(s=>s.id===value)||null)}}).catch(()=>{})},[])
+ useEffect(()=>{if(stores.length)onStoreChange?.(stores.find(s=>s.id===value)||null)},[value,stores])
+ const change=(id:string)=>{if(typeof window!=='undefined'){if(id)localStorage.setItem('wamercio_store_id',id);else localStorage.removeItem('wamercio_store_id')}onChange(id);onStoreChange?.(stores.find(s=>s.id===id)||null)}
  if(stores.length===1)return <div className={`hidden md:flex items-center gap-2 rounded-xl border border-[#e8ebf2] bg-[#fafbfe] px-3 py-2 text-sm font-medium text-[#6f758d] ${className}`}><Store className="h-4 w-4 text-brand-600"/><span className="truncate">{stores[0].name}</span></div>
  return <div className={`relative ${className}`}><select className="field w-full min-w-0 appearance-none pr-9" value={value} onChange={e=>change(e.target.value)}><option value="">Selecciona una tienda</option>{stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a0a5b8]"/></div>
 }

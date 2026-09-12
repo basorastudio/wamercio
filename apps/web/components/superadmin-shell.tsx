@@ -3,12 +3,13 @@ import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useState} from 'react'
 import {api} from '@/lib/api'
-import {LayoutDashboard,UsersRound,Building2,BadgeDollarSign,Layers3,ReceiptText,LifeBuoy,ShieldCheck,LogOut,Menu,X,UserRound,MessageCircleMore} from 'lucide-react'
+import {LayoutDashboard,UsersRound,Building2,BadgeDollarSign,Layers3,ReceiptText,LifeBuoy,ShieldCheck,LogOut,Menu,X,UserRound,MessageCircleMore,LayoutTemplate} from 'lucide-react'
 
 const nav=[
  {href:'/admin',label:'Resumen SaaS',icon:LayoutDashboard},
  {href:'/admin/users',label:'Comerciantes',icon:UsersRound},
  {href:'/admin/stores',label:'Tiendas',icon:Building2},
+ {href:'/admin/templates',label:'Plantillas',icon:LayoutTemplate},
  {href:'/admin/plans',label:'Planes',icon:BadgeDollarSign},
  {href:'/admin/subscriptions',label:'Solicitudes',icon:Layers3},
  {href:'/admin/whatsapp',label:'Soporte WhatsApp',icon:MessageCircleMore},

@@ -71,6 +71,8 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/login", s.adminLogin)
 
 		api.Get("/plans", s.listPlans)
+		api.Get("/templates", s.listBusinessTemplates)
+		api.Get("/templates/{slug}", s.getBusinessTemplate)
 		api.Get("/public/stores/{slug}", s.publicStore)
 		api.Post("/public/stores/{slug}/checkout", s.checkout)
 		api.Get("/public/orders/{token}", s.publicOrder)
@@ -96,6 +98,7 @@ func (s *Server) Router() http.Handler {
 			p.Put("/categories/{id}", s.updateCategory)
 			p.Delete("/categories/{id}", s.deleteCategory)
 			p.Get("/products", s.listProducts)
+			p.Get("/product-attributes", s.listProductAttributes)
 			p.Post("/products", s.createProduct)
 			p.Put("/products/{id}", s.updateProduct)
 			p.Delete("/products/{id}", s.deleteProduct)
@@ -157,6 +160,12 @@ func (s *Server) Router() http.Handler {
 			a.Put("/admin/users/{id}/pin", s.adminSetUserPIN)
 			a.Put("/admin/users/{id}/access", s.adminSetUserAccess)
 			a.Get("/admin/stores", s.adminStores)
+			a.Get("/admin/templates", s.adminTemplates)
+			a.Post("/admin/templates", s.adminCreateTemplate)
+			a.Put("/admin/templates/{id}", s.adminUpdateTemplate)
+			a.Post("/admin/templates/{id}/duplicate", s.adminDuplicateTemplate)
+			a.Get("/admin/templates/{id}/content", s.adminTemplateContent)
+			a.Put("/admin/templates/{id}/content", s.adminUpdateTemplateContent)
 			a.Get("/admin/plans", s.adminPlans)
 			a.Post("/admin/plans", s.adminCreatePlan)
 			a.Put("/admin/plans/{id}", s.adminUpdatePlan)
@@ -409,6 +418,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		Phone        string `json:"phone"`
 		PIN          string `json:"pin"`
 		BusinessName string `json:"business_name"`
+		TemplateSlug string `json:"template_slug"`
 	}
 	name := strings.TrimSpace(in.Name)
 	if decode(r, &in) != nil {
@@ -451,7 +461,15 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	businessName := strings.TrimSpace(in.BusinessName)
 	if businessName != "" {
 		slug := slugify(businessName)
-		_, _ = tx.Exec(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4)`, id, businessName, slug, phone)
+		var storeID string
+		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, id, businessName, slug, phone).Scan(&storeID); err != nil {
+			jsonErr(w, 409, "No se pudo crear el comercio")
+			return
+		}
+		if err = s.applyBusinessTemplate(r.Context(), tx, storeID, in.TemplateSlug); err != nil {
+			jsonErr(w, 500, "No se pudo preparar la plantilla del negocio")
+			return
+		}
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		jsonErr(w, 500, "No se pudo confirmar la cuenta")
@@ -649,13 +667,13 @@ func (s *Server) ownerForStore(ctx context.Context, storeID string) (string, err
 
 func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	q := `SELECT id,name,slug,coalesce(description,''),coalesce(logo_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,is_active,created_at FROM stores`
+	q := `SELECT st.id,st.name,st.slug,coalesce(st.description,''),coalesce(st.logo_url,''),coalesce(st.whatsapp,''),coalesce(st.address,''),st.currency,st.primary_color,st.is_active,st.created_at,st.business_engine,st.template_config,coalesce(bt.slug,''),coalesce(bt.name,'') FROM stores st LEFT JOIN business_templates bt ON bt.id=st.template_id`
 	args := []any{}
 	if c.Role != "superadmin" {
-		q += ` WHERE user_id=$1`
+		q += ` WHERE st.user_id=$1`
 		args = append(args, c.UserID)
 	}
-	q += ` ORDER BY created_at DESC`
+	q += ` ORDER BY st.created_at DESC`
 	rows, err := s.db.Query(r.Context(), q, args...)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
@@ -664,14 +682,20 @@ func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, slug, desc, logo, wa, address, currency, color string
+		var id, name, slug, desc, logo, wa, address, currency, color, engine, templateSlug, templateName string
 		var active bool
 		var created time.Time
-		_ = rows.Scan(&id, &name, &slug, &desc, &logo, &wa, &address, &currency, &color, &active, &created)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created})
+		var configRaw []byte
+		if rows.Scan(&id, &name, &slug, &desc, &logo, &wa, &address, &currency, &color, &active, &created, &engine, &configRaw, &templateSlug, &templateName) != nil {
+			continue
+		}
+		var config any = map[string]any{}
+		_ = json.Unmarshal(configRaw, &config)
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created, "business_engine": engine, "template_config": config, "template_slug": templateSlug, "template_name": templateName})
 	}
 	jsonOut(w, 200, out)
 }
+
 func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var in struct {
@@ -682,6 +706,7 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		Whatsapp     string `json:"whatsapp"`
 		Address      string `json:"address"`
 		PrimaryColor string `json:"primary_color"`
+		TemplateSlug string `json:"template_slug"`
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
 		jsonErr(w, 400, "Nombre obligatorio")
@@ -704,14 +729,29 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 	if in.PrimaryColor == "" {
 		in.PrimaryColor = "#36b385"
 	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo crear la tienda")
+		return
+	}
+	defer tx.Rollback(r.Context())
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,description,logo_url,phone,whatsapp,address,primary_color) VALUES($1,$2,$3,$4,$5,NULL,$6,$7,$8) RETURNING id`, c.UserID, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor).Scan(&id)
+	err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,description,logo_url,phone,whatsapp,address,primary_color) VALUES($1,$2,$3,$4,$5,NULL,$6,$7,$8) RETURNING id`, c.UserID, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo crear la tienda; verifica que el identificador sea único")
 		return
 	}
+	if err = s.applyBusinessTemplate(r.Context(), tx, id, in.TemplateSlug); err != nil {
+		jsonErr(w, 500, "No se pudo preparar la plantilla del negocio")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la tienda")
+		return
+	}
 	jsonOut(w, 201, map[string]any{"id": id, "slug": in.Slug})
 }
+
 func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
@@ -880,29 +920,78 @@ func (s *Server) deleteCategory(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
+func (s *Server) listProductAttributes(w http.ResponseWriter, r *http.Request) {
+	sid, ok := s.assertStore(w, r)
+	if !ok {
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT sa.id,sa.key,sa.label,sa.input_type,sa.options,sa.is_required,sa.sort_order,coalesce(sg.name,'')
+		FROM store_attributes sa LEFT JOIN store_attribute_groups sg ON sg.id=sa.group_id
+		WHERE sa.store_id=$1 ORDER BY coalesce(sg.sort_order,0),sa.sort_order,sa.label`, sid)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los campos del catálogo")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, key, label, inputType, groupName string
+		var optionsRaw []byte
+		var required bool
+		var sortOrder int
+		if rows.Scan(&id, &key, &label, &inputType, &optionsRaw, &required, &sortOrder, &groupName) != nil {
+			continue
+		}
+		var options any = []any{}
+		_ = json.Unmarshal(optionsRaw, &options)
+		out = append(out, map[string]any{"id": id, "key": key, "label": label, "input_type": inputType, "options": options, "is_required": required, "sort_order": sortOrder, "group_name": groupName})
+	}
+	jsonOut(w, 200, out)
+}
+
 func scanProduct(rows pgx.Rows) (map[string]any, error) {
 	var id, sid, cid, name, slug, sku, desc, img, tag string
 	var price float64
 	var compare, stock float64
 	var track, featured, active bool
 	var sortOrder int
-	var variants, extras []byte
+	var variants, extras, attributes []byte
 	var created, updated time.Time
-	err := rows.Scan(&id, &sid, &cid, &name, &slug, &sku, &desc, &img, &price, &compare, &stock, &track, &variants, &extras, &tag, &featured, &sortOrder, &active, &created, &updated)
+	err := rows.Scan(&id, &sid, &cid, &name, &slug, &sku, &desc, &img, &price, &compare, &stock, &track, &variants, &extras, &attributes, &tag, &featured, &sortOrder, &active, &created, &updated)
 	if err != nil {
 		return nil, err
 	}
-	var v, e any
+	var v, e, a any
 	_ = json.Unmarshal(variants, &v)
 	_ = json.Unmarshal(extras, &e)
-	return map[string]any{"id": id, "store_id": sid, "category_id": cid, "name": name, "slug": slug, "sku": sku, "description": desc, "image_url": img, "price": price, "compare_price": compare, "stock": stock, "track_stock": track, "variants": v, "extras": e, "tag": tag, "is_featured": featured, "sort_order": sortOrder, "is_active": active, "created_at": created, "updated_at": updated}, nil
+	_ = json.Unmarshal(attributes, &a)
+	return map[string]any{"id": id, "store_id": sid, "category_id": cid, "name": name, "slug": slug, "sku": sku, "description": desc, "image_url": img, "price": price, "compare_price": compare, "stock": stock, "track_stock": track, "variants": v, "extras": e, "attributes": a, "tag": tag, "is_featured": featured, "sort_order": sortOrder, "is_active": active, "created_at": created, "updated_at": updated}, nil
+}
+
+func scanProduct(rows pgx.Rows) (map[string]any, error) {
+	var id, sid, cid, name, slug, sku, desc, img, tag string
+	var price float64
+	var compare, stock float64
+	var track, featured, active bool
+	var sortOrder int
+	var variants, extras, attributes []byte
+	var created, updated time.Time
+	err := rows.Scan(&id, &sid, &cid, &name, &slug, &sku, &desc, &img, &price, &compare, &stock, &track, &variants, &extras, &attributes, &tag, &featured, &sortOrder, &active, &created, &updated)
+	if err != nil {
+		return nil, err
+	}
+	var v, e, a any
+	_ = json.Unmarshal(variants, &v)
+	_ = json.Unmarshal(extras, &e)
+	_ = json.Unmarshal(attributes, &a)
+	return map[string]any{"id": id, "store_id": sid, "category_id": cid, "name": name, "slug": slug, "sku": sku, "description": desc, "image_url": img, "price": price, "compare_price": compare, "stock": stock, "track_stock": track, "variants": v, "extras": e, "attributes": a, "tag": tag, "is_featured": featured, "sort_order": sortOrder, "is_active": active, "created_at": created, "updated_at": updated}, nil
 }
 func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	sid, ok := s.assertStore(w, r)
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,store_id,coalesce(category_id::text,''),name,slug,coalesce(sku,''),coalesce(description,''),coalesce(image_url,''),price,coalesce(compare_price,0),coalesce(stock,0),track_stock,variants,extras,coalesce(tag,''),is_featured,sort_order,is_active,created_at,updated_at FROM products WHERE store_id=$1 ORDER BY is_featured DESC,sort_order,name`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT id,store_id,coalesce(category_id::text,''),name,slug,coalesce(sku,''),coalesce(description,''),coalesce(image_url,''),price,coalesce(compare_price,0),coalesce(stock,0),track_stock,variants,extras,attributes,coalesce(tag,''),is_featured,sort_order,is_active,created_at,updated_at FROM products WHERE store_id=$1 ORDER BY is_featured DESC,sort_order,name`, sid)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
 		return
@@ -917,6 +1006,7 @@ func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, out)
 }
+
 func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		StoreID      string          `json:"store_id"`
@@ -933,6 +1023,7 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		TrackStock   bool            `json:"track_stock"`
 		Variants     json.RawMessage `json:"variants"`
 		Extras       json.RawMessage `json:"extras"`
+		Attributes   json.RawMessage `json:"attributes"`
 		IsFeatured   bool            `json:"is_featured"`
 		SortOrder    int             `json:"sort_order"`
 	}
@@ -960,6 +1051,9 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 	if len(in.Extras) == 0 {
 		in.Extras = []byte("[]")
 	}
+	if len(in.Attributes) == 0 {
+		in.Attributes = []byte("{}")
+	}
 	var cat any = nil
 	if in.CategoryID != "" {
 		cat = in.CategoryID
@@ -968,13 +1062,14 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		_ = s.db.QueryRow(r.Context(), `SELECT COALESCE(MAX(sort_order),0)+10 FROM products WHERE store_id=$1`, in.StoreID).Scan(&in.SortOrder)
 	}
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO products(store_id,category_id,name,slug,sku,description,image_url,price,compare_price,stock,track_stock,variants,extras,tag,is_featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`, in.StoreID, cat, in.Name, slugify(firstNonEmpty(in.Slug, in.Name)), in.SKU, in.Description, in.ImageURL, in.Price, in.ComparePrice, in.Stock, in.TrackStock, in.Variants, in.Extras, in.Tag, in.IsFeatured, in.SortOrder).Scan(&id)
+	err := s.db.QueryRow(r.Context(), `INSERT INTO products(store_id,category_id,name,slug,sku,description,image_url,price,compare_price,stock,track_stock,variants,extras,attributes,tag,is_featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`, in.StoreID, cat, in.Name, slugify(firstNonEmpty(in.Slug, in.Name)), in.SKU, in.Description, in.ImageURL, in.Price, in.ComparePrice, in.Stock, in.TrackStock, in.Variants, in.Extras, in.Attributes, in.Tag, in.IsFeatured, in.SortOrder).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo crear el producto")
 		return
 	}
 	jsonOut(w, 201, map[string]string{"id": id})
 }
+
 func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in struct {
@@ -992,6 +1087,7 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 		TrackStock   bool            `json:"track_stock"`
 		Variants     json.RawMessage `json:"variants"`
 		Extras       json.RawMessage `json:"extras"`
+		Attributes   json.RawMessage `json:"attributes"`
 		IsActive     bool            `json:"is_active"`
 		IsFeatured   bool            `json:"is_featured"`
 		SortOrder    int             `json:"sort_order"`
@@ -1011,17 +1107,21 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	if len(in.Extras) == 0 {
 		in.Extras = []byte("[]")
 	}
+	if len(in.Attributes) == 0 {
+		in.Attributes = []byte("{}")
+	}
 	var cat any = nil
 	if in.CategoryID != "" {
 		cat = in.CategoryID
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE products SET category_id=$1,name=$2,slug=$3,sku=$4,description=$5,image_url=$6,price=$7,compare_price=$8,stock=$9,track_stock=$10,variants=$11,extras=$12,tag=$13,is_featured=$14,sort_order=$15,is_active=$16,updated_at=now() WHERE id=$17 AND store_id=$18`, cat, in.Name, slugify(firstNonEmpty(in.Slug, in.Name)), in.SKU, in.Description, in.ImageURL, in.Price, in.ComparePrice, in.Stock, in.TrackStock, in.Variants, in.Extras, in.Tag, in.IsFeatured, in.SortOrder, in.IsActive, id, in.StoreID)
+	_, err := s.db.Exec(r.Context(), `UPDATE products SET category_id=$1,name=$2,slug=$3,sku=$4,description=$5,image_url=$6,price=$7,compare_price=$8,stock=$9,track_stock=$10,variants=$11,extras=$12,attributes=$13,tag=$14,is_featured=$15,sort_order=$16,is_active=$17,updated_at=now() WHERE id=$18 AND store_id=$19`, cat, in.Name, slugify(firstNonEmpty(in.Slug, in.Name)), in.SKU, in.Description, in.ImageURL, in.Price, in.ComparePrice, in.Stock, in.TrackStock, in.Variants, in.Extras, in.Attributes, in.Tag, in.IsFeatured, in.SortOrder, in.IsActive, id, in.StoreID)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar")
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
+
 func (s *Server) deleteProduct(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var sid string
@@ -4044,4 +4144,515 @@ func (s *Server) adminWhatsAppSendMedia(w http.ResponseWriter, r *http.Request) 
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO support_whatsapp_messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,caption,occurred_at) VALUES($1,$2,'out',$3,$4,'sent',$5,$6,$7,$8,$9) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, typ, body, url, mime, file, caption, now)
 	_, _ = s.db.Exec(r.Context(), `UPDATE support_whatsapp_conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, body, now, id)
 	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "type": typ, "body": body, "media_url": url, "mime_type": mime, "file_name": file, "caption": caption, "occurred_at": now})
+}
+
+func (s *Server) listBusinessTemplates(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT id,slug,name,family,coalesce(description,''),coalesce(icon,''),engine,recommended_style,settings,is_featured,sort_order FROM business_templates WHERE is_active=true ORDER BY is_featured DESC,sort_order,name`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar las plantillas")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, slug, name, family, desc, icon, engine, style string
+		var raw []byte
+		var featured bool
+		var order int
+		if rows.Scan(&id, &slug, &name, &family, &desc, &icon, &engine, &style, &raw, &featured, &order) != nil {
+			continue
+		}
+		var settings any = map[string]any{}
+		_ = json.Unmarshal(raw, &settings)
+		catRows, _ := s.db.Query(r.Context(), `SELECT name FROM template_categories WHERE template_id=$1 ORDER BY sort_order,name LIMIT 6`, id)
+		cats := []string{}
+		if catRows != nil {
+			for catRows.Next() {
+				var c string
+				if catRows.Scan(&c) == nil {
+					cats = append(cats, c)
+				}
+			}
+			catRows.Close()
+		}
+		out = append(out, map[string]any{"id": id, "slug": slug, "name": name, "family": family, "description": desc, "icon": icon, "engine": engine, "recommended_style": style, "settings": settings, "is_featured": featured, "sort_order": order, "categories": cats})
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) getBusinessTemplate(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var id, name, family, desc, icon, engine, style string
+	var raw []byte
+	var featured, active bool
+	var order int
+	if err := s.db.QueryRow(r.Context(), `SELECT id,name,family,coalesce(description,''),coalesce(icon,''),engine,recommended_style,settings,is_featured,is_active,sort_order FROM business_templates WHERE slug=$1`, slug).Scan(&id, &name, &family, &desc, &icon, &engine, &style, &raw, &featured, &active, &order); err != nil || !active {
+		jsonErr(w, 404, "Plantilla no encontrada")
+		return
+	}
+	var settings any = map[string]any{}
+	_ = json.Unmarshal(raw, &settings)
+	categories := []map[string]any{}
+	cr, _ := s.db.Query(r.Context(), `SELECT id,name,slug,coalesce(description,''),sort_order FROM template_categories WHERE template_id=$1 ORDER BY sort_order,name`, id)
+	if cr != nil {
+		defer cr.Close()
+		for cr.Next() {
+			var cid, n, sl, d string
+			var so int
+			if cr.Scan(&cid, &n, &sl, &d, &so) == nil {
+				categories = append(categories, map[string]any{"id": cid, "name": n, "slug": sl, "description": d, "sort_order": so})
+			}
+		}
+	}
+	products := []map[string]any{}
+	pr, _ := s.db.Query(r.Context(), `SELECT id,coalesce(category_slug,''),name,slug,coalesce(description,''),coalesce(image_url,''),price,track_stock,variants,extras,attributes,is_featured,sort_order FROM template_products WHERE template_id=$1 ORDER BY is_featured DESC,sort_order,name`, id)
+	if pr != nil {
+		defer pr.Close()
+		for pr.Next() {
+			var pid, cat, n, sl, d, img string
+			var price float64
+			var track, pf bool
+			var variantsRaw, extrasRaw, attributesRaw []byte
+			var so int
+			if pr.Scan(&pid, &cat, &n, &sl, &d, &img, &price, &track, &variantsRaw, &extrasRaw, &attributesRaw, &pf, &so) == nil {
+				var variants, extras any = []any{}, []any{}
+				var attributes any = map[string]any{}
+				_ = json.Unmarshal(variantsRaw, &variants)
+				_ = json.Unmarshal(extrasRaw, &extras)
+				_ = json.Unmarshal(attributesRaw, &attributes)
+				products = append(products, map[string]any{"id": pid, "category_slug": cat, "name": n, "slug": sl, "description": d, "image_url": img, "price": price, "track_stock": track, "variants": variants, "extras": extras, "attributes": attributes, "is_featured": pf, "sort_order": so})
+			}
+		}
+	}
+	replies := []map[string]any{}
+	rr, _ := s.db.Query(r.Context(), `SELECT id,shortcut,title,message,sort_order FROM template_quick_replies WHERE template_id=$1 ORDER BY sort_order,title`, id)
+	if rr != nil {
+		defer rr.Close()
+		for rr.Next() {
+			var rid, shortcut, title, message string
+			var so int
+			if rr.Scan(&rid, &shortcut, &title, &message, &so) == nil {
+				replies = append(replies, map[string]any{"id": rid, "shortcut": shortcut, "title": title, "message": message, "sort_order": so})
+			}
+		}
+	}
+	jsonOut(w, 200, map[string]any{"id": id, "slug": slug, "name": name, "family": family, "description": desc, "icon": icon, "engine": engine, "recommended_style": style, "settings": settings, "is_featured": featured, "sort_order": order, "categories": categories, "products": products, "quick_replies": replies})
+}
+
+func (s *Server) applyBusinessTemplate(ctx context.Context, tx pgx.Tx, storeID, templateSlug string) error {
+	if strings.TrimSpace(templateSlug) == "" {
+		templateSlug = "otro-negocio"
+	}
+	var templateID, engine string
+	var settingsRaw []byte
+	err := tx.QueryRow(ctx, `SELECT id,engine,settings FROM business_templates WHERE slug=$1 AND is_active=true`, templateSlug).Scan(&templateID, &engine, &settingsRaw)
+	if err != nil && templateSlug != "otro-negocio" {
+		templateSlug = "otro-negocio"
+		err = tx.QueryRow(ctx, `SELECT id,engine,settings FROM business_templates WHERE slug=$1 AND is_active=true`, templateSlug).Scan(&templateID, &engine, &settingsRaw)
+	}
+	if err != nil {
+		return err
+	}
+	settings := string(settingsRaw)
+	_, err = tx.Exec(ctx, `UPDATE stores SET template_id=$2,business_engine=$3,template_config=$4::jsonb,
+		primary_color=coalesce(nullif($4::jsonb->>'accent',''),primary_color),
+		delivery_enabled=coalesce(($4::jsonb->>'delivery_enabled')::boolean,delivery_enabled),
+		pickup_enabled=coalesce(($4::jsonb->>'pickup_enabled')::boolean,pickup_enabled),
+		minimum_order=coalesce(($4::jsonb->>'minimum_order')::numeric,minimum_order),
+		order_notice=coalesce(nullif($4::jsonb->>'order_notice',''),order_notice),updated_at=now() WHERE id=$1`, storeID, templateID, engine, settings)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO categories(store_id,name,slug,description,sort_order,is_active)
+		SELECT $1,name,slug,description,sort_order,true FROM template_categories WHERE template_id=$2 ORDER BY sort_order
+		ON CONFLICT(store_id,slug) DO NOTHING`, storeID, templateID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO products(store_id,category_id,name,slug,description,image_url,price,stock,track_stock,variants,extras,attributes,is_featured,sort_order,is_active)
+		SELECT $1,c.id,tp.name,tp.slug,tp.description,tp.image_url,tp.price,CASE WHEN tp.track_stock THEN 10 ELSE NULL END,tp.track_stock,tp.variants,tp.extras,tp.attributes,tp.is_featured,tp.sort_order,true
+		FROM template_products tp LEFT JOIN categories c ON c.store_id=$1 AND c.slug=tp.category_slug
+		WHERE tp.template_id=$2 ORDER BY tp.sort_order
+		ON CONFLICT(store_id,slug) DO NOTHING`, storeID, templateID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO store_attribute_groups(store_id,name,sort_order)
+		SELECT $1,name,sort_order FROM template_attribute_groups WHERE template_id=$2
+		ON CONFLICT(store_id,name) DO NOTHING`, storeID, templateID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO store_attributes(store_id,group_id,key,label,input_type,options,is_required,sort_order)
+		SELECT $1,sg.id,ta.key,ta.label,ta.input_type,ta.options,ta.is_required,ta.sort_order
+		FROM template_attributes ta
+		LEFT JOIN template_attribute_groups tg ON tg.id=ta.group_id
+		LEFT JOIN store_attribute_groups sg ON sg.store_id=$1 AND sg.name=tg.name
+		WHERE ta.template_id=$2
+		ON CONFLICT(store_id,key) DO NOTHING`, storeID, templateID)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO quick_replies(store_id,title,body,sort_order)
+		SELECT $1,title,message,sort_order FROM template_quick_replies WHERE template_id=$2`, storeID, templateID)
+	return err
+}
+
+type adminTemplateInput struct {
+	Name             string         `json:"name"`
+	Slug             string         `json:"slug"`
+	Family           string         `json:"family"`
+	Description      string         `json:"description"`
+	Icon             string         `json:"icon"`
+	Engine           string         `json:"engine"`
+	RecommendedStyle string         `json:"recommended_style"`
+	Settings         map[string]any `json:"settings"`
+	IsFeatured       bool           `json:"is_featured"`
+	IsActive         bool           `json:"is_active"`
+	SortOrder        int            `json:"sort_order"`
+}
+
+func (s *Server) adminTemplates(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT bt.id,bt.slug,bt.name,bt.family,coalesce(bt.description,''),coalesce(bt.icon,''),bt.engine,bt.recommended_style,bt.settings,bt.is_featured,bt.is_active,bt.sort_order,
+		(SELECT count(*) FROM template_categories tc WHERE tc.template_id=bt.id),(SELECT count(*) FROM template_products tp WHERE tp.template_id=bt.id),(SELECT count(*) FROM template_quick_replies tr WHERE tr.template_id=bt.id)
+		FROM business_templates bt ORDER BY bt.sort_order,bt.name`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar las plantillas")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, slug, name, family, desc, icon, engine, style string
+		var raw []byte
+		var featured, active bool
+		var sortOrder, categories, products, replies int
+		if rows.Scan(&id, &slug, &name, &family, &desc, &icon, &engine, &style, &raw, &featured, &active, &sortOrder, &categories, &products, &replies) != nil {
+			continue
+		}
+		var settings any = map[string]any{}
+		_ = json.Unmarshal(raw, &settings)
+		out = append(out, map[string]any{"id": id, "slug": slug, "name": name, "family": family, "description": desc, "icon": icon, "engine": engine, "recommended_style": style, "settings": settings, "is_featured": featured, "is_active": active, "sort_order": sortOrder, "category_count": categories, "product_count": products, "reply_count": replies})
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminCreateTemplate(w http.ResponseWriter, r *http.Request) {
+	var in adminTemplateInput
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "Nombre de plantilla obligatorio")
+		return
+	}
+	if strings.TrimSpace(in.Slug) == "" {
+		in.Slug = slugify(in.Name)
+	} else {
+		in.Slug = slugify(in.Slug)
+	}
+	if in.Family == "" {
+		in.Family = "Otros"
+	}
+	if in.Engine == "" {
+		in.Engine = "retail"
+	}
+	if in.RecommendedStyle == "" {
+		in.RecommendedStyle = "Minimal"
+	}
+	if in.Settings == nil {
+		in.Settings = map[string]any{"item_label": "producto", "item_label_plural": "productos", "primary_action": "Comprar", "delivery_enabled": true, "pickup_enabled": true}
+	}
+	raw, _ := json.Marshal(in.Settings)
+	var id string
+	err := s.db.QueryRow(r.Context(), `INSERT INTO business_templates(slug,name,family,description,icon,engine,recommended_style,settings,is_featured,is_active,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, in.Slug, strings.TrimSpace(in.Name), in.Family, in.Description, in.Icon, in.Engine, in.RecommendedStyle, raw, in.IsFeatured, in.IsActive, in.SortOrder).Scan(&id)
+	if err != nil {
+		jsonErr(w, 409, "Ya existe una plantilla con ese identificador")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": id, "slug": in.Slug})
+}
+
+func (s *Server) adminUpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in adminTemplateInput
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "Datos de plantilla inválidos")
+		return
+	}
+	if strings.TrimSpace(in.Slug) == "" {
+		in.Slug = slugify(in.Name)
+	} else {
+		in.Slug = slugify(in.Slug)
+	}
+	if in.Engine == "" {
+		in.Engine = "retail"
+	}
+	if in.RecommendedStyle == "" {
+		in.RecommendedStyle = "Minimal"
+	}
+	raw, _ := json.Marshal(in.Settings)
+	cmd, err := s.db.Exec(r.Context(), `UPDATE business_templates SET slug=$1,name=$2,family=$3,description=$4,icon=$5,engine=$6,recommended_style=$7,settings=$8,is_featured=$9,is_active=$10,sort_order=$11,updated_at=now() WHERE id=$12`, in.Slug, strings.TrimSpace(in.Name), in.Family, in.Description, in.Icon, in.Engine, in.RecommendedStyle, raw, in.IsFeatured, in.IsActive, in.SortOrder, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 409, "No se pudo actualizar la plantilla")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+type adminTemplateContentInput struct {
+	Categories []struct {
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+		Description string `json:"description"`
+		SortOrder   int    `json:"sort_order"`
+	} `json:"categories"`
+	Products []struct {
+		CategorySlug string           `json:"category_slug"`
+		Name         string           `json:"name"`
+		Slug         string           `json:"slug"`
+		Description  string           `json:"description"`
+		Price        float64          `json:"price"`
+		TrackStock   bool             `json:"track_stock"`
+		Variants     []map[string]any `json:"variants"`
+		Extras       []map[string]any `json:"extras"`
+		Attributes   map[string]any   `json:"attributes"`
+		IsFeatured   bool             `json:"is_featured"`
+		SortOrder    int              `json:"sort_order"`
+	} `json:"products"`
+	Attributes []struct {
+		GroupName  string   `json:"group_name"`
+		Key        string   `json:"key"`
+		Label      string   `json:"label"`
+		InputType  string   `json:"input_type"`
+		Options    []string `json:"options"`
+		IsRequired bool     `json:"is_required"`
+		SortOrder  int      `json:"sort_order"`
+	} `json:"attributes"`
+	QuickReplies []struct {
+		Shortcut  string `json:"shortcut"`
+		Title     string `json:"title"`
+		Message   string `json:"message"`
+		SortOrder int    `json:"sort_order"`
+	} `json:"quick_replies"`
+}
+
+func (s *Server) adminTemplateContent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var exists int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM business_templates WHERE id=$1`, id).Scan(&exists)
+	if exists == 0 {
+		jsonErr(w, 404, "Plantilla no encontrada")
+		return
+	}
+	categories := []map[string]any{}
+	cr, _ := s.db.Query(r.Context(), `SELECT name,slug,coalesce(description,''),sort_order FROM template_categories WHERE template_id=$1 ORDER BY sort_order,name`, id)
+	if cr != nil {
+		for cr.Next() {
+			var name, slug, description string
+			var sortOrder int
+			if cr.Scan(&name, &slug, &description, &sortOrder) == nil {
+				categories = append(categories, map[string]any{"name": name, "slug": slug, "description": description, "sort_order": sortOrder})
+			}
+		}
+		cr.Close()
+	}
+	products := []map[string]any{}
+	pr, _ := s.db.Query(r.Context(), `SELECT coalesce(category_slug,''),name,slug,coalesce(description,''),price,track_stock,variants,extras,attributes,is_featured,sort_order FROM template_products WHERE template_id=$1 ORDER BY sort_order,name`, id)
+	if pr != nil {
+		for pr.Next() {
+			var categorySlug, name, slug, description string
+			var price float64
+			var trackStock, featured bool
+			var variantsRaw, extrasRaw, attributesRaw []byte
+			var sortOrder int
+			if pr.Scan(&categorySlug, &name, &slug, &description, &price, &trackStock, &variantsRaw, &extrasRaw, &attributesRaw, &featured, &sortOrder) == nil {
+				var variants, extras any = []any{}, []any{}
+				var attributes any = map[string]any{}
+				_ = json.Unmarshal(variantsRaw, &variants)
+				_ = json.Unmarshal(extrasRaw, &extras)
+				_ = json.Unmarshal(attributesRaw, &attributes)
+				products = append(products, map[string]any{"category_slug": categorySlug, "name": name, "slug": slug, "description": description, "price": price, "track_stock": trackStock, "variants": variants, "extras": extras, "attributes": attributes, "is_featured": featured, "sort_order": sortOrder})
+			}
+		}
+		pr.Close()
+	}
+	attributes := []map[string]any{}
+	ar, _ := s.db.Query(r.Context(), `SELECT coalesce(g.name,''),a.key,a.label,a.input_type,a.options,a.is_required,a.sort_order FROM template_attributes a LEFT JOIN template_attribute_groups g ON g.id=a.group_id WHERE a.template_id=$1 ORDER BY coalesce(g.sort_order,0),a.sort_order,a.label`, id)
+	if ar != nil {
+		for ar.Next() {
+			var groupName, key, label, inputType string
+			var optionsRaw []byte
+			var required bool
+			var sortOrder int
+			if ar.Scan(&groupName, &key, &label, &inputType, &optionsRaw, &required, &sortOrder) == nil {
+				var options any = []any{}
+				_ = json.Unmarshal(optionsRaw, &options)
+				attributes = append(attributes, map[string]any{"group_name": groupName, "key": key, "label": label, "input_type": inputType, "options": options, "is_required": required, "sort_order": sortOrder})
+			}
+		}
+		ar.Close()
+	}
+	replies := []map[string]any{}
+	rr, _ := s.db.Query(r.Context(), `SELECT shortcut,title,message,sort_order FROM template_quick_replies WHERE template_id=$1 ORDER BY sort_order,title`, id)
+	if rr != nil {
+		for rr.Next() {
+			var shortcut, title, message string
+			var sortOrder int
+			if rr.Scan(&shortcut, &title, &message, &sortOrder) == nil {
+				replies = append(replies, map[string]any{"shortcut": shortcut, "title": title, "message": message, "sort_order": sortOrder})
+			}
+		}
+		rr.Close()
+	}
+	jsonOut(w, 200, map[string]any{"categories": categories, "products": products, "attributes": attributes, "quick_replies": replies})
+}
+
+func (s *Server) adminUpdateTemplateContent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in adminTemplateContentInput
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Contenido de plantilla inválido")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar la plantilla")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var exists int
+	if err = tx.QueryRow(r.Context(), `SELECT count(*) FROM business_templates WHERE id=$1`, id).Scan(&exists); err != nil || exists == 0 {
+		jsonErr(w, 404, "Plantilla no encontrada")
+		return
+	}
+	for _, table := range []string{"template_attributes", "template_attribute_groups", "template_products", "template_categories", "template_quick_replies"} {
+		if _, err = tx.Exec(r.Context(), `DELETE FROM `+table+` WHERE template_id=$1`, id); err != nil {
+			jsonErr(w, 500, "No se pudo limpiar el contenido anterior")
+			return
+		}
+	}
+	for i, c := range in.Categories {
+		name := strings.TrimSpace(c.Name)
+		if name == "" {
+			continue
+		}
+		slug := slugify(firstNonEmpty(c.Slug, name))
+		sortOrder := c.SortOrder
+		if sortOrder <= 0 {
+			sortOrder = (i + 1) * 10
+		}
+		if _, err = tx.Exec(r.Context(), `INSERT INTO template_categories(template_id,name,slug,description,sort_order) VALUES($1,$2,$3,$4,$5)`, id, name, slug, c.Description, sortOrder); err != nil {
+			jsonErr(w, 409, "Hay categorías repetidas en la plantilla")
+			return
+		}
+	}
+	for i, prod := range in.Products {
+		name := strings.TrimSpace(prod.Name)
+		if name == "" {
+			continue
+		}
+		slug := slugify(firstNonEmpty(prod.Slug, name))
+		sortOrder := prod.SortOrder
+		if sortOrder <= 0 {
+			sortOrder = (i + 1) * 10
+		}
+		variants, _ := json.Marshal(prod.Variants)
+		extras, _ := json.Marshal(prod.Extras)
+		attrs, _ := json.Marshal(prod.Attributes)
+		if _, err = tx.Exec(r.Context(), `INSERT INTO template_products(template_id,category_slug,name,slug,description,price,track_stock,variants,extras,attributes,is_featured,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, id, prod.CategorySlug, name, slug, prod.Description, prod.Price, prod.TrackStock, variants, extras, attrs, prod.IsFeatured, sortOrder); err != nil {
+			jsonErr(w, 409, "Hay ejemplos repetidos en la plantilla")
+			return
+		}
+	}
+	groupIDs := map[string]string{}
+	groupOrder := 0
+	for _, attr := range in.Attributes {
+		groupName := strings.TrimSpace(attr.GroupName)
+		if groupName == "" {
+			groupName = "Detalles"
+		}
+		if _, ok := groupIDs[groupName]; !ok {
+			groupOrder += 10
+			var gid string
+			if err = tx.QueryRow(r.Context(), `INSERT INTO template_attribute_groups(template_id,name,sort_order) VALUES($1,$2,$3) RETURNING id`, id, groupName, groupOrder).Scan(&gid); err != nil {
+				jsonErr(w, 409, "No se pudo crear un grupo de campos")
+				return
+			}
+			groupIDs[groupName] = gid
+		}
+		key := slugify(firstNonEmpty(attr.Key, attr.Label))
+		key = strings.ReplaceAll(key, "-", "_")
+		if key == "" || strings.TrimSpace(attr.Label) == "" {
+			continue
+		}
+		inputType := attr.InputType
+		if inputType != "text" && inputType != "number" && inputType != "select" {
+			inputType = "text"
+		}
+		options, _ := json.Marshal(attr.Options)
+		if _, err = tx.Exec(r.Context(), `INSERT INTO template_attributes(template_id,group_id,key,label,input_type,options,is_required,sort_order) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, id, groupIDs[groupName], key, strings.TrimSpace(attr.Label), inputType, options, attr.IsRequired, attr.SortOrder); err != nil {
+			jsonErr(w, 409, "Hay campos repetidos en la plantilla")
+			return
+		}
+	}
+	for i, reply := range in.QuickReplies {
+		message := strings.TrimSpace(reply.Message)
+		if message == "" {
+			continue
+		}
+		shortcut := slugify(firstNonEmpty(reply.Shortcut, reply.Title))
+		sortOrder := reply.SortOrder
+		if sortOrder <= 0 {
+			sortOrder = (i + 1) * 10
+		}
+		if _, err = tx.Exec(r.Context(), `INSERT INTO template_quick_replies(template_id,shortcut,title,message,sort_order) VALUES($1,$2,$3,$4,$5)`, id, shortcut, strings.TrimSpace(reply.Title), message, sortOrder); err != nil {
+			jsonErr(w, 409, "Hay respuestas rápidas repetidas")
+			return
+		}
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la plantilla")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminDuplicateTemplate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var slug, name string
+	if err := s.db.QueryRow(r.Context(), `SELECT slug,name FROM business_templates WHERE id=$1`, id).Scan(&slug, &name); err != nil {
+		jsonErr(w, 404, "Plantilla no encontrada")
+		return
+	}
+	newSlug := slugify(slug + "-copia-" + uuid.NewString()[:6])
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo duplicar la plantilla")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var newID string
+	err = tx.QueryRow(r.Context(), `INSERT INTO business_templates(slug,name,family,description,icon,engine,recommended_style,settings,is_featured,is_active,sort_order)
+		SELECT $2,name||' (copia)',family,description,icon,engine,recommended_style,settings,false,false,sort_order+1 FROM business_templates WHERE id=$1 RETURNING id`, id, newSlug).Scan(&newID)
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO template_categories(template_id,name,slug,description,sort_order) SELECT $2,name,slug,description,sort_order FROM template_categories WHERE template_id=$1`, id, newID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO template_products(template_id,category_slug,name,slug,description,image_url,price,track_stock,variants,extras,attributes,is_featured,sort_order) SELECT $2,category_slug,name,slug,description,image_url,price,track_stock,variants,extras,attributes,is_featured,sort_order FROM template_products WHERE template_id=$1`, id, newID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO template_attribute_groups(template_id,name,sort_order) SELECT $2,name,sort_order FROM template_attribute_groups WHERE template_id=$1`, id, newID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO template_attributes(template_id,group_id,key,label,input_type,options,is_required,sort_order)
+			SELECT $2,ng.id,ta.key,ta.label,ta.input_type,ta.options,ta.is_required,ta.sort_order
+			FROM template_attributes ta LEFT JOIN template_attribute_groups og ON og.id=ta.group_id
+			LEFT JOIN template_attribute_groups ng ON ng.template_id=$2 AND ng.name=og.name WHERE ta.template_id=$1`, id, newID)
+	}
+	if err == nil {
+		_, err = tx.Exec(r.Context(), `INSERT INTO template_quick_replies(template_id,shortcut,title,message,sort_order) SELECT $2,shortcut,title,message,sort_order FROM template_quick_replies WHERE template_id=$1`, id, newID)
+	}
+	if err != nil || tx.Commit(r.Context()) != nil {
+		jsonErr(w, 500, "No se pudo duplicar la plantilla")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": newID, "slug": newSlug, "name": name + " (copia)"})
 }

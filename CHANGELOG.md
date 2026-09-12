@@ -1,3 +1,22 @@
+# WAMERCIO 2.0.0
+
+## Plantillas de negocio preconstruidas
+
+- Añade onboarding por tipo de negocio antes del registro del comerciante.
+- Incluye 15 plantillas sectoriales iniciales más una plantilla genérica `Otro tipo de negocio`.
+- Excluye colmados, taxis, motoconchos, acarreos y transporte bajo demanda.
+- Clona categorías, productos/servicios demo, configuración contextual, campos sectoriales y respuestas rápidas de WhatsApp al crear una tienda.
+- Añade motores reutilizables `retail`, `fashion`, `food`, `catalog`, `quotation`, `services` y `wholesale`.
+- `Productos` adapta textos y campos al tipo de negocio y admite atributos preconfigurados.
+- `Mis tiendas` permite elegir plantilla también para tiendas adicionales.
+- SuperAdmin incorpora `/admin/templates` para administrar plantillas y su contenido sin redeploy.
+- Conserva todas las mejoras del flujo comercial 1.9.0.
+
+## Base de datos
+
+- Añade `000011_business_templates`; `000010_commerce_flow` de WAMERCIO 1.9 permanece intacta.
+- Añade configuración de plantilla a tiendas, atributos sectoriales a productos y catálogo maestro de plantillas.
+
 # WAMERCIO 1.9.0
 
 ## Cierre del flujo comercial
