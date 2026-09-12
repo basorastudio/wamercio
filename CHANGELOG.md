@@ -1,3 +1,11 @@
+# WAMERCIO 2.0.1
+
+## Corrección de compilación
+
+- Elimina la segunda declaración accidental de `scanProduct` en el API.
+- Conserva intacto el sistema de plantillas de WAMERCIO 2.0.0 y todas las funciones heredadas de 1.9.
+- Revisa las funciones Go del API y del bridge de WhatsApp para detectar redeclaraciones adicionales: 0 encontradas.
+
 # WAMERCIO 2.0.0
 
 ## Plantillas de negocio preconstruidas

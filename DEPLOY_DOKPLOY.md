@@ -1,4 +1,4 @@
-# Despliegue WAMERCIO 2.0.0 en Dokploy
+# Despliegue WAMERCIO 2.0.1 en Dokploy
 
 Esta versión actualiza WAMERCIO 1.9.0 y conserva la infraestructura actual de Cloudflare, Traefik, gateway, PostgreSQL, Redis y WhatsApp.
 

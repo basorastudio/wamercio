@@ -968,24 +968,6 @@ func scanProduct(rows pgx.Rows) (map[string]any, error) {
 	return map[string]any{"id": id, "store_id": sid, "category_id": cid, "name": name, "slug": slug, "sku": sku, "description": desc, "image_url": img, "price": price, "compare_price": compare, "stock": stock, "track_stock": track, "variants": v, "extras": e, "attributes": a, "tag": tag, "is_featured": featured, "sort_order": sortOrder, "is_active": active, "created_at": created, "updated_at": updated}, nil
 }
 
-func scanProduct(rows pgx.Rows) (map[string]any, error) {
-	var id, sid, cid, name, slug, sku, desc, img, tag string
-	var price float64
-	var compare, stock float64
-	var track, featured, active bool
-	var sortOrder int
-	var variants, extras, attributes []byte
-	var created, updated time.Time
-	err := rows.Scan(&id, &sid, &cid, &name, &slug, &sku, &desc, &img, &price, &compare, &stock, &track, &variants, &extras, &attributes, &tag, &featured, &sortOrder, &active, &created, &updated)
-	if err != nil {
-		return nil, err
-	}
-	var v, e, a any
-	_ = json.Unmarshal(variants, &v)
-	_ = json.Unmarshal(extras, &e)
-	_ = json.Unmarshal(attributes, &a)
-	return map[string]any{"id": id, "store_id": sid, "category_id": cid, "name": name, "slug": slug, "sku": sku, "description": desc, "image_url": img, "price": price, "compare_price": compare, "stock": stock, "track_stock": track, "variants": v, "extras": e, "attributes": a, "tag": tag, "is_featured": featured, "sort_order": sortOrder, "is_active": active, "created_at": created, "updated_at": updated}, nil
-}
 func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	sid, ok := s.assertStore(w, r)
 	if !ok {
