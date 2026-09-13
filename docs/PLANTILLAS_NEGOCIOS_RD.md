@@ -12,12 +12,7 @@ La regla de producto es:
 
 WAMERCIO se concentra en negocios que venden productos, gastronomía, servicios, cotizaciones o catálogos especializados y utilizan WhatsApp para atender y cerrar operaciones.
 
-Quedan expresamente fuera del sistema de plantillas:
-
-- colmados;
-- taxis;
-- motoconchos;
-- acarreos y transporte bajo demanda.
+El catálogo inicial no pretende enumerar cada actividad comercial posible. SuperAdmin puede crear nuevas plantillas y `Otro tipo de negocio` funciona como punto de partida para cualquier operación que venda, cotice o coordine servicios por WhatsApp.
 
 ## Motores comerciales
 

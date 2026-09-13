@@ -1,6 +1,17 @@
-# WAMERCIO 2.2.2
+# WAMERCIO 2.3.0
 
 WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js, Go, PostgreSQL, Redis y un bridge WhatsApp multisesión.
+
+## WAMERCIO 2.3.0 — Centro SaaS funcional
+
+- Configuración real por sección para General, Territorio, Tipos de negocio, Dominios, Bases de datos, Bancos, WhatsApp, Notificaciones, Acceso, Identidad, Legal, Backups y Auditoría.
+- Secretos de GEO RD MAP, Identidad Dominicana y Cloudflare R2 cifrados mediante `PLATFORM_CONFIG_SECRET`.
+- Pruebas reales de GEO RD MAP, Cédula/RNC y credenciales R2.
+- PIN configurable para propietarios y personal con compatibilidad de PIN heredado.
+- Verificación obligatoria de Cédula/RNC en el registro público cuando la política central está activa.
+- Términos y privacidad públicos, plantillas de notificación persistentes y routing documentado como `wamercio.com/{slug}`.
+
+Consulta `docs/ACTUALIZACION_2.3.0.md` antes del primer despliegue de esta versión.
 
 
 ## WAMERCIO 2.1.3 — Flujo de tienda y checkout lateral
@@ -43,7 +54,7 @@ Incluye 15 plantillas sectoriales iniciales más `Otro tipo de negocio`:
 - Mayorista / distribuidor
 - Otro tipo de negocio
 
-Quedan fuera de este sistema los verticales cubiertos por otros proyectos: colmados, taxis, motoconchos, acarreos y transporte bajo demanda.
+El catálogo de plantillas es extensible desde SuperAdmin. Si un negocio no coincide exactamente con una plantilla, puede utilizar `Otro tipo de negocio` y adaptar categorías, productos, servicios y respuestas rápidas sin cambiar de plataforma.
 
 ## Motores reutilizables
 
@@ -82,7 +93,7 @@ La plantilla se clona a la tienda. Después el comerciante puede modificar todo 
 ## Accesos
 
 ```text
-Comerciante: WhatsApp + PIN de 4 dígitos
+Comerciante: WhatsApp + PIN configurable de 4 a 8 dígitos
 SuperAdmin: /admin/login → correo + contraseña
 ```
 

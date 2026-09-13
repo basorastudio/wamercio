@@ -1,3 +1,11 @@
+# WAMERCIO 2.3.0 — Centro SaaS funcional
+
+- Centro SaaS con configuración real por sección.
+- Secretos cifrados para integraciones.
+- GEO RD MAP, Identidad, R2 y WhatsApp con estado/pruebas.
+- Política dinámica de PIN para propietarios y personal.
+- Páginas legales públicas y auditoría filtrable.
+
 # WAMERCIO 2.2.2 — Corrección de compilación del Centro SaaS
 
 - Corrige el error de TypeScript en `app/admin/settings/page.tsx` durante `next build`: `sections` ya no depende de la inferencia literal de `as const`, que hacía que `flatMap()` redujera todos los IDs al primer literal `general`.
@@ -85,7 +93,7 @@
 
 - Añade onboarding por tipo de negocio antes del registro del comerciante.
 - Incluye 15 plantillas sectoriales iniciales más una plantilla genérica `Otro tipo de negocio`.
-- Excluye colmados, taxis, motoconchos, acarreos y transporte bajo demanda.
+- El catálogo inicial se enfoca en plantillas comerciales reutilizables y mantiene una opción genérica extensible.
 - Clona categorías, productos/servicios demo, configuración contextual, campos sectoriales y respuestas rápidas de WhatsApp al crear una tienda.
 - Añade motores reutilizables `retail`, `fashion`, `food`, `catalog`, `quotation`, `services` y `wholesale`.
 - `Productos` adapta textos y campos al tipo de negocio y admite atributos preconfigurados.

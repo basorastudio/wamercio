@@ -3,16 +3,23 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -72,6 +79,7 @@ func (s *Server) Router() http.Handler {
 
 		api.Get("/plans", s.listPlans)
 		api.Get("/public/platform", s.publicPlatformSettings)
+		api.Get("/public/legal", s.publicLegalSettings)
 		api.Get("/templates", s.listBusinessTemplates)
 		api.Get("/templates/{slug}", s.getBusinessTemplate)
 		api.Get("/public/stores/{slug}", s.publicStore)
@@ -172,6 +180,9 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("landing")).Put("/admin/platform/landing", s.adminUpdateLandingSettings)
 			a.With(s.requireAdminArea("settings")).Get("/admin/platform/settings", s.adminPlatformSettings)
 			a.With(s.requireAdminArea("settings")).Put("/admin/platform/settings", s.adminUpdatePlatformSettings)
+			a.With(s.requireAdminArea("settings")).Put("/admin/platform/settings/{key}", s.adminUpdatePlatformSetting)
+			a.With(s.requireAdminArea("settings")).Get("/admin/platform/database/status", s.adminDatabaseStatus)
+			a.With(s.requireAdminArea("settings")).Post("/admin/platform/test/{kind}", s.adminTestPlatformIntegration)
 			a.With(s.requireAdminArea("settings")).Get("/admin/platform/banks", s.adminBanks)
 			a.With(s.requireAdminArea("settings")).Post("/admin/platform/banks", s.adminCreateBank)
 			a.With(s.requireAdminArea("settings")).Put("/admin/platform/banks/{id}", s.adminUpdateBank)
@@ -304,6 +315,93 @@ func validPIN(v string) bool {
 	return regexp.MustCompile(`^[0-9]{4}$`).MatchString(v)
 }
 
+func (s *Server) validPINFor(ctx context.Context, audience, value string) (bool, int) {
+	length := 4
+	access := s.platformSetting(ctx, "access")
+	key := "owner_pin_length"
+	if audience == "staff" {
+		key = "staff_pin_length"
+	}
+	if n := settingInt(access, key, 4); n >= 4 && n <= 8 {
+		length = n
+	}
+	matched, _ := regexp.MatchString(fmt.Sprintf(`^[0-9]{%d}$`, length), value)
+	return matched, length
+}
+
+func pinLengthsFromSetting(value any) []int {
+	out := []int{}
+	seen := map[int]bool{}
+	appendLength := func(n int) {
+		if n < 4 || n > 8 || seen[n] {
+			return
+		}
+		seen[n] = true
+		out = append(out, n)
+	}
+	switch values := value.(type) {
+	case []any:
+		for _, raw := range values {
+			switch n := raw.(type) {
+			case float64:
+				appendLength(int(n))
+			case int:
+				appendLength(n)
+			}
+		}
+	case []int:
+		for _, n := range values {
+			appendLength(n)
+		}
+	}
+	return out
+}
+
+func (s *Server) acceptedOwnerPINLengths(ctx context.Context) []int {
+	access := s.platformSetting(ctx, "access")
+	current := settingInt(access, "owner_pin_length", 4)
+	if current < 4 || current > 8 {
+		current = 4
+	}
+	accepted := []int{current}
+	seen := map[int]bool{current: true}
+	for _, n := range pinLengthsFromSetting(access["legacy_owner_pin_lengths"]) {
+		if !seen[n] {
+			seen[n] = true
+			accepted = append(accepted, n)
+		}
+	}
+	sort.Ints(accepted)
+	return accepted
+}
+
+func (s *Server) validOwnerLoginPIN(ctx context.Context, value string) (bool, []int) {
+	if matched, _ := regexp.MatchString(`^[0-9]{4,8}$`, value); !matched {
+		return false, s.acceptedOwnerPINLengths(ctx)
+	}
+	accepted := s.acceptedOwnerPINLengths(ctx)
+	for _, n := range accepted {
+		if len(value) == n {
+			return true, accepted
+		}
+	}
+	return false, accepted
+}
+
+func pinLengthsMessage(lengths []int) string {
+	if len(lengths) == 0 {
+		return "4 dígitos"
+	}
+	parts := make([]string, 0, len(lengths))
+	for _, n := range lengths {
+		parts = append(parts, fmt.Sprintf("%d", n))
+	}
+	if len(parts) == 1 {
+		return parts[0] + " dígitos"
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " o " + parts[len(parts)-1] + " dígitos"
+}
+
 func (s *Server) claimsFromCookie(r *http.Request, cookieName string) (*authpkg.Claims, error) {
 	cookie, err := r.Cookie(cookieName)
 	if err != nil || cookie.Value == "" {
@@ -404,8 +502,13 @@ func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {
 		Phone string `json:"phone"`
 		PIN   string `json:"pin"`
 	}
-	if decode(r, &in) != nil || normalizePhone(in.Phone) == "" || !validPIN(in.PIN) {
-		jsonErr(w, 400, "Ingresa tu número de WhatsApp y un PIN de 4 dígitos")
+	if decode(r, &in) != nil || normalizePhone(in.Phone) == "" {
+		jsonErr(w, 400, "Ingresa tu número de WhatsApp y PIN")
+		return
+	}
+	pinOK, acceptedPINLengths := s.validOwnerLoginPIN(r.Context(), in.PIN)
+	if !pinOK {
+		jsonErr(w, 400, "El PIN debe tener "+pinLengthsMessage(acceptedPINLengths))
 		return
 	}
 	phone := normalizePhone(in.Phone)
@@ -477,11 +580,13 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name         string `json:"name"`
-		Phone        string `json:"phone"`
-		PIN          string `json:"pin"`
-		BusinessName string `json:"business_name"`
-		TemplateSlug string `json:"template_slug"`
+		Name                string `json:"name"`
+		Phone               string `json:"phone"`
+		PIN                 string `json:"pin"`
+		BusinessName        string `json:"business_name"`
+		TemplateSlug        string `json:"template_slug"`
+		IdentitySubjectType string `json:"identity_subject_type"`
+		IdentityDocument    string `json:"identity_document"`
 	}
 	name := strings.TrimSpace(in.Name)
 	if decode(r, &in) != nil {
@@ -490,9 +595,23 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	name = strings.TrimSpace(in.Name)
 	phone := normalizePhone(in.Phone)
-	if name == "" || phone == "" || !validPIN(in.PIN) {
-		jsonErr(w, 400, "Nombre, WhatsApp y un PIN de 4 dígitos son obligatorios")
+	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
+	if name == "" || phone == "" || !pinOK {
+		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp y un PIN de %d dígitos son obligatorios", pinLength))
 		return
+	}
+	identity := s.platformSetting(r.Context(), "identity")
+	requireIdentity, _ := identity["require_owner_verification"].(bool)
+	identityEnabled, _ := identity["enabled"].(bool)
+	if requireIdentity {
+		if !identityEnabled {
+			jsonErr(w, http.StatusServiceUnavailable, "La verificación de identidad es obligatoria, pero la integración está deshabilitada")
+			return
+		}
+		if _, _, err := s.verifyIdentityDocument(r.Context(), in.IdentitySubjectType, in.IdentityDocument); err != nil {
+			jsonErr(w, http.StatusUnprocessableEntity, "No pudimos verificar la identidad: "+err.Error())
+			return
+		}
 	}
 	var exists int
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1`, phone).Scan(&exists)
@@ -527,7 +646,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	businessName := strings.TrimSpace(in.BusinessName)
 	if businessName != "" {
-		slug := safeStoreSlug(businessName)
+		slug := s.safeStoreSlugFor(r.Context(), businessName)
 		var storeID string
 		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, id, businessName, slug, phone).Scan(&storeID); err != nil {
 			jsonErr(w, 409, "No se pudo crear el comercio")
@@ -706,11 +825,38 @@ var reservedStoreSlugs = map[string]bool{
 	"settings": true, "store": true, "stores": true, "support": true, "transactions": true,
 	"favicon.ico": true, "icon.svg": true, "manifest.webmanifest": true, "sw.js": true,
 	"robots.txt": true, "sitemap.xml": true, "_next": true,
+	"terminos":   true,
+	"privacidad": true,
 }
 
 func safeStoreSlug(value string) string {
 	slug := slugify(value)
 	if reservedStoreSlugs[slug] {
+		return slug + "-tienda"
+	}
+	return slug
+}
+func (s *Server) safeStoreSlugFor(ctx context.Context, value string) string {
+	slug := slugify(value)
+	reserved := reservedStoreSlugs[slug]
+	domains := s.platformSetting(ctx, "domains")
+	if raw, ok := domains["reserved_subdomains"].([]any); ok {
+		for _, item := range raw {
+			if strings.EqualFold(strings.TrimSpace(fmt.Sprint(item)), slug) {
+				reserved = true
+				break
+			}
+		}
+	}
+	if raw, ok := domains["reserved_subdomains"].([]string); ok {
+		for _, item := range raw {
+			if strings.EqualFold(strings.TrimSpace(item), slug) {
+				reserved = true
+				break
+			}
+		}
+	}
+	if reserved {
 		return slug + "-tienda"
 	}
 	return slug
@@ -811,9 +957,9 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if in.Slug == "" {
-		in.Slug = safeStoreSlug(in.Name)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Name)
 	} else {
-		in.Slug = safeStoreSlug(in.Slug)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Slug)
 	}
 	if in.PrimaryColor == "" {
 		in.PrimaryColor = "#36b385"
@@ -867,9 +1013,9 @@ func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
 		active = *in.IsActive
 	}
 	if in.Slug == "" {
-		in.Slug = safeStoreSlug(in.Name)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Name)
 	} else {
-		in.Slug = safeStoreSlug(in.Slug)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Slug)
 	}
 	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,phone=NULL,whatsapp=$5,address=$6,primary_color=$7,is_active=$8,updated_at=now() WHERE id=$9`, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor, active, id)
 	if err != nil {
@@ -1548,9 +1694,10 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := claims(r)
-	var sid, phone, currentStatus, customerID string
+	var sid, phone, currentStatus, customerID, customerName, storeName string
 	var num int64
-	if s.db.QueryRow(r.Context(), `SELECT store_id,customer_phone,order_number,status,coalesce(customer_id::text,'') FROM orders WHERE id=$1`, id).Scan(&sid, &phone, &num, &currentStatus, &customerID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
+	var total float64
+	if s.db.QueryRow(r.Context(), `SELECT o.store_id,o.customer_phone,o.order_number,o.status,coalesce(o.customer_id::text,''),o.customer_name,o.total,st.name FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.id=$1`, id).Scan(&sid, &phone, &num, &currentStatus, &customerID, &customerName, &total, &storeName) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
 	}
@@ -1596,7 +1743,27 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
 	s.publishStoreEvent(r.Context(), sid, "order_status", map[string]any{"id": id, "number": num, "status": in.Status})
-	go s.trySendWhatsApp(context.Background(), sid, phone, fmt.Sprintf("Actualización de tu pedido #%d: %s", num, spanishStatus(in.Status)))
+	key := ""
+	switch in.Status {
+	case "confirmed":
+		key = "order_confirmed"
+	case "ready":
+		key = "order_ready"
+	case "out_for_delivery":
+		key = "order_on_the_way"
+	case "delivered", "picked_up":
+		key = "order_delivered"
+	}
+	message := fmt.Sprintf("Actualización de tu pedido #%d: %s", num, spanishStatus(in.Status))
+	if key != "" {
+		message = s.renderPlatformNotification(r.Context(), key, message, map[string]string{
+			"cliente": customerName,
+			"negocio": storeName,
+			"pedido":  fmt.Sprint(num),
+			"total":   fmt.Sprintf("RD$ %.2f", total),
+		})
+	}
+	go s.trySendWhatsApp(context.Background(), sid, phone, message)
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2140,7 +2307,8 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	}
 
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
-	if s.db.QueryRow(r.Context(), `SELECT pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
+	var storeName string
+	if s.db.QueryRow(r.Context(), `SELECT name,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&storeName, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2318,7 +2486,14 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
 	}
 	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
-	message := fmt.Sprintf("Pedido #%d creado en WAMERCIO\n%s\n\nTotal: RD$ %.2f\nEstado: Pendiente\nSeguimiento: %s", number, strings.Join(lines, "\n"), total, trackingURL)
+	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
+		"cliente":     strings.TrimSpace(in.CustomerName),
+		"negocio":     strings.TrimSpace(storeName),
+		"pedido":      fmt.Sprint(number),
+		"total":       fmt.Sprintf("RD$ %.2f", total),
+		"detalle":     strings.Join(lines, "\n"),
+		"seguimiento": trackingURL,
+	})
 	_ = s.queueWhatsApp(context.Background(), storeID, conversationID, remoteJID, message, "order")
 	jsonOut(w, 201, map[string]any{"id": orderID, "number": number, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "shipping": shipping, "total": total, "status": "pending", "payment_status": "pending", "source": "whatsapp"})
 }
@@ -2340,11 +2515,11 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Completa cliente, WhatsApp y productos")
 		return
 	}
-	var sid, ownerID, timezone string
+	var sid, ownerID, timezone, storeName string
 	var minimum float64
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
 	var hoursRaw []byte
-	if s.db.QueryRow(r.Context(), `SELECT id,user_id,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &ownerID, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
+	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &ownerID, &storeName, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2566,7 +2741,19 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	s.refreshCustomerStats(r.Context(), customerID)
 	s.publishStoreEvent(r.Context(), sid, "order", map[string]any{"id": orderID, "number": num, "source": "web"})
 	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
-	_ = s.queueWhatsApp(context.Background(), sid, "", in.CustomerPhone, fmt.Sprintf("¡Gracias %s! Recibimos tu pedido #%d por RD$ %.2f. Estado: Pendiente.\nSeguimiento: %s", in.CustomerName, num, total, trackingURL), "order")
+	lines := make([]string, 0, len(resolvedItems))
+	for _, item := range resolvedItems {
+		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
+	}
+	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
+		"cliente":     in.CustomerName,
+		"negocio":     storeName,
+		"pedido":      fmt.Sprint(num),
+		"total":       fmt.Sprintf("RD$ %.2f", total),
+		"detalle":     strings.Join(lines, "\n"),
+		"seguimiento": trackingURL,
+	})
+	_ = s.queueWhatsApp(context.Background(), sid, "", in.CustomerPhone, message, "order")
 	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType})
 }
 
@@ -3007,8 +3194,13 @@ func (s *Server) changePIN(w http.ResponseWriter, r *http.Request) {
 		Current string `json:"current_pin"`
 		New     string `json:"new_pin"`
 	}
-	if decode(r, &in) != nil || !validPIN(in.New) {
-		jsonErr(w, 400, "El nuevo PIN debe tener exactamente 4 dígitos")
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.New)
+	if !pinOK {
+		jsonErr(w, 400, fmt.Sprintf("El nuevo PIN debe tener exactamente %d dígitos", pinLength))
 		return
 	}
 	var currentHash string
@@ -3105,9 +3297,9 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Slug == "" {
-		in.Slug = safeStoreSlug(in.Name)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Name)
 	} else {
-		in.Slug = safeStoreSlug(in.Slug)
+		in.Slug = s.safeStoreSlugFor(r.Context(), in.Slug)
 	}
 	if in.Currency == "" {
 		in.Currency = "DOP"
@@ -3444,8 +3636,13 @@ func (s *Server) adminSetUserPIN(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		PIN string `json:"pin"`
 	}
-	if decode(r, &in) != nil || !validPIN(in.PIN) {
-		jsonErr(w, 400, "El PIN debe tener exactamente 4 dígitos")
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "PIN inválido")
+		return
+	}
+	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
+	if !pinOK {
+		jsonErr(w, 400, fmt.Sprintf("El PIN debe tener exactamente %d dígitos", pinLength))
 		return
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
@@ -3476,9 +3673,12 @@ func (s *Server) adminSetUserAccess(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "El WhatsApp es obligatorio")
 		return
 	}
-	if in.PIN != "" && !validPIN(in.PIN) {
-		jsonErr(w, 400, "El PIN debe tener exactamente 4 dígitos")
-		return
+	if in.PIN != "" {
+		pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
+		if !pinOK {
+			jsonErr(w, 400, fmt.Sprintf("El PIN debe tener exactamente %d dígitos", pinLength))
+			return
+		}
 	}
 	var duplicate int
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND id<>$1 AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$2`, id, phone).Scan(&duplicate)
@@ -4871,9 +5071,35 @@ func (s *Server) platformSetting(ctx context.Context, key string) map[string]any
 }
 
 func (s *Server) publicPlatformSettings(w http.ResponseWriter, r *http.Request) {
+	access := s.platformSetting(r.Context(), "access")
+	identity := s.platformSetting(r.Context(), "identity")
+	identityEnabled, _ := identity["enabled"].(bool)
+	requireOwnerVerification, _ := identity["require_owner_verification"].(bool)
 	jsonOut(w, 200, map[string]any{
 		"landing": s.platformSetting(r.Context(), "landing"),
 		"general": s.platformSetting(r.Context(), "general"),
+		"access": map[string]any{
+			"owner_pin_length":           settingInt(access, "owner_pin_length", 4),
+			"staff_pin_length":           settingInt(access, "staff_pin_length", 4),
+			"accepted_owner_pin_lengths": s.acceptedOwnerPINLengths(r.Context()),
+		},
+		"identity": map[string]any{
+			"enabled":                    identityEnabled,
+			"require_owner_verification": requireOwnerVerification,
+		},
+	})
+}
+
+func (s *Server) publicLegalSettings(w http.ResponseWriter, r *http.Request) {
+	legal := s.platformSetting(r.Context(), "legal")
+	jsonOut(w, 200, map[string]any{
+		"responsible_entity": legal["responsible_entity"],
+		"version":            legal["version"],
+		"effective_date":     legal["effective_date"],
+		"jurisdiction":       legal["jurisdiction"],
+		"contact_email":      legal["contact_email"],
+		"terms_text":         legal["terms_text"],
+		"privacy_text":       legal["privacy_text"],
 	})
 }
 
@@ -4898,11 +5124,198 @@ func (s *Server) adminUpdateLandingSettings(w http.ResponseWriter, r *http.Reque
 	jsonOut(w, 200, in)
 }
 
+var platformSettingKeys = []string{"general", "territory", "business_types", "domains", "database", "whatsapp", "notifications", "access", "identity", "legal", "backups"}
+
+var platformSecretFields = map[string][]string{
+	"territory": {"api_key"},
+	"identity":  {"api_key"},
+	"backups":   {"r2_secret_access_key", "restic_password"},
+}
+
+func platformSettingAllowed(key string) bool {
+	for _, candidate := range platformSettingKeys {
+		if key == candidate {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Server) platformSecretKey() []byte {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(s.cfg.PlatformConfigSecret)))
+	return sum[:]
+}
+
+func (s *Server) encryptPlatformSecret(value string) (string, error) {
+	if strings.TrimSpace(s.cfg.PlatformConfigSecret) == "" {
+		return "", fmt.Errorf("PLATFORM_CONFIG_SECRET no configurado")
+	}
+	block, err := aes.NewCipher(s.platformSecretKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err = rand.Read(nonce); err != nil {
+		return "", err
+	}
+	sealed := gcm.Seal(nil, nonce, []byte(value), nil)
+	payload := append(nonce, sealed...)
+	return base64.RawStdEncoding.EncodeToString(payload), nil
+}
+
+func (s *Server) decryptPlatformSecret(value string) (string, error) {
+	if strings.TrimSpace(s.cfg.PlatformConfigSecret) == "" {
+		return "", fmt.Errorf("PLATFORM_CONFIG_SECRET no configurado")
+	}
+	payload, err := base64.RawStdEncoding.DecodeString(value)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(s.platformSecretKey())
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil || len(payload) < gcm.NonceSize() {
+		return "", fmt.Errorf("secreto inválido")
+	}
+	plain, err := gcm.Open(nil, payload[:gcm.NonceSize()], payload[gcm.NonceSize():], nil)
+	return string(plain), err
+}
+
+func (s *Server) platformSecretConfigured(ctx context.Context, key string) bool {
+	var exists bool
+	_ = s.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM platform_secrets WHERE key=$1)`, key).Scan(&exists)
+	return exists
+}
+
+func (s *Server) readPlatformSecret(ctx context.Context, key string) string {
+	var encrypted string
+	if s.db.QueryRow(ctx, `SELECT ciphertext FROM platform_secrets WHERE key=$1`, key).Scan(&encrypted) != nil {
+		return ""
+	}
+	plain, err := s.decryptPlatformSecret(encrypted)
+	if err != nil {
+		return ""
+	}
+	return plain
+}
+
+func (s *Server) storePlatformSecret(ctx context.Context, actorID, key, value string) error {
+	encrypted, err := s.encryptPlatformSecret(value)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, `INSERT INTO platform_secrets(key,ciphertext,updated_by,updated_at) VALUES($1,$2,$3,now()) ON CONFLICT(key) DO UPDATE SET ciphertext=excluded.ciphertext,updated_by=excluded.updated_by,updated_at=now()`, key, encrypted, actorID)
+	return err
+}
+
+func (s *Server) decoratedPlatformSetting(ctx context.Context, key string) map[string]any {
+	value := s.platformSetting(ctx, key)
+	for _, field := range platformSecretFields[key] {
+		delete(value, field)
+		value[field+"_configured"] = s.platformSecretConfigured(ctx, key+"."+field)
+	}
+	if key == "domains" {
+		base := strings.TrimRight(strings.TrimSpace(s.cfg.AppURL), "/")
+		if base == "" {
+			base = "https://wamercio.com"
+		}
+		value["route_mode"] = "path"
+		value["runtime_app_url"] = base
+		value["public_url_format"] = base + "/{slug}"
+	}
+	return value
+}
+
 func (s *Server) adminPlatformSettings(w http.ResponseWriter, r *http.Request) {
-	keys := []string{"general", "territory", "business_types", "domains", "database", "whatsapp", "notifications", "access", "identity", "legal", "backups"}
 	out := map[string]any{}
-	for _, key := range keys {
-		out[key] = s.platformSetting(r.Context(), key)
+	for _, key := range platformSettingKeys {
+		out[key] = s.decoratedPlatformSetting(r.Context(), key)
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) savePlatformSetting(ctx context.Context, actorID, key string, in map[string]any) (map[string]any, error) {
+	if !platformSettingAllowed(key) {
+		return nil, fmt.Errorf("sección no permitida")
+	}
+	if key == "domains" {
+		// WAMERCIO 2.x publica cada negocio en APP_URL/{slug}. El dominio y
+		// TLS pertenecen a la infraestructura (Dokploy/Traefik), mientras que
+		// esta sección administra los identificadores que no pueden ser tiendas.
+		in["route_mode"] = "path"
+		delete(in, "tenant_domain")
+		delete(in, "custom_domains_enabled")
+		delete(in, "force_https")
+		delete(in, "runtime_app_url")
+		delete(in, "public_url_format")
+		delete(in, "platform_domain")
+	}
+	if key == "access" {
+		current := s.platformSetting(ctx, "access")
+		previousLength := settingInt(current, "owner_pin_length", 4)
+		nextLength := settingInt(in, "owner_pin_length", previousLength)
+		legacy := pinLengthsFromSetting(current["legacy_owner_pin_lengths"])
+		legacy = append(legacy, pinLengthsFromSetting(in["legacy_owner_pin_lengths"])...)
+		if previousLength >= 4 && previousLength <= 8 && nextLength != previousLength {
+			legacy = append(legacy, previousLength)
+		}
+		seen := map[int]bool{}
+		normalized := make([]int, 0, len(legacy))
+		for _, n := range legacy {
+			if n < 4 || n > 8 || n == nextLength || seen[n] {
+				continue
+			}
+			seen[n] = true
+			normalized = append(normalized, n)
+		}
+		sort.Ints(normalized)
+		in["legacy_owner_pin_lengths"] = normalized
+	}
+	for _, field := range platformSecretFields[key] {
+		configuredField := field + "_configured"
+		delete(in, configuredField)
+		if clear, _ := in[field+"_clear"].(bool); clear {
+			_, _ = s.db.Exec(ctx, `DELETE FROM platform_secrets WHERE key=$1`, key+"."+field)
+		}
+		delete(in, field+"_clear")
+		if raw, ok := in[field]; ok {
+			if secret, ok := raw.(string); ok && strings.TrimSpace(secret) != "" {
+				if err := s.storePlatformSecret(ctx, actorID, key+"."+field, strings.TrimSpace(secret)); err != nil {
+					return nil, err
+				}
+			}
+			delete(in, field)
+		}
+	}
+	body, _ := json.Marshal(in)
+	if _, err := s.db.Exec(ctx, `INSERT INTO platform_settings(key,value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,now()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=now()`, key, string(body), actorID); err != nil {
+		return nil, err
+	}
+	s.auditPlatform(ctx, actorID, "platform.settings."+key+".updated", "platform_setting", key, nil)
+	return s.decoratedPlatformSetting(ctx, key), nil
+}
+
+func (s *Server) adminUpdatePlatformSetting(w http.ResponseWriter, r *http.Request) {
+	key := chi.URLParam(r, "key")
+	if !platformSettingAllowed(key) {
+		jsonErr(w, 404, "Sección de configuración no encontrada")
+		return
+	}
+	var in map[string]any
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Configuración inválida")
+		return
+	}
+	out, err := s.savePlatformSetting(r.Context(), claims(r).UserID, key, in)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar la configuración: "+err.Error())
+		return
 	}
 	jsonOut(w, 200, out)
 }
@@ -4913,30 +5326,313 @@ func (s *Server) adminUpdatePlatformSettings(w http.ResponseWriter, r *http.Requ
 		jsonErr(w, 400, "Configuración inválida")
 		return
 	}
-	c := claims(r)
-	tx, err := s.db.Begin(r.Context())
-	if err != nil {
-		jsonErr(w, 500, "No se pudo iniciar la actualización")
-		return
-	}
-	defer tx.Rollback(r.Context())
-	for _, key := range []string{"general", "territory", "business_types", "domains", "database", "whatsapp", "notifications", "access", "identity", "legal", "backups"} {
+	out := map[string]any{}
+	for _, key := range platformSettingKeys {
 		value, ok := in[key]
 		if !ok {
 			continue
 		}
-		body, _ := json.Marshal(value)
-		if _, err = tx.Exec(r.Context(), `INSERT INTO platform_settings(key,value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,now()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=now()`, key, string(body), c.UserID); err != nil {
+		saved, err := s.savePlatformSetting(r.Context(), claims(r).UserID, key, value)
+		if err != nil {
 			jsonErr(w, 500, "No se pudo guardar la configuración")
 			return
 		}
+		out[key] = saved
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO platform_audit_log(actor_id,action,entity_type,entity_id) VALUES($1,'platform.settings.updated','platform_setting','central')`, c.UserID)
-	if err = tx.Commit(r.Context()); err != nil {
-		jsonErr(w, 500, "No se pudo confirmar la configuración")
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminDatabaseStatus(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 4*time.Second)
+	defer cancel()
+	started := time.Now()
+	if err := s.db.Ping(ctx); err != nil {
+		jsonOut(w, 200, map[string]any{"connected": false, "message": "PostgreSQL no respondió"})
 		return
 	}
-	jsonOut(w, 200, in)
+	var version, database string
+	var size int64
+	var connections, stores, customers, orders, migration int
+	_ = s.db.QueryRow(ctx, `SHOW server_version`).Scan(&version)
+	_ = s.db.QueryRow(ctx, `SELECT current_database()`).Scan(&database)
+	_ = s.db.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&size)
+	_ = s.db.QueryRow(ctx, `SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database()`).Scan(&connections)
+	_ = s.db.QueryRow(ctx, `SELECT count(*)::int FROM stores`).Scan(&stores)
+	_ = s.db.QueryRow(ctx, `SELECT count(*)::int FROM customers`).Scan(&customers)
+	_ = s.db.QueryRow(ctx, `SELECT count(*)::int FROM orders`).Scan(&orders)
+	_ = s.db.QueryRow(ctx, `SELECT coalesce(max(version),0)::int FROM schema_migrations WHERE dirty=false`).Scan(&migration)
+	jsonOut(w, 200, map[string]any{"connected": true, "engine": "PostgreSQL", "version": version, "database": database, "size_bytes": size, "connections": connections, "stores": stores, "customers": customers, "orders": orders, "migration_version": migration, "latency_ms": time.Since(started).Milliseconds(), "isolation": "Aislamiento lógico por negocio"})
+}
+
+func settingString(m map[string]any, key, fallback string) string {
+	if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+		return strings.TrimSpace(v)
+	}
+	return fallback
+}
+
+func settingInt(m map[string]any, key string, fallback int) int {
+	switch v := m[key].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	}
+	return fallback
+}
+
+func (s *Server) renderPlatformNotification(ctx context.Context, key, fallback string, values map[string]string) string {
+	template := settingString(s.platformSetting(ctx, "notifications"), key, fallback)
+	for name, value := range values {
+		template = strings.ReplaceAll(template, "{"+name+"}", value)
+	}
+	return strings.TrimSpace(template)
+}
+
+func (s *Server) verifyIdentityDocument(ctx context.Context, subjectType, document string) (map[string]any, int, error) {
+	cfg := s.platformSetting(ctx, "identity")
+	subjectType = strings.ToLower(strings.TrimSpace(subjectType))
+	document = regexp.MustCompile(`\D+`).ReplaceAllString(document, "")
+	if subjectType == "" {
+		if len(document) == 9 {
+			subjectType = "empresa"
+		} else {
+			subjectType = "persona"
+		}
+	}
+	if subjectType != "persona" && subjectType != "empresa" {
+		return nil, 0, fmt.Errorf("selecciona persona o empresa")
+	}
+	if (subjectType == "persona" && len(document) != 11) || (subjectType == "empresa" && len(document) != 9 && len(document) != 11) {
+		return nil, 0, fmt.Errorf("la cédula debe tener 11 dígitos y el RNC 9 u 11 dígitos")
+	}
+	apiKey := s.readPlatformSecret(ctx, "identity.api_key")
+	if strings.TrimSpace(apiKey) == "" {
+		return nil, 0, fmt.Errorf("configura la API Key de Identidad Dominicana")
+	}
+	baseURL := strings.TrimRight(settingString(cfg, "base_url", "https://id.ltd.do"), "/")
+	target := baseURL + "/api/v1/identidad/verificar"
+	payload, _ := json.Marshal(map[string]any{"tipo_sujeto": subjectType, "documento": document, "contexto": "verificacion_propietario"})
+	timeout := time.Duration(settingInt(cfg, "timeout_seconds", 12)) * time.Second
+	if timeout < 2*time.Second || timeout > 60*time.Second {
+		timeout = 12 * time.Second
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, http.MethodPost, target, bytes.NewReader(payload))
+	if err != nil {
+		return nil, 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	if clientID := settingString(cfg, "client_id", "wamercio"); clientID != "" {
+		req.Header.Set("X-Client-ID", clientID)
+	}
+	if appURL, parseErr := url.Parse(s.cfg.AppURL); parseErr == nil && appURL.Hostname() != "" {
+		req.Header.Set("X-Application-Domain", appURL.Hostname())
+	}
+	req.Header.Set("X-Usage-Context", "verificacion_propietario")
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("Identidad Dominicana no respondió: %w", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	var envelope map[string]any
+	_ = json.Unmarshal(body, &envelope)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		message := fmt.Sprintf("Identidad Dominicana respondió HTTP %d", resp.StatusCode)
+		if rawErr, ok := envelope["error"].(map[string]any); ok {
+			if text, _ := rawErr["message"].(string); strings.TrimSpace(text) != "" {
+				message = strings.TrimSpace(text)
+			}
+		}
+		return envelope, resp.StatusCode, fmt.Errorf("%s", message)
+	}
+	if success, ok := envelope["success"].(bool); ok && !success {
+		return envelope, resp.StatusCode, fmt.Errorf("Identidad Dominicana no pudo validar el documento")
+	}
+	result := envelope
+	if data, ok := envelope["data"].(map[string]any); ok {
+		result = data
+	} else if data, ok := envelope["result"].(map[string]any); ok {
+		result = data
+	}
+	valid, _ := result["valida"].(bool)
+	found, _ := result["encontrada"].(bool)
+	canRegister, _ := result["puede_registrarse"].(bool)
+	if !valid || !found || !canRegister {
+		reason, _ := result["motivo"].(string)
+		reason = strings.TrimSpace(reason)
+		if reason == "" {
+			switch {
+			case !valid:
+				reason = "el documento no es válido"
+			case !found:
+				reason = "el documento no fue encontrado"
+			default:
+				reason = "el documento no está habilitado para registro"
+			}
+		}
+		return envelope, resp.StatusCode, fmt.Errorf("%s", reason)
+	}
+	return envelope, resp.StatusCode, nil
+}
+
+func awsHMAC(key []byte, value string) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(value))
+	return mac.Sum(nil)
+}
+
+func signR2Request(req *http.Request, accessKey, secretKey string, at time.Time) error {
+	accessKey = strings.TrimSpace(accessKey)
+	secretKey = strings.TrimSpace(secretKey)
+	if accessKey == "" || secretKey == "" {
+		return fmt.Errorf("credenciales de R2 incompletas")
+	}
+	at = at.UTC()
+	amzDate := at.Format("20060102T150405Z")
+	shortDate := at.Format("20060102")
+	emptyHash := sha256.Sum256(nil)
+	payloadHash := hex.EncodeToString(emptyHash[:])
+	req.Header.Set("X-Amz-Date", amzDate)
+	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
+	canonicalURI := req.URL.EscapedPath()
+	if canonicalURI == "" {
+		canonicalURI = "/"
+	}
+	canonicalQuery := req.URL.Query().Encode()
+	canonicalHeaders := "host:" + req.URL.Host + "\n" +
+		"x-amz-content-sha256:" + payloadHash + "\n" +
+		"x-amz-date:" + amzDate + "\n"
+	signedHeaders := "host;x-amz-content-sha256;x-amz-date"
+	canonicalRequest := req.Method + "\n" + canonicalURI + "\n" + canonicalQuery + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash
+	requestHash := sha256.Sum256([]byte(canonicalRequest))
+	scope := shortDate + "/auto/s3/aws4_request"
+	stringToSign := "AWS4-HMAC-SHA256\n" + amzDate + "\n" + scope + "\n" + hex.EncodeToString(requestHash[:])
+	dateKey := awsHMAC([]byte("AWS4"+secretKey), shortDate)
+	regionKey := awsHMAC(dateKey, "auto")
+	serviceKey := awsHMAC(regionKey, "s3")
+	signingKey := awsHMAC(serviceKey, "aws4_request")
+	signature := hex.EncodeToString(awsHMAC(signingKey, stringToSign))
+	req.Header.Set("Authorization", "AWS4-HMAC-SHA256 Credential="+accessKey+"/"+scope+", SignedHeaders="+signedHeaders+", Signature="+signature)
+	return nil
+}
+
+func (s *Server) adminTestPlatformIntegration(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	if kind != "territory" && kind != "identity" && kind != "backups" {
+		jsonErr(w, 404, "Integración no encontrada")
+		return
+	}
+	cfg := s.platformSetting(r.Context(), kind)
+	var target string
+	var req *http.Request
+	var err error
+	timeout := time.Duration(settingInt(cfg, "timeout_seconds", 12)) * time.Second
+	if timeout < 2*time.Second || timeout > 60*time.Second {
+		timeout = 12 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), timeout)
+	defer cancel()
+
+	if kind == "identity" {
+		var input struct {
+			SubjectType string `json:"subject_type"`
+			Document    string `json:"document"`
+		}
+		if decode(r, &input) != nil {
+			jsonErr(w, 400, "Indica una cédula o RNC para realizar la prueba")
+			return
+		}
+		started := time.Now()
+		envelope, status, verifyErr := s.verifyIdentityDocument(ctx, input.SubjectType, input.Document)
+		out := map[string]any{"ok": verifyErr == nil, "status": status, "latency_ms": time.Since(started).Milliseconds(), "message": "Identidad Dominicana respondió correctamente"}
+		if data, exists := envelope["data"]; exists {
+			out["result"] = data
+		} else if data, exists := envelope["result"]; exists {
+			out["result"] = data
+		}
+		if meta, exists := envelope["meta"]; exists {
+			out["meta"] = meta
+		}
+		if verifyErr != nil {
+			out["message"] = verifyErr.Error()
+		}
+		jsonOut(w, 200, out)
+		return
+	}
+
+	if kind == "backups" {
+		target = strings.TrimRight(settingString(cfg, "r2_endpoint", ""), "/")
+		if target == "" {
+			account := settingString(cfg, "r2_account_id", "")
+			if account != "" {
+				target = "https://" + account + ".r2.cloudflarestorage.com"
+			}
+		}
+		bucket := settingString(cfg, "r2_bucket", "")
+		accessKey := settingString(cfg, "r2_access_key_id", "")
+		secretKey := s.readPlatformSecret(r.Context(), "backups.r2_secret_access_key")
+		if target == "" || bucket == "" {
+			jsonErr(w, 400, "Configura endpoint y bucket de Cloudflare R2")
+			return
+		}
+		if accessKey == "" || secretKey == "" {
+			jsonErr(w, 400, "Configura Access Key ID y Secret Access Key de Cloudflare R2")
+			return
+		}
+		bucketURL := target + "/" + url.PathEscape(bucket)
+		req, err = http.NewRequestWithContext(ctx, http.MethodHead, bucketURL, nil)
+		if err == nil {
+			err = signR2Request(req, accessKey, secretKey, time.Now())
+		}
+	} else {
+		target = strings.TrimRight(settingString(cfg, "base_url", ""), "/")
+		if target == "" {
+			jsonErr(w, 400, "Configura la URL de la integración")
+			return
+		}
+		healthPath := settingString(cfg, "health_path", "/api/v1/territories/health")
+		if !strings.HasPrefix(healthPath, "/") {
+			healthPath = "/" + healthPath
+		}
+		target += healthPath
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+		if err == nil {
+			if secret := s.readPlatformSecret(r.Context(), "territory.api_key"); secret != "" {
+				req.Header.Set("X-API-Key", secret)
+			}
+		}
+	}
+	if err != nil {
+		jsonErr(w, 400, "No se pudo preparar la prueba")
+		return
+	}
+	started := time.Now()
+	resp, err := (&http.Client{Timeout: timeout}).Do(req)
+	if err != nil {
+		jsonOut(w, 200, map[string]any{"ok": false, "target": target, "message": "No se pudo conectar: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	ok := resp.StatusCode >= 200 && resp.StatusCode < 400
+	message := "Conexión correcta"
+	out := map[string]any{"ok": ok, "status": resp.StatusCode, "latency_ms": time.Since(started).Milliseconds(), "target": target}
+	if !ok && message == "Conexión correcta" {
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			message = "La integración respondió, pero rechazó las credenciales o permisos"
+		case http.StatusNotFound:
+			message = "La integración respondió, pero el recurso configurado no existe"
+		default:
+			message = fmt.Sprintf("La integración respondió con HTTP %d", resp.StatusCode)
+		}
+	}
+	out["message"] = message
+	jsonOut(w, 200, out)
 }
 
 func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
@@ -4953,8 +5649,9 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	name := strings.TrimSpace(in.Name)
 	phone := normalizePhone(in.Phone)
-	if name == "" || phone == "" || !validPIN(in.PIN) {
-		jsonErr(w, 400, "Nombre, WhatsApp y PIN de 4 dígitos son obligatorios")
+	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
+	if name == "" || phone == "" || !pinOK {
+		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp y PIN de %d dígitos son obligatorios", pinLength))
 		return
 	}
 	var exists bool
@@ -4994,7 +5691,7 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	businessName := strings.TrimSpace(in.BusinessName)
 	var storeID string
 	if businessName != "" {
-		slug := safeStoreSlug(businessName)
+		slug := s.safeStoreSlugFor(r.Context(), businessName)
 		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, ownerID, businessName, slug, phone).Scan(&storeID); err != nil {
 			jsonErr(w, 409, "No se pudo crear el negocio; verifica el nombre o identificador")
 			return
@@ -5141,7 +5838,7 @@ func (s *Server) adminDeletePlatformUser(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) adminBanks(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(short_name,''),is_active,sort_order FROM platform_banks ORDER BY sort_order,name`)
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(short_name,''),coalesce(logo_url,''),is_active,sort_order FROM platform_banks ORDER BY sort_order,name`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los bancos")
 		return
@@ -5149,11 +5846,11 @@ func (s *Server) adminBanks(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, n, sn string
+		var id, n, sn, logo string
 		var active bool
 		var sort int
-		if rows.Scan(&id, &n, &sn, &active, &sort) == nil {
-			out = append(out, map[string]any{"id": id, "name": n, "short_name": sn, "is_active": active, "sort_order": sort})
+		if rows.Scan(&id, &n, &sn, &logo, &active, &sort) == nil {
+			out = append(out, map[string]any{"id": id, "name": n, "short_name": sn, "logo_url": logo, "is_active": active, "sort_order": sort})
 		}
 	}
 	jsonOut(w, 200, out)
@@ -5162,13 +5859,15 @@ func (s *Server) adminCreateBank(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name      string `json:"name"`
 		ShortName string `json:"short_name"`
+		LogoURL   string `json:"logo_url"`
+		SortOrder int    `json:"sort_order"`
 	}
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
 		jsonErr(w, 400, "Nombre obligatorio")
 		return
 	}
 	var id string
-	if s.db.QueryRow(r.Context(), `INSERT INTO platform_banks(name,short_name) VALUES($1,$2) RETURNING id`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName)).Scan(&id) != nil {
+	if s.db.QueryRow(r.Context(), `INSERT INTO platform_banks(name,short_name,logo_url,sort_order) VALUES($1,$2,$3,$4) RETURNING id`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName), strings.TrimSpace(in.LogoURL), in.SortOrder).Scan(&id) != nil {
 		jsonErr(w, 409, "No se pudo crear el banco")
 		return
 	}
@@ -5180,6 +5879,7 @@ func (s *Server) adminUpdateBank(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Name      string `json:"name"`
 		ShortName string `json:"short_name"`
+		LogoURL   string `json:"logo_url"`
 		IsActive  bool   `json:"is_active"`
 		SortOrder int    `json:"sort_order"`
 	}
@@ -5188,7 +5888,7 @@ func (s *Server) adminUpdateBank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	cmd, err := s.db.Exec(r.Context(), `UPDATE platform_banks SET name=$1,short_name=$2,is_active=$3,sort_order=$4 WHERE id=$5`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName), in.IsActive, in.SortOrder, id)
+	cmd, err := s.db.Exec(r.Context(), `UPDATE platform_banks SET name=$1,short_name=$2,logo_url=$3,is_active=$4,sort_order=$5 WHERE id=$6`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName), strings.TrimSpace(in.LogoURL), in.IsActive, in.SortOrder, id)
 	if err != nil || cmd.RowsAffected() == 0 {
 		jsonErr(w, 404, "Banco no encontrado")
 		return
@@ -5248,8 +5948,9 @@ func (s *Server) createStoreStaff(w http.ResponseWriter, r *http.Request) {
 	}
 	var hash any = nil
 	if in.PIN != "" {
-		if !validPIN(in.PIN) {
-			jsonErr(w, 400, "El PIN debe tener 4 dígitos")
+		pinOK, pinLength := s.validPINFor(r.Context(), "staff", in.PIN)
+		if !pinOK {
+			jsonErr(w, 400, fmt.Sprintf("El PIN debe tener %d dígitos", pinLength))
 			return
 		}
 		h, _ := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)

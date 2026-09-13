@@ -11,6 +11,7 @@ type Config struct {
 	RedisURL              string
 	JWTSecret             string
 	InternalWebhookSecret string
+	PlatformConfigSecret  string
 	AdminEmail            string
 	AdminPassword         string
 	AdminName             string
@@ -27,6 +28,7 @@ func Load() Config {
 		RedisURL:              env("REDIS_URL", "redis://redis:6379/0"),
 		JWTSecret:             os.Getenv("JWT_SECRET"),
 		InternalWebhookSecret: os.Getenv("INTERNAL_WEBHOOK_SECRET"),
+		PlatformConfigSecret:  os.Getenv("PLATFORM_CONFIG_SECRET"),
 		AdminEmail:            env("ADMIN_EMAIL", "admin@wamercio.local"),
 		AdminPassword:         env("ADMIN_PASSWORD", "ChangeMe123!"),
 		AdminName:             env("ADMIN_NAME", "Administrador WAMERCIO"),

@@ -21,17 +21,37 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
   const [selectedTemplate,setSelectedTemplate]=useState<BusinessTemplate|undefined>()
   const [error,setError]=useState('')
   const [busy,setBusy]=useState(false)
+  const [pinLength,setPinLength]=useState(4)
+  const [acceptedPinLengths,setAcceptedPinLengths]=useState<number[]>([4])
+  const [identityRequired,setIdentityRequired]=useState(false)
+  const [identityEnabled,setIdentityEnabled]=useState(false)
+  const [identitySubjectType,setIdentitySubjectType]=useState<'persona'|'empresa'>('persona')
+  const [identityDocument,setIdentityDocument]=useState('')
 
   useEffect(()=>{
-    if(open)document.body.style.overflow='hidden'
-    else document.body.style.overflow=''
+    if(open){
+      document.body.style.overflow='hidden'
+      api<any>('/public/platform').then(x=>{
+        const current=Math.max(4,Math.min(8,Number(x?.access?.owner_pin_length)||4))
+        const raw=Array.isArray(x?.access?.accepted_owner_pin_lengths)?x.access.accepted_owner_pin_lengths:[current]
+        const accepted:number[]=Array.from(new Set<number>(raw.map((v:any)=>Number(v)).filter((v:number)=>v>=4&&v<=8))).sort((a:number,b:number)=>a-b)
+        setPinLength(current)
+        setAcceptedPinLengths(accepted.length?accepted:[current])
+        setIdentityRequired(!!x?.identity?.require_owner_verification)
+        setIdentityEnabled(!!x?.identity?.enabled)
+      }).catch(()=>{setPinLength(4);setAcceptedPinLengths([4]);setIdentityRequired(false);setIdentityEnabled(false)})
+    } else document.body.style.overflow=''
     return()=>{document.body.style.overflow=''}
   },[open])
 
   if(!open)return null
 
+  const loginPinLength=Math.max(pinLength,...acceptedPinLengths)
+  const hasLegacyPinLengths=acceptedPinLengths.some(v=>v!==pinLength)
+  const loginLengthLabel=acceptedPinLengths.length>1?`${acceptedPinLengths.slice(0,-1).join(', ')} o ${acceptedPinLengths.at(-1)}`:`${acceptedPinLengths[0]||pinLength}`
+
   const reset=()=>{
-    setStep('phone');setPhone('');setPhoneValid(false);setPin('');setForm({name:'',business_name:''});setTemplateSlug('');setSelectedTemplate(undefined);setError('');setBusy(false)
+    setStep('phone');setPhone('');setPhoneValid(false);setPin('');setForm({name:'',business_name:''});setTemplateSlug('');setSelectedTemplate(undefined);setError('');setBusy(false);setAcceptedPinLengths([pinLength]);setIdentitySubjectType('persona');setIdentityDocument('')
   }
   const close=()=>{reset();onClose()}
   const back=()=>{
@@ -53,7 +73,7 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
   }
 
   const doLogin=async(value:string)=>{
-    if(value.length!==4||busy)return
+    if(!acceptedPinLengths.includes(value.length)||busy)return
     setBusy(true);setError('')
     try{
       await api('/auth/store/login',{method:'POST',body:JSON.stringify({phone,pin:value})})
@@ -71,10 +91,16 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
     e.preventDefault();setError('')
     if(!form.name.trim()||!form.business_name.trim()){setError('Completa tu nombre y el nombre del negocio.');return}
     if(!templateSlug){setError('Selecciona una plantilla de negocio.');setStep('template');return}
-    if(!/^\d{4}$/.test(pin)){setError('Completa los 4 dígitos de tu PIN.');return}
+    if(!new RegExp(`^\\d{${pinLength}}$`).test(pin)){setError(`Completa los ${pinLength} dígitos de tu PIN.`);return}
+    if(identityRequired){
+      if(!identityEnabled){setError('La verificación de identidad requerida por WAMERCIO no está disponible temporalmente. Contacta soporte.');return}
+      const requiredLength=identitySubjectType==='persona'?11:[9,11]
+      const valid=Array.isArray(requiredLength)?requiredLength.includes(identityDocument.length):identityDocument.length===requiredLength
+      if(!valid){setError(identitySubjectType==='persona'?'Ingresa una cédula válida de 11 dígitos.':'Ingresa un RNC válido de 9 u 11 dígitos.');return}
+    }
     setBusy(true)
     try{
-      await api('/auth/store/register',{method:'POST',body:JSON.stringify({...form,phone,pin,template_slug:templateSlug})})
+      await api('/auth/store/register',{method:'POST',body:JSON.stringify({...form,phone,pin,template_slug:templateSlug,identity_subject_type:identityRequired?identitySubjectType:'',identity_document:identityRequired?identityDocument:''})})
       close();router.push('/dashboard');router.refresh()
     }catch(e:any){
       const msg=e.message||'No pudimos crear tu comercio.'
@@ -109,7 +135,7 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
           <h2 className="mt-5 text-2xl font-semibold tracking-tight text-ink-900">Bienvenido de nuevo</h2>
           <p className="mt-2 text-sm leading-6 text-[#8d92aa]">Encontramos una cuenta asociada a <strong className="text-slate-700">{phoneDisplay(phone)}</strong>. Ingresa tu PIN.</p>
           {error&&<div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-          <div className="mt-6"><PinInput value={pin} onChange={setPin} onComplete={doLogin} autoFocus disabled={busy} required label="PIN de acceso"/><p className="mt-4 text-center text-xs text-[#a2a6b8]">{busy?'Verificando acceso...':'Entrarás automáticamente al completar los 4 dígitos.'}</p></div>
+          <div className="mt-6"><PinInput value={pin} onChange={setPin} onComplete={hasLegacyPinLengths?undefined:doLogin} autoFocus disabled={busy} required label="PIN de acceso" length={loginPinLength}/><p className="mt-4 text-center text-xs text-[#a2a6b8]">{busy?'Verificando acceso...':hasLegacyPinLengths?`Puedes usar tu PIN actual de ${pinLength} dígitos o un PIN anterior compatible (${loginLengthLabel}).`:`Entrarás automáticamente al completar los ${pinLength} dígitos.`}</p>{hasLegacyPinLengths&&<button type="button" disabled={busy||!acceptedPinLengths.includes(pin.length)} onClick={()=>doLogin(pin)} className="btn-primary mt-4 h-12 w-full">{busy?<><LoaderCircle className="h-4 w-4 animate-spin"/>Verificando...</>:'Entrar'}</button>}</div>
         </>}
 
         {step==='template'&&<>
@@ -125,7 +151,7 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
           <p className="mt-2 text-sm leading-6 text-[#8d92aa]">WAMERCIO ya sabe cómo estructurar tu negocio. Solo necesitamos tus datos básicos.</p>
           <div className="mt-4 grid gap-2 sm:grid-cols-2"><div className="rounded-2xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm font-medium text-brand-700">WhatsApp: {phoneDisplay(phone)}</div><button type="button" onClick={()=>setStep('template')} className="flex items-center gap-3 rounded-2xl border border-[#e9ebf1] bg-[#fafbfc] px-4 py-3 text-left"><span className="text-xl">{selectedTemplate?.icon||'✨'}</span><span className="min-w-0"><span className="block truncate text-xs font-semibold uppercase tracking-wide text-[#9298ad]">Plantilla</span><span className="block truncate text-sm font-semibold text-ink-900">{selectedTemplate?.name||templateSlug}</span></span></button></div>
           {error&&<div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-          <form onSubmit={register} className="mt-5 space-y-4"><div><label className="label">Tu nombre *</label><div className="relative"><UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input autoFocus className="field pl-9" required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Responsable del comercio"/></div></div><div><label className="label">Nombre del negocio *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input className="field pl-9" required value={form.business_name} onChange={e=>setForm({...form,business_name:e.target.value})} placeholder="Mi negocio"/></div></div><div><label className="label">Crea tu PIN de 4 dígitos *</label><PinInput value={pin} onChange={setPin} required label="Nuevo PIN de acceso"/><p className="mt-1.5 text-xs text-[#a2a6b8]">Lo usarás junto con tu WhatsApp para entrar rápidamente.</p></div><button disabled={busy||pin.length!==4} className="btn-primary h-12 w-full">{busy?<><LoaderCircle className="h-4 w-4 animate-spin"/>Preparando tu comercio...</>:'Crear mi comercio'}</button></form>
+          <form onSubmit={register} className="mt-5 space-y-4"><div><label className="label">Tu nombre *</label><div className="relative"><UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input autoFocus className="field pl-9" required value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder="Responsable del comercio"/></div></div><div><label className="label">Nombre del negocio *</label><div className="relative"><Building2 className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input className="field pl-9" required value={form.business_name} onChange={e=>setForm({...form,business_name:e.target.value})} placeholder="Mi negocio"/></div></div><div><label className="label">Crea tu PIN de {pinLength} dígitos *</label><PinInput value={pin} onChange={setPin} required label="Nuevo PIN de acceso" length={pinLength}/><p className="mt-1.5 text-xs text-[#a2a6b8]">Lo usarás junto con tu WhatsApp para entrar rápidamente.</p></div>{identityRequired&&<div className="rounded-2xl border border-brand-100 bg-brand-50/60 p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-brand-600"/><div><div className="text-sm font-semibold text-ink-900">Verificación de identidad</div><p className="mt-1 text-xs leading-5 text-[#858aa7]">Para proteger la plataforma, WAMERCIO verificará tu cédula o RNC antes de crear la cuenta.</p></div></div>{!identityEnabled?<div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">La verificación está temporalmente no disponible. Contacta soporte antes de registrarte.</div>:<div className="mt-4 grid gap-3 sm:grid-cols-[150px_1fr]"><div><label className="label">Documento *</label><select className="field" value={identitySubjectType} onChange={e=>{setIdentitySubjectType(e.target.value as 'persona'|'empresa');setIdentityDocument('')}}><option value="persona">Cédula</option><option value="empresa">RNC</option></select></div><div><label className="label">Número *</label><input className="field" inputMode="numeric" autoComplete="off" value={identityDocument} onChange={e=>setIdentityDocument(e.target.value.replace(/\D/g,'').slice(0,11))} placeholder={identitySubjectType==='persona'?'00100000000':'101000001'} maxLength={11}/><p className="mt-1.5 text-[11px] text-[#a2a6b8]">{identitySubjectType==='persona'?'11 dígitos, sin guiones.':'9 u 11 dígitos, sin guiones.'}</p></div></div>}</div>}<button disabled={busy||pin.length!==pinLength||(identityRequired&&!identityEnabled)} className="btn-primary h-12 w-full">{busy?<><LoaderCircle className="h-4 w-4 animate-spin"/>Preparando tu comercio...</>:'Crear mi comercio'}</button></form>
           <div className="mt-5 flex items-start gap-2 rounded-2xl bg-[#fafbfe] p-3 text-xs leading-5 text-[#858aa7]"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-500"/>Al terminar encontrarás categorías, ejemplos y respuestas rápidas listas para personalizar. Nada queda bloqueado: puedes cambiarlo todo.</div>
         </>}
       </div>

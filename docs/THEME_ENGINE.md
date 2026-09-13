@@ -7,7 +7,7 @@ WAMERCIO separa desde 2.1 dos conceptos que antes estaban mezclados:
 
 ## Temas incluidos
 
-1. `fresh-market` — **Mercado Fresco**: colmados, minimarkets, supermercados y mercados.
+1. `fresh-market` — **Mercado Fresco**: minimarkets, supermercados, tiendas de conveniencia y mercados.
 2. `food-bold` — **Comida con Sabor**: pizzerías, restaurantes, cafeterías, pica pollos y comida rápida.
 3. `editorial-fashion` — **Moda Editorial**: boutiques, ropa, calzados y accesorios.
 4. `beauty-soft` — **Belleza Suave**: salones, cosméticos, maquillaje y cuidado personal.
