@@ -3,13 +3,15 @@ import {useEffect,useState} from 'react'
 import SuperAdminShell from '@/components/superadmin-shell'
 import {api} from '@/lib/api'
 import {Alert,Loading,Modal} from '@/components/ui'
-import {Settings,MapPin,Store,Globe2,Database,Landmark,MessageCircleMore,Bell,KeyRound,ScanFace,Scale,Cloud,History,Save,Plus,Pencil,Trash2} from 'lucide-react'
-const sections=[
+import {Settings,MapPin,Store,Globe2,Database,Landmark,MessageCircleMore,Bell,KeyRound,ScanFace,Scale,Cloud,History,Save,Plus,Pencil,Trash2,type LucideIcon} from 'lucide-react'
+type SettingsSectionItem = readonly [id:string,label:string,description:string,icon:LucideIcon]
+type SettingsSectionGroup = readonly [group:string,items:readonly SettingsSectionItem[]]
+const sections: readonly SettingsSectionGroup[]=[
  ['Plataforma',[['general','General','Ajustes globales',Settings]]],
  ['Estructura SaaS',[['territory','Territorio','División territorial',MapPin],['business-types','Tipos de negocio','Clasificación y dominios',Store],['domains','Dominios','Subdominios y dominios propios',Globe2],['databases','Bases de datos','Persistencia por negocio',Database],['banks','Bancos','Catálogo bancario',Landmark]]],
  ['Comunicaciones',[['whatsapp','WhatsApp','Proveedor y sesión global',MessageCircleMore],['notifications','Notificaciones','Plantillas de mensajes',Bell]]],
  ['Seguridad y cumplimiento',[['access','Acceso','PIN y recuperación',KeyRound],['identity','Identidad','Cédulas, RNC y límites',ScanFace],['legal','Legal','Términos y privacidad',Scale],['backups','Backups','Cloudflare R2 y copias',Cloud],['audit','Auditoría','Historial de acciones',History]]]
-] as const
+]
 export default function SaaSSettings(){
  const[active,setActive]=useState('general'),[data,setData]=useState<any>(null),[banks,setBanks]=useState<any[]>([]),[audit,setAudit]=useState<any[]>([]),[err,setErr]=useState(''),[saved,setSaved]=useState(false),[bankOpen,setBankOpen]=useState(false),[bank,setBank]=useState<any>({name:'',short_name:'',is_active:true,sort_order:0})
  const load=()=>{api('/admin/platform/settings').then(setData);api<any[]>('/admin/platform/banks').then(setBanks);api<any[]>('/admin/platform/audit').then(setAudit).catch(()=>{})};useEffect(load,[])

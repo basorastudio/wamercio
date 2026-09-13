@@ -1,3 +1,10 @@
+# WAMERCIO 2.2.2 — Corrección de compilación del Centro SaaS
+
+- Corrige el error de TypeScript en `app/admin/settings/page.tsx` durante `next build`: `sections` ya no depende de la inferencia literal de `as const`, que hacía que `flatMap()` redujera todos los IDs al primer literal `general`.
+- Define `SettingsSectionItem` y `SettingsSectionGroup` explícitamente y usa `LucideIcon` como tipo de icono, manteniendo intactos los grupos, IDs, textos, iconos y navegación del Centro SaaS.
+- Añade `scripts/verify-web-settings-types.sh` para impedir que reaparezca la inferencia que rompía el build.
+- Mantiene sin cambios el esquema de base de datos, ENV, API, Docker Compose y funcionalidades de WAMERCIO 2.2.1.
+
 # WAMERCIO 2.2.1 — Corrección de compilación del API
 
 - Corrige un bloque de validación redundante insertado accidentalmente en `requestSubscription`, que referenciaba `id` antes de declararlo y detenía el build del API en Dokploy con `undefined: id`.
