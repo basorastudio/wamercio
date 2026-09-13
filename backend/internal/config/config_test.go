@@ -4,17 +4,17 @@ import "testing"
 
 func TestLoadNormalizesLoopbackServicesInProduction(t *testing.T) {
 	t.Setenv("APP_ENV", "production")
-	t.Setenv("CENTRAL_DATABASE_URL", "postgres://user:pass@localhost:5432/colmapro_core?sslmode=disable")
-	t.Setenv("GLOBAL_CUSTOMERS_DATABASE_URL", "postgres://user:pass@127.0.0.1:5432/colmapro_global_customers?sslmode=disable")
+	t.Setenv("CENTRAL_DATABASE_URL", "postgres://user:pass@localhost:5432/wamercio_core?sslmode=disable")
+	t.Setenv("GLOBAL_CUSTOMERS_DATABASE_URL", "postgres://user:pass@127.0.0.1:5432/wamercio_global_customers?sslmode=disable")
 	t.Setenv("TENANT_DATABASE_URL_TEMPLATE", "postgres://user:pass@[::1]:5432/{{database}}?sslmode=disable")
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 	t.Setenv("USE_PGBOUNCER", "false")
 
 	cfg := Load()
-	if got, want := cfg.CentralDatabaseURL, "postgres://user:pass@postgres:5432/colmapro_core?sslmode=disable"; got != want {
+	if got, want := cfg.CentralDatabaseURL, "postgres://user:pass@postgres:5432/wamercio_core?sslmode=disable"; got != want {
 		t.Fatalf("CentralDatabaseURL = %q, want %q", got, want)
 	}
-	if got, want := cfg.GlobalCustomersDatabaseURL, "postgres://user:pass@postgres:5432/colmapro_global_customers?sslmode=disable"; got != want {
+	if got, want := cfg.GlobalCustomersDatabaseURL, "postgres://user:pass@postgres:5432/wamercio_global_customers?sslmode=disable"; got != want {
 		t.Fatalf("GlobalCustomersDatabaseURL = %q, want %q", got, want)
 	}
 	if got, want := cfg.TenantDatabaseURLTemplate, "postgres://user:pass@postgres:5432/{{database}}?sslmode=disable"; got != want {
@@ -27,12 +27,12 @@ func TestLoadNormalizesLoopbackServicesInProduction(t *testing.T) {
 
 func TestLoadPreservesLoopbackServicesInDevelopment(t *testing.T) {
 	t.Setenv("APP_ENV", "development")
-	t.Setenv("CENTRAL_DATABASE_URL", "postgres://user:pass@localhost:5432/colmapro_core?sslmode=disable")
+	t.Setenv("CENTRAL_DATABASE_URL", "postgres://user:pass@localhost:5432/wamercio_core?sslmode=disable")
 	t.Setenv("REDIS_ADDR", "localhost:6379")
 	t.Setenv("USE_PGBOUNCER", "false")
 
 	cfg := Load()
-	if got, want := cfg.CentralDatabaseURL, "postgres://user:pass@localhost:5432/colmapro_core?sslmode=disable"; got != want {
+	if got, want := cfg.CentralDatabaseURL, "postgres://user:pass@localhost:5432/wamercio_core?sslmode=disable"; got != want {
 		t.Fatalf("CentralDatabaseURL = %q, want %q", got, want)
 	}
 	if got, want := cfg.RedisAddr, "localhost:6379"; got != want {
@@ -46,7 +46,7 @@ func TestLoadIdentityAPIConfig(t *testing.T) {
 	t.Setenv("IDENTIDAD_API_REQUIRED", "true")
 	t.Setenv("IDENTIDAD_API_URL", "https://id.ltd.do/")
 	t.Setenv("IDENTIDAD_API_KEY", " secret-key ")
-	t.Setenv("IDENTIDAD_API_CLIENT_ID", "colmapro-production")
+	t.Setenv("IDENTIDAD_API_CLIENT_ID", "wamercio-production")
 	t.Setenv("IDENTIDAD_API_TIMEOUT", "9s")
 
 	cfg := Load()

@@ -23,4 +23,4 @@ De esta forma, TypeScript puede comprobar que `mode.key` siempre contiene una mo
 
 ## Instalación segura
 
-El preflight introducido en R29 permanece activo. El instalador compila backend y frontend antes de modificar `/opt/colmapro`; si cualquiera falla, la instalación existente se conserva intacta.
+El preflight introducido en R29 permanece activo. El instalador compila backend y frontend antes de modificar `/opt/wamercio`; si cualquiera falla, la instalación existente se conserva intacta.

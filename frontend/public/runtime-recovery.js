@@ -1,9 +1,9 @@
 (function () {
   'use strict';
 
-  var RECOVERY_ATTEMPT_KEY = 'colmapro:asset-recovery-attempt';
-  var RECOVERY_QUERY_KEY = '__colmapro_refresh';
-  var CACHE_PREFIX = 'colmapro-spa-pwa-';
+  var RECOVERY_ATTEMPT_KEY = 'wamercio:asset-recovery-attempt';
+  var RECOVERY_QUERY_KEY = '__wamercio_refresh';
+  var CACHE_PREFIX = 'wamercio-spa-pwa-';
   var currentScript = document.currentScript;
   var configuredPlatformDomain = currentScript && currentScript.dataset
     ? String(currentScript.dataset.platformDomain || '').trim().toLowerCase()
@@ -65,11 +65,11 @@
   }
 
   function showRecoveryScreen(repeatedFailure) {
-    var existing = document.getElementById('colmapro-runtime-recovery');
+    var existing = document.getElementById('wamercio-runtime-recovery');
     if (existing) return;
 
     var overlay = document.createElement('div');
-    overlay.id = 'colmapro-runtime-recovery';
+    overlay.id = 'wamercio-runtime-recovery';
     overlay.setAttribute('role', 'status');
     overlay.setAttribute('aria-live', 'polite');
     overlay.style.cssText = [
@@ -90,11 +90,11 @@
       ? 'El navegador conserva archivos de una versión anterior. Presiona el botón para cargar nuevamente la versión vigente.'
       : 'Estamos limpiando archivos anteriores y cargando la versión más reciente de forma segura.';
     var action = repeatedFailure
-      ? '<button type="button" id="colmapro-runtime-retry" style="margin-top:18px;border:0;border-radius:12px;background:#00a884;color:#fff;font-weight:800;padding:12px 18px;cursor:pointer">Volver a cargar</button>'
-      : '<div style="margin:20px auto 0;width:34px;height:34px;border:4px solid rgba(0,168,132,.18);border-top-color:#00a884;border-radius:999px;animation:colmapro-runtime-spin .8s linear infinite"></div>';
+      ? '<button type="button" id="wamercio-runtime-retry" style="margin-top:18px;border:0;border-radius:12px;background:#00a884;color:#fff;font-weight:800;padding:12px 18px;cursor:pointer">Volver a cargar</button>'
+      : '<div style="margin:20px auto 0;width:34px;height:34px;border:4px solid rgba(0,168,132,.18);border-top-color:#00a884;border-radius:999px;animation:wamercio-runtime-spin .8s linear infinite"></div>';
 
     overlay.innerHTML = [
-      '<style>@keyframes colmapro-runtime-spin{to{transform:rotate(360deg)}}</style>',
+      '<style>@keyframes wamercio-runtime-spin{to{transform:rotate(360deg)}}</style>',
       '<div style="width:min(100%,440px);background:#fff;border:1px solid #dce5eb;border-radius:24px;box-shadow:0 24px 70px rgba(15,26,40,.15);padding:30px;text-align:center">',
       '<div style="width:58px;height:58px;margin:0 auto 16px;border-radius:18px;background:rgba(0,168,132,.12);display:flex;align-items:center;justify-content:center;color:#00a884;font-size:28px;font-weight:900">C</div>',
       '<h1 style="margin:0;font-size:22px;line-height:1.2;font-weight:900">' + title + '</h1>',
@@ -105,7 +105,7 @@
 
     (document.body || document.documentElement).appendChild(overlay);
 
-    var retryButton = document.getElementById('colmapro-runtime-retry');
+    var retryButton = document.getElementById('wamercio-runtime-retry');
     if (retryButton) {
       retryButton.addEventListener('click', function () {
         try { window.sessionStorage.removeItem(RECOVERY_ATTEMPT_KEY); } catch (_) { /* no-op */ }
@@ -121,8 +121,8 @@
   }
 
   function recoverFromAssetMismatch(reason) {
-    if (window.__COLMAPRO_ASSET_RECOVERY_RUNNING__) return;
-    window.__COLMAPRO_ASSET_RECOVERY_RUNNING__ = true;
+    if (window.__WAMERCIO_ASSET_RECOVERY_RUNNING__) return;
+    window.__WAMERCIO_ASSET_RECOVERY_RUNNING__ = true;
 
     var now = Date.now();
     var previousAttempt = 0;
@@ -136,13 +136,13 @@
     showRecoveryScreen(repeatedFailure);
 
     if (repeatedFailure) {
-      window.__COLMAPRO_ASSET_RECOVERY_RUNNING__ = false;
+      window.__WAMERCIO_ASSET_RECOVERY_RUNNING__ = false;
       return;
     }
 
     try {
       window.sessionStorage.setItem(RECOVERY_ATTEMPT_KEY, String(now));
-      window.sessionStorage.setItem('colmapro:last-asset-recovery-reason', String(reason || 'chunk-load-error'));
+      window.sessionStorage.setItem('wamercio:last-asset-recovery-reason', String(reason || 'chunk-load-error'));
     } catch (_) { /* no-op */ }
 
     removePlatformServiceWorkersAndCaches()
@@ -152,7 +152,7 @@
       });
   }
 
-  window.__COLMAPRO_RECOVER_CHUNK__ = recoverFromAssetMismatch;
+  window.__WAMERCIO_RECOVER_CHUNK__ = recoverFromAssetMismatch;
 
   window.addEventListener('error', function (event) {
     var target = event && event.target;

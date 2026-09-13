@@ -8,7 +8,7 @@ export const useAuth = () => useContext(AuthContext);
 
 const notifyDataChanged = () => {
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+    window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
   }
 };
 
@@ -118,20 +118,20 @@ export const AuthProvider = ({ children }) => {
       if (document.visibilityState === 'visible') refreshIfAuthenticated();
     };
     const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'colmapro:data-changed:broadcast') refreshIfAuthenticated();
+      if (event.key === 'wamercio:data-changed:broadcast') refreshIfAuthenticated();
     };
 
     timer = window.setInterval(refreshIfAuthenticated, Math.max(8_000, Math.min(runtimeConfig.clientSessionRefreshMs, 15_000)));
     window.addEventListener('focus', refreshIfAuthenticated);
     window.addEventListener('storage', handleStorage);
-    window.addEventListener('colmapro:data-changed', refreshIfAuthenticated as EventListener);
+    window.addEventListener('wamercio:data-changed', refreshIfAuthenticated as EventListener);
     document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       if (timer) window.clearInterval(timer);
       window.removeEventListener('focus', refreshIfAuthenticated);
       window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('colmapro:data-changed', refreshIfAuthenticated as EventListener);
+      window.removeEventListener('wamercio:data-changed', refreshIfAuthenticated as EventListener);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [refreshProfile, runtimeConfig.clientSessionRefreshMs]);
@@ -144,7 +144,7 @@ export const AuthProvider = ({ children }) => {
       if (api.getClientToken()) refreshProfile();
     };
     const notifyTrackingChanged = () => {
-      window.dispatchEvent(new CustomEvent('colmapro:delivery-tracking-updated'));
+      window.dispatchEvent(new CustomEvent('wamercio:delivery-tracking-updated'));
     };
 
     const realtimeEvents = [

@@ -48,10 +48,10 @@ const getTenantScopeSafe = () => {
 };
 
 const deliveryScopeStorageKey = (storeId) =>
-  `colmapro_delivery_scope:${getTenantScopeSafe()}:${storeId || "active"}`;
+  `wamercio_delivery_scope:${getTenantScopeSafe()}:${storeId || "active"}`;
 
 const cartStorageKey = (storeId, userId = "guest") =>
-  `colmapro_cart:${getTenantScopeSafe()}:${storeId || "active"}:${userId || "guest"}`;
+  `wamercio_cart:${getTenantScopeSafe()}:${storeId || "active"}:${userId || "guest"}`;
 
 const normalizeCartItems = (items) =>
   (Array.isArray(items) ? items : [])
@@ -730,10 +730,10 @@ export const useApiStore = () => {
       setBrowserContextReady(true);
     };
     syncBrowserContext();
-    window.addEventListener("colmapro:tenant-changed", syncBrowserContext);
+    window.addEventListener("wamercio:tenant-changed", syncBrowserContext);
     window.addEventListener("hashchange", syncBrowserContext);
     return () => {
-      window.removeEventListener("colmapro:tenant-changed", syncBrowserContext);
+      window.removeEventListener("wamercio:tenant-changed", syncBrowserContext);
       window.removeEventListener("hashchange", syncBrowserContext);
     };
   }, []);
@@ -845,13 +845,13 @@ export const useApiStore = () => {
       if (document.visibilityState === "visible") refresh();
     };
 
-    window.addEventListener("colmapro:data-changed", refresh);
+    window.addEventListener("wamercio:data-changed", refresh);
     window.addEventListener("focus", refresh);
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       if (refreshTimer) window.clearTimeout(refreshTimer);
-      window.removeEventListener("colmapro:data-changed", refresh);
+      window.removeEventListener("wamercio:data-changed", refresh);
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
@@ -872,7 +872,7 @@ export const useApiStore = () => {
       ),
     );
     const refresh = () =>
-      window.dispatchEvent(new CustomEvent("colmapro:data-changed"));
+      window.dispatchEvent(new CustomEvent("wamercio:data-changed"));
     const realtimeEvents = [
       "product_updated",
       "order_created",
@@ -1626,7 +1626,7 @@ export const useApiStore = () => {
         method,
       });
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("colmapro:data-changed"));
+        window.dispatchEvent(new CustomEvent("wamercio:data-changed"));
       }
       return data;
     },
@@ -1655,13 +1655,13 @@ export const useApiStore = () => {
   const broadcastOrderChange = useCallback((id, status, type = "order-status") => {
     if (typeof window === "undefined") return;
     window.dispatchEvent(
-      new CustomEvent("colmapro:data-changed", {
+      new CustomEvent("wamercio:data-changed", {
         detail: { type, id, status },
       }),
     );
     try {
       window.localStorage.setItem(
-        "colmapro:data-changed:broadcast",
+        "wamercio:data-changed:broadcast",
         JSON.stringify({ type, id, status, at: Date.now() }),
       );
     } catch (_) {}

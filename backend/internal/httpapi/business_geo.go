@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"colmapro/backend/internal/integrations/geordmap"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/integrations/geordmap"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 const geoBusinessServiceName = "delivery"
@@ -240,7 +240,7 @@ func (s *Server) geoSyncDeliveryZone(ctx context.Context, zone DeliveryZone) (De
 		Description: "Zona de entrega administrada desde WAMERCIO",
 		Polygon:     geoPoints,
 		Metadata: map[string]any{
-			"platform":  "colmapro",
+			"platform":  "wamercio",
 			"tenant_id": tenant.ID,
 			"store_id":  zone.StoreID,
 			"zone_id":   zone.ID,

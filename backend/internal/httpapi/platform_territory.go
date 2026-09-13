@@ -14,8 +14,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"colmapro/backend/internal/integrations/geordmap"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/integrations/geordmap"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/jackc/pgx/v5"
 )

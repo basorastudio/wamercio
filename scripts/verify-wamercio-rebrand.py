@@ -15,7 +15,7 @@ TEXT_SUFFIXES = {
 # Build legacy public strings from fragments so this guard does not match itself.
 LEGACY_PUBLIC = (
     'Colma' + 'Pro',
-    'colmapro' + '.com',
+    ('colma' + 'pro') + '.com',
     'col' + '.do',
 )
 
@@ -62,7 +62,8 @@ else:
 if (ROOT / 'docker-stack.yml').exists():
     errors.append('docker-stack.yml must not remain in the WAMERCIO Compose distribution')
 
-if (ROOT / '.github/workflows/publish-colmapro-images.yml').exists():
+legacy_workflow = 'publish-' + ('colma' + 'pro') + '-images.yml'
+if (ROOT / '.github/workflows' / legacy_workflow).exists():
     errors.append('legacy Swarm/GHCR publishing workflow still exists')
 
 pkg = ROOT / 'frontend/package.json'

@@ -15,11 +15,11 @@ import (
 	"syscall"
 	"time"
 
-	"colmapro/backend/internal/config"
-	"colmapro/backend/internal/httpapi"
-	"colmapro/backend/internal/platform/cache"
-	"colmapro/backend/internal/platform/database"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/config"
+	"wamercio/backend/internal/httpapi"
+	"wamercio/backend/internal/platform/cache"
+	"wamercio/backend/internal/platform/database"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 var (

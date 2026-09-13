@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
 	waxum "github.com/basoradev/waxum-go"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -330,7 +330,7 @@ func (s *Server) sendBusinessWhatsAppNotification(ctx context.Context, client *w
 	if body == "" {
 		return errors.New("notification message is empty")
 	}
-	if !strings.Contains(strings.ToLower(body), "colmapro") {
+	if !strings.Contains(strings.ToLower(body), "wamercio") {
 		body += "\n\nWAMERCIO"
 	}
 	sendContext, cancel := context.WithTimeout(ctx, 10*time.Second)

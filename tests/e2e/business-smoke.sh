@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BASE_URL="${COLMAPRO_SMOKE_BASE_URL:-http://127.0.0.1}"
-API_URL="${COLMAPRO_SMOKE_API_URL:-${BASE_URL%/}/api}"
+BASE_URL="${WAMERCIO_SMOKE_BASE_URL:-http://127.0.0.1}"
+API_URL="${WAMERCIO_SMOKE_API_URL:-${BASE_URL%/}/api}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

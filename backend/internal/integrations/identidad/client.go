@@ -123,7 +123,7 @@ func New(baseURL, apiKey, clientID, applicationDomain string, httpClient *http.C
 		return nil, errors.New("la API key de Identidad API es obligatoria")
 	}
 	if clientID == "" {
-		clientID = "colmapro"
+		clientID = "wamercio"
 	}
 	if httpClient == nil {
 		httpClient = http.DefaultClient

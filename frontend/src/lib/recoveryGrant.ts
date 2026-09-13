@@ -9,7 +9,7 @@ export type RecoveryGrant = {
   expiresAt: number;
 };
 
-const STORAGE_KEY = 'colmapro:account-recovery-grant';
+const STORAGE_KEY = 'wamercio:account-recovery-grant';
 const MIN_TTL_SECONDS = 60;
 const MAX_TTL_SECONDS = 60 * 60;
 

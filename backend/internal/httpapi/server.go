@@ -26,9 +26,9 @@ import (
 	"strings"
 	"time"
 
-	"colmapro/backend/internal/config"
-	"colmapro/backend/internal/db/sqlc"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/config"
+	"wamercio/backend/internal/db/sqlc"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -5701,9 +5701,9 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 		"demo_button_text":      "Demo gratis",
 		"demo_button_url":       "#contacto",
 		"badge_text":            "SaaS hecho en República Dominicana 🇩🇴",
-		"hero_title":            "Digitaliza tu colmado",
+		"hero_title":            "Digitaliza tu negocio",
 		"hero_highlight":        "sin complicaciones.",
-		"hero_description":      "La plataforma todo en uno para colmados y minimarkets. Controla inventario, fiado, entregas a domicilio y vende en línea desde cualquier dispositivo.",
+		"hero_description":      "La plataforma todo en uno para comercios y negocios. Controla inventario, fiado, entregas a domicilio y vende en línea desde cualquier dispositivo.",
 		"primary_button_text":   "Solicitar demo gratis",
 		"primary_button_url":    "#contacto",
 		"secondary_button_text": "Ver video",
@@ -5714,7 +5714,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 		"trust_items":           []string{"PWA Instalable", "RD$", "Control de fiado"},
 		"problems_title":        "Tu negocio no necesita más desorden.",
 		"problems_highlight":    "Necesita más control.",
-		"problems_description":  "Administrar un colmado con métodos tradicionales es agotador. WAMERCIO elimina estos dolores de cabeza.",
+		"problems_description":  "Administrar un negocio con métodos tradicionales es agotador. WAMERCIO elimina estos dolores de cabeza.",
 		"problems": []map[string]any{
 			{"icon": "message", "title": "WhatsApp desordenado", "text": "Mensajes perdidos, audios confusos y errores al tomar notas."},
 			{"icon": "book", "title": "Fiado en libretas", "text": "Cálculos manuales, cuadernos perdidos y deudas difíciles de cobrar."},
@@ -5723,7 +5723,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 			{"icon": "dollar", "title": "Caja sin control", "text": "Cierres de caja al ojo sin saber realmente cuánto se vendió."},
 			{"icon": "users", "title": "Sin historial", "text": "No sabes quién compra más ni cuáles son sus favoritos."},
 			{"icon": "search", "title": "Precios ocultos", "text": "Clientes preguntando precios a cada rato por falta de catálogo."},
-			{"icon": "userx", "title": "Dueño dependiente", "text": "Si no estás en el colmado, todo se vuelve un caos."},
+			{"icon": "userx", "title": "Dueño dependiente", "text": "Si no estás en el negocio, todo se vuelve un caos."},
 		},
 		"modules_title":       "Todo tu negocio en una mano.",
 		"modules_description": "Módulos conectados entre sí diseñados específicamente para la realidad del comercio dominicano.",
@@ -5738,13 +5738,13 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 			{"icon": "users", "title": "Base de Clientes", "text": "Conoce a tus clientes, sus gustos y frecuencia de compra."},
 		},
 		"rd_title":       "Diseñado para vender en RD, no adaptado a medias.",
-		"rd_description": "WAMERCIO entiende cómo se vende en República Dominicana: pedidos rápidos, clientes del barrio, entrega cercana, pagos mixtos, fiado, transferencias, efectivo y negocios que necesitan operar desde el celular.",
-		"rd_tags":        []string{"RD$", "Cédula", "Funda", "Fiado", "Entrega por barrio", "Provincias y municipios", "Sectores y zonas de entrega", "WhatsApp", "Efectivo y transferencia", "Negocios de barrio", "PWA"},
+		"rd_description": "WAMERCIO entiende cómo se vende en República Dominicana: pedidos rápidos, clientes locales, entrega cercana, pagos mixtos, fiado, transferencias, efectivo y negocios que necesitan operar desde el celular.",
+		"rd_tags":        []string{"RD$", "Cédula", "Funda", "Fiado", "Entrega por barrio", "Provincias y municipios", "Sectores y zonas de entrega", "WhatsApp", "Efectivo y transferencia", "Comercio local", "PWA"},
 		"rd_card_title":  "Comienza más rápido con una base pensada para negocios dominicanos.",
 		"rd_card_text":   "No tienes que empezar desde cero. WAMERCIO está preparado para ayudarte a configurar productos, categorías y zonas de entrega adaptadas al mercado dominicano.",
 		"rd_card_items":  []string{"Catálogo base de productos y marcas", "Territorio dominicano completo (Provincias, Municipios)", "Sectores, barrios y zonas de entrega predefinidas"},
-		"audience_title": "Una plataforma para cada tipo de negocio de barrio.",
-		"business_types": []string{"Colmados", "Super colmados", "Minimarkets", "Provisiones", "Surtidoras", "Bodegas", "Pulperías", "Negocios con entrega local", "Negocios con ventas fiadas", "Comercios con cajeros", "Comercios con repartidores", "Propietarios con varios negocios"},
+		"audience_title": "Una plataforma para distintos tipos de comercio.",
+		"business_types": []string{"Tiendas", "Supermercados", "Minimarkets", "Provisiones", "Surtidoras", "Bodegas", "Pulperías", "Negocios con entrega local", "Negocios con ventas fiadas", "Comercios con cajeros", "Comercios con repartidores", "Propietarios con varios negocios"},
 		"roles_title":    "Cada persona trabaja desde su propio panel.",
 		"roles": []map[string]any{
 			{"icon": "usercheck", "title": "Dueño o administrador", "text": "Controla productos, inventario, usuarios, clientes, reportes, zonas de entrega, métodos de pago y configuración del negocio."},
@@ -5765,7 +5765,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 		"benefits_title":    "Más ventas, más orden y más control.",
 		"benefits":          []string{"Reduce pedidos perdidos.", "Evita confusiones por WhatsApp.", "Controla el inventario de forma real.", "Organiza el fiado sin libretas.", "Mejora la atención al cliente.", "Acelera ventas en caja.", "Coordina entregas por sector o barrio.", "Controla cajeros y repartidores.", "Consulta reportes del día.", "Administra el negocio desde celular, tablet o PC."},
 		"plans_title":       "Planes a tu medida",
-		"plans_description": "Escoge el plan que mejor se adapte al tamaño de tu colmado o minimarket.",
+		"plans_description": "Escoge el plan que mejor se adapte al tamaño y operación de tu negocio.",
 		"pricing_plans": []map[string]any{
 			{"name": "Inicial", "price": "Consultar", "description": "Perfecto para comenzar a vender en línea.", "features": []string{"Tienda en línea (PWA)", "Catálogo básico", "Gestión de pedidos", "Base de clientes", "Soporte básico"}, "popular": false, "button_text": "Solicitar información", "button_url": "#contacto"},
 			{"name": "Pro", "price": "Recomendado", "description": "La solución completa para tu operación diaria.", "features": []string{"Todo lo del plan Inicial", "Punto de venta (POS)", "Inventario y kardex", "Control de fiado", "Aplicación para repartidores", "Reportes de caja"}, "popular": true, "button_text": "Solicitar información", "button_url": "#contacto"},
@@ -5774,7 +5774,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 		"faq_title":       "Preguntas frecuentes",
 		"faq_description": "Resolvemos tus dudas principales sobre WAMERCIO.",
 		"faqs": []map[string]any{
-			{"question": "¿WAMERCIO es solo para colmados?", "answer": "No. También sirve para minimarkets, provisiones, surtidoras, bodegas, pulperías y otros negocios de barrio."},
+			{"question": "¿WAMERCIO sirve para diferentes tipos de negocio?", "answer": "Sí. WAMERCIO está diseñado para tiendas, supermercados, minimarkets, provisiones, surtidoras, bodegas, pulperías y otros comercios."},
 			{"question": "¿Mis clientes tienen que descargar una aplicación?", "answer": "No necesariamente. La tienda funciona como PWA, por lo que el cliente puede abrirla desde el navegador y guardarla en su celular."},
 			{"question": "¿Puedo manejar entregas a domicilio?", "answer": "Sí. Puedes configurar zonas de entrega, sectores, barrios, cobertura y costos."},
 			{"question": "¿Puedo manejar fiado?", "answer": "Sí. La plataforma permite controlar clientes con crédito, balances pendientes, pagos y reportes."},
@@ -5784,7 +5784,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 			{"question": "¿Puedo controlar mis productos?", "answer": "Sí. Puedes gestionar productos, categorías, marcas, precios, disponibilidad e inventario."},
 			{"question": "¿Acepta pagos?", "answer": "Sí. El negocio puede registrar efectivo, transferencia manual, tarjeta cobrada en una terminal externa y fiado. WAMERCIO no autoriza ni procesa pagos electrónicos dentro de la aplicación en esta versión."},
 		},
-		"cta_title":          "Tu colmado puede vender mejor desde hoy.",
+		"cta_title":          "Tu negocio puede vender mejor desde hoy.",
 		"cta_description":    "Organiza tu negocio, atiende más rápido y dale a tus clientes una experiencia moderna sin perder la cercanía de siempre.",
 		"cta_primary_text":   "Solicitar demo",
 		"cta_primary_url":    "#contacto",
@@ -5792,7 +5792,7 @@ func defaultLandingPageSettings(rootDomain string) map[string]any {
 		"cta_secondary_url":  "https://wa.me/",
 		"cta_tertiary_text":  "Ver planes",
 		"cta_tertiary_url":   "#planes",
-		"footer_description": "Plataforma SaaS para digitalizar colmados, minimarkets y negocios de barrio en República Dominicana.",
+		"footer_description": "Plataforma SaaS para digitalizar comercios y negocios en República Dominicana.",
 		"footer_email":       "hola@wamercio.com",
 		"footer_status_text": "Sistemas operativos",
 		"maintenance": map[string]any{
@@ -6147,7 +6147,7 @@ func (s *Server) storeOpenGraph(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) tenantOpenGraph(w http.ResponseWriter, r *http.Request, tenant tenancy.Tenant) {
 	storeName := strings.TrimSpace(firstNonEmpty(tenant.Name, s.cfg.AppName, "WAMERCIO"))
-	description := "Tienda digital para hacer pedidos rápidos, seguros y directos desde tu colmado."
+	description := "Tienda digital para hacer pedidos rápidos, seguros y directos desde tu negocio."
 	address := ""
 	whatsapp := ""
 	stores, _ := s.queryStores(r.Context())

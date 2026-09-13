@@ -7,7 +7,7 @@ import (
 	"math"
 	"strings"
 
-	"colmapro/backend/internal/db/sqlc"
+	"wamercio/backend/internal/db/sqlc"
 )
 
 const (
@@ -35,7 +35,7 @@ func roundDecimal(value float64, precision int) float64 {
 }
 func roundCurrency(value float64) float64 { return roundDecimal(value, 2) }
 
-// roundPayableAmount applies the cash rule used in Dominican colmados:
+// roundPayableAmount applies the cash rule used in Dominican commerce:
 // fractions below .50 go down and fractions from .50 go up.
 func roundPayableAmount(value float64) float64 { return math.Round(value) }
 

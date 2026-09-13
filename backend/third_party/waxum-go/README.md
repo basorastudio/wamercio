@@ -83,8 +83,8 @@ func main() {
 
 ```go
 created, _, err := client.Sessions.Create(ctx, &waxum.CreateSessionRequest{
-    ID:   waxum.Ptr("colmado-principal"),
-    Name: waxum.Ptr("WhatsApp del colmado principal"),
+    ID:   waxum.Ptr("negocio-principal"),
+    Name: waxum.Ptr("WhatsApp del negocio principal"),
     Device: &waxum.DevicePropsRequest{
         OS:       waxum.Ptr("Windows"),
         Platform: waxum.Ptr("desktop"),
@@ -95,7 +95,7 @@ created, _, err := client.Sessions.Create(ctx, &waxum.CreateSessionRequest{
 ## Conectar mediante código de vinculación
 
 ```go
-pair, _, err := client.Sessions.Pair(ctx, "colmado-principal", &waxum.PairCodeRequest{
+pair, _, err := client.Sessions.Pair(ctx, "negocio-principal", &waxum.PairCodeRequest{
     PhoneNumber:         "+18095551234",
     ShowPushNotification: waxum.Ptr(true),
 })
@@ -108,7 +108,7 @@ fmt.Println(pair.Code)
 ## Enviar texto
 
 ```go
-message, _, err := client.Messages.SendText(ctx, "colmado-principal", &waxum.SendTextRequest{
+message, _, err := client.Messages.SendText(ctx, "negocio-principal", &waxum.SendTextRequest{
     To:   "18095551234",
     Text: "Hola desde WAXUM y Go",
 })
@@ -123,7 +123,7 @@ jid := waxum.UserJID("+1 (809) 555-1234")
 ## Enviar imagen desde URL
 
 ```go
-message, _, err := client.Messages.SendImage(ctx, "colmado-principal", &waxum.SendImageRequest{
+message, _, err := client.Messages.SendImage(ctx, "negocio-principal", &waxum.SendImageRequest{
     To:      "18095551234",
     Image:   waxum.MediaFromURL("https://example.com/producto.jpg"),
     Caption: waxum.Ptr("Producto disponible"),
@@ -142,7 +142,7 @@ if err != nil {
 defer file.Close()
 
 mediaType := waxum.MediaTypeDocument
-uploaded, _, err := client.Media.Upload(ctx, "colmado-principal", waxum.UploadMediaRequest{
+uploaded, _, err := client.Media.Upload(ctx, "negocio-principal", waxum.UploadMediaRequest{
     Filename:  "factura.pdf",
     Reader:    file,
     MediaType: &mediaType,

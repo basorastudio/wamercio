@@ -7,7 +7,7 @@ type RecoveryContext = {
   createdAt: number;
 };
 
-const STORAGE_KEY = 'colmapro:account-recovery-context';
+const STORAGE_KEY = 'wamercio:account-recovery-context';
 const MAX_AGE_MS = 15 * 60 * 1000;
 
 const onlyDigits = (value: unknown) => String(value ?? '').replace(/\D/g, '');

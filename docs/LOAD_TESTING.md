@@ -5,8 +5,8 @@ The scripts in `tests/load` use k6 and are intended for staging. Do not run them
 ## Common variables
 
 ```bash
-export COLMAPRO_LOAD_BASE_URL=https://business-staging.ltd.do
-export COLMAPRO_LOAD_STORE_ID=BUSINESS_UUID
+export WAMERCIO_LOAD_BASE_URL=https://business-staging.ltd.do
+export WAMERCIO_LOAD_STORE_ID=BUSINESS_UUID
 ```
 
 For protected routes, authenticate first and provide the cookie through the variable required by each script. Never commit real credentials or cookies.

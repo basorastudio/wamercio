@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 func TestNormalizeIdentityBaseURL(t *testing.T) {
@@ -50,7 +50,7 @@ func TestValidatePlatformIdentityCompanyInput(t *testing.T) {
 	if err := validatePlatformIdentityVerificationInput(platformIdentityVerificationInput{
 		SubjectType: "empresa",
 		Document:    "101000001",
-		Context:     "registro_colmado",
+		Context:     "registro_negocio",
 	}); err != nil {
 		t.Fatalf("valid company input failed: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestSanitizePlatformIdentityConfigHidesAPIKey(t *testing.T) {
 		Enabled:        true,
 		BaseURL:        "https://id.ltd.do",
 		APIKey:         "secret",
-		ClientID:       "colmapro",
+		ClientID:       "wamercio",
 		TimeoutSeconds: 12,
 	})
 	if _, exposed := payload["api_key"]; exposed {

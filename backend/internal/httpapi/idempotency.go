@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode"
 
-	"colmapro/backend/internal/db/sqlc"
+	"wamercio/backend/internal/db/sqlc"
 
 	"github.com/jackc/pgx/v5"
 )

@@ -384,7 +384,7 @@ func newRealtimeLifecycle() *realtimeLifecycle {
 func newInstanceID() string {
 	hostname, _ := os.Hostname()
 	if hostname == "" {
-		hostname = "colmapro"
+		hostname = "wamercio"
 	}
 	return hostname + "-" + strconv.FormatInt(time.Now().UnixNano(), 36)
 }
@@ -447,7 +447,7 @@ func (s *Server) consumeDistributedEvents(ctx context.Context) {
 func (s *Server) realtimeChannel() string {
 	channel := strings.TrimSpace(s.cfg.SSERedisChannel)
 	if channel == "" {
-		return "colmapro:realtime:events"
+		return "wamercio:realtime:events"
 	}
 	return channel
 }

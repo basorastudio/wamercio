@@ -18,7 +18,7 @@ const applyStoreTheme = (color: string) => {
   root.style.setProperty('--store-accent', accent);
   root.style.setProperty('--store-accent-rgb', storeAccentRgb(accent));
   root.style.setProperty('--store-accent-dark', darkenStoreAccent(accent));
-  root.setAttribute('data-colmapro-store-theme', 'true');
+  root.setAttribute('data-wamercio-store-theme', 'true');
   let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
   if (!meta) {
     meta = document.createElement('meta');
@@ -40,7 +40,7 @@ export const StoreProvider = ({ children }) => {
       return undefined;
     }
     if (typeof document !== 'undefined') {
-      document.documentElement.removeAttribute('data-colmapro-store-theme');
+      document.documentElement.removeAttribute('data-wamercio-store-theme');
       document.documentElement.style.removeProperty('--store-accent');
       document.documentElement.style.removeProperty('--store-accent-rgb');
       document.documentElement.style.removeProperty('--store-accent-dark');

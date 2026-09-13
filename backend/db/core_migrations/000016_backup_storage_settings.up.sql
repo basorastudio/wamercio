@@ -18,7 +18,7 @@ VALUES (
       "bucket": "",
       "access_key": "",
       "secret_key": "",
-      "prefix": "colmapro/primary"
+      "prefix": "wamercio/primary"
     },
     "secondary": {
       "enabled": true,
@@ -29,7 +29,7 @@ VALUES (
       "bucket": "",
       "access_key": "",
       "secret_key": "",
-      "prefix": "colmapro/critical"
+      "prefix": "wamercio/critical"
     }
   }'::jsonb,
   now()

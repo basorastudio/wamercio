@@ -64,7 +64,7 @@ The WAXUM operations console is served at the public root URL (`/`), not at `/da
 
 ## Remote session reconciliation
 
-The remote WAXUM session registry is authoritative, but ordinary state reads never create sessions. Before generating a QR or pairing code, WAMERCIO lists the real WAXUM sessions and creates the canonical `WAMERCIO` session only when the operator has explicitly started a linking flow. The legacy `colmapro-saas-superadmin` identifier is kept only during the one-time transition and is removed after the canonical session is linked. A locally stored `session_id` therefore cannot prevent recovery after the session is deleted from the WAXUM console.
+The remote WAXUM session registry is authoritative, but ordinary state reads never create sessions. Before generating a QR or pairing code, WAMERCIO lists the real WAXUM sessions and creates the canonical `WAMERCIO` session only when the operator has explicitly started a linking flow. The legacy `wamercio-saas-superadmin` identifier is kept only during the one-time transition and is removed after the canonical session is linked. A locally stored `session_id` therefore cannot prevent recovery after the session is deleted from the WAXUM console.
 
 The QR workflow is:
 

@@ -1159,7 +1159,7 @@ const PlatformLogin = ({ onSuccess }: any) => {
           <div className="flex items-center gap-4 mb-12">
             <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30 overflow-hidden p-0.5">
               <img
-                src="/brand/colmapro-app-icon.png"
+                src="/brand/wamercio-app-icon.png"
                 alt="WAMERCIO"
                 className="w-full h-full object-cover"
               />
@@ -1199,7 +1199,7 @@ const PlatformLogin = ({ onSuccess }: any) => {
           <div className="mb-7">
             <div className="w-14 h-14 rounded-2xl bg-[#00a884]/10 flex items-center justify-center mb-4 overflow-hidden p-0.5">
               <img
-                src="/brand/colmapro-app-icon.png"
+                src="/brand/wamercio-app-icon.png"
                 alt="WAMERCIO"
                 className="w-full h-full object-cover"
               />
@@ -1371,7 +1371,7 @@ const TenantForm = ({
       const response = await verifyPlatformIdentity({
         tipo_sujeto: "empresa",
         documento: digits,
-        contexto: "registro_colmado",
+        contexto: "registro_negocio",
       });
       if (response?.manual_allowed) {
         setBusinessIdentityCheck({
@@ -5260,7 +5260,7 @@ const CatalogProductModal = ({
     const brand = brands.find((item) => item.id === form.brand_id)?.name || "";
     update(
       "description",
-      `${form.name || "Producto"} ${brand ? `de ${brand}` : ""} disponible para el catálogo global de WAMERCIO. Ideal para que los colmados puedan agregarlo rápidamente a su inventario con una descripción clara y comercial.`
+      `${form.name || "Producto"} ${brand ? `de ${brand}` : ""} disponible para el catálogo global de WAMERCIO. Ideal para que los negocios puedan agregarlo rápidamente a su inventario con una descripción clara y comercial.`
         .replace(/\s+/g, " ")
         .trim(),
     );
@@ -6036,7 +6036,7 @@ const CatalogGlobalView = ({ catalog, onReload, onCatalogReload }: any) => {
         <div>
           <h2 className="text-2xl font-black text-gray-900">Catálogo Global</h2>
           <p className="text-sm text-gray-500 max-w-3xl">
-            Gestiona categorías y marcas disponibles para todos los colmados, y
+            Gestiona categorías y marcas disponibles para todos los negocios, y
             agrega productos directamente desde cada categoría.
           </p>
         </div>
@@ -6192,7 +6192,7 @@ const CatalogGlobalView = ({ catalog, onReload, onCatalogReload }: any) => {
                 ? "Buscar producto global por nombre, marca o código..."
                 : section === "brands"
                   ? "Buscar marca global..."
-                  : "Buscar sugerencia por código, propietario o colmado..."
+                  : "Buscar sugerencia por código, propietario o negocio..."
             }
             className={`w-full h-12 rounded-2xl border border-gray-200 bg-gray-50 pl-11 ${section === "categories" ? "pr-24" : "pr-10"} text-sm font-bold outline-none transition-all focus:border-[#00a884] focus:ring-4 focus:ring-[#00a884]/10`}
           />
@@ -6766,7 +6766,7 @@ const CatalogGlobalView = ({ catalog, onReload, onCatalogReload }: any) => {
                   <b>{item.owner_name || "—"}</b>
                   <br />
                   <small className="text-gray-400 font-black uppercase tracking-widest">
-                    {item.tenant_name || "Colmado"}
+                    {item.tenant_name || "Negocio"}
                   </small>
                 </span>
                 <span className="rounded-xl bg-[#00a884]/10 text-[#008f72] font-black px-3 py-2">
@@ -6786,7 +6786,7 @@ const CatalogGlobalView = ({ catalog, onReload, onCatalogReload }: any) => {
               <EmptyState
                 icon={FiZap}
                 title="Sin sugerencias"
-                text="Cuando un colmado solicite un producto no encontrado, aparecerá aquí para convertirlo en producto maestro."
+                text="Cuando un negocio solicite un producto no encontrado, aparecerá aquí para convertirlo en producto maestro."
                 compact
               />
             )}
@@ -6852,7 +6852,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   brand_name: "WAMERCIO",
   brand_subtitle: "",
   brand_icon: "",
-  logo_url: "/brand/colmapro-app-icon.png",
+  logo_url: "/brand/wamercio-app-icon.png",
   nav_links: [
     { label: "Inicio", url: "#inicio" },
     { label: "Solución", url: "#solucion" },
@@ -6865,10 +6865,10 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   demo_button_text: "Demo gratis",
   demo_button_url: "#contacto",
   badge_text: "SaaS hecho en República Dominicana 🇩🇴",
-  hero_title: "Digitaliza tu colmado",
+  hero_title: "Digitaliza tu negocio",
   hero_highlight: "sin complicaciones.",
   hero_description:
-    "La plataforma todo en uno para colmados y minimarkets. Controla inventario, fiado, entregas a domicilio y vende en línea desde cualquier dispositivo.",
+    "La plataforma todo en uno para comercios y negocios. Controla inventario, fiado, entregas a domicilio y vende en línea desde cualquier dispositivo.",
   primary_button_text: "Solicitar demo gratis",
   primary_button_url: "#contacto",
   secondary_button_text: "Ver video",
@@ -6881,7 +6881,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   problems_title: "Tu negocio no necesita más desorden.",
   problems_highlight: "Necesita más control.",
   problems_description:
-    "Administrar un colmado con métodos tradicionales es agotador. WAMERCIO elimina estos dolores de cabeza.",
+    "Administrar un negocio con métodos tradicionales es agotador. WAMERCIO elimina estos dolores de cabeza.",
   problems: [
     {
       icon: "message",
@@ -6921,7 +6921,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     {
       icon: "userx",
       title: "Dueño dependiente",
-      text: "Si no estás en el colmado, todo se vuelve un caos.",
+      text: "Si no estás en el negocio, todo se vuelve un caos.",
     },
   ],
   modules_title: "Todo tu negocio en una mano.",
@@ -6971,7 +6971,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   ],
   rd_title: "Diseñado para vender en RD, no adaptado a medias.",
   rd_description:
-    "WAMERCIO entiende cómo se vende en República Dominicana: pedidos rápidos, clientes del barrio, entrega cercana, pagos mixtos, fiado, transferencias, efectivo y negocios que necesitan operar desde el celular.",
+    "WAMERCIO entiende cómo se vende en República Dominicana: pedidos rápidos, clientes locales, entrega cercana, pagos mixtos, fiado, transferencias, efectivo y negocios que necesitan operar desde el celular.",
   rd_tags: [
     "RD$",
     "Cédula",
@@ -6982,7 +6982,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     "Sectores y zonas de entrega",
     "WhatsApp",
     "Efectivo y transferencia",
-    "Negocios de barrio",
+    "Comercio local",
     "PWA",
   ],
   rd_card_title:
@@ -6994,10 +6994,10 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     "Territorio dominicano completo (Provincias, Municipios)",
     "Sectores, barrios y zonas de entrega predefinidas",
   ],
-  audience_title: "Una plataforma para cada tipo de negocio de barrio.",
+  audience_title: "Una plataforma para distintos tipos de comercio.",
   business_types: [
-    "Colmados",
-    "Super colmados",
+    "Negocios",
+    "Supermercados",
     "Minimarkets",
     "Provisiones",
     "Surtidoras",
@@ -7079,7 +7079,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   ],
   plans_title: "Planes a tu medida",
   plans_description:
-    "Escoge el plan que mejor se adapte al tamaño de tu colmado o minimarket.",
+    "Escoge el plan que mejor se adapte al tamaño y operación de tu negocio.",
   pricing_plans: [
     {
       name: "Inicial",
@@ -7132,9 +7132,9 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   faq_description: "Resolvemos tus dudas principales sobre WAMERCIO.",
   faqs: [
     {
-      question: "¿WAMERCIO es solo para colmados?",
+      question: "¿WAMERCIO sirve para diferentes tipos de negocio?",
       answer:
-        "No. También sirve para minimarkets, provisiones, surtidoras, bodegas, pulperías y otros negocios de barrio.",
+        "Sí. WAMERCIO está diseñado para tiendas, supermercados, minimarkets, provisiones, surtidoras, bodegas, pulperías y otros comercios.",
     },
     {
       question: "¿Mis clientes tienen que descargar una aplicación?",
@@ -7177,7 +7177,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
         "La plataforma registra efectivo, transferencia manual, tarjeta cobrada en una terminal física externa y fiado. WAMERCIO no procesa ni confirma pagos electrónicos dentro de los negocios.",
     },
   ],
-  cta_title: "Tu colmado puede vender mejor desde hoy.",
+  cta_title: "Tu negocio puede vender mejor desde hoy.",
   cta_description:
     "Organiza tu negocio, atiende más rápido y dale a tus clientes una experiencia moderna sin perder la cercanía de siempre.",
   cta_primary_text: "Solicitar demo",
@@ -7187,7 +7187,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   cta_tertiary_text: "Ver planes",
   cta_tertiary_url: "#planes",
   footer_description:
-    "Plataforma SaaS para digitalizar colmados, minimarkets y negocios de barrio en República Dominicana.",
+    "Plataforma SaaS para digitalizar comercios y negocios en República Dominicana.",
   footer_email: "hola@wamercio.com",
   footer_status_text: "Sistemas operativos",
   maintenance: {
@@ -7302,7 +7302,7 @@ const LandingIcon = ({ name, className = "" }: any) => {
 };
 
 const landingLogo = (form, className = "w-10 h-10") => {
-  const logo = form.logo_url || "/brand/colmapro-app-icon.png";
+  const logo = form.logo_url || "/brand/wamercio-app-icon.png";
   if (logo)
     return (
       <img
@@ -9104,7 +9104,7 @@ const SuperAdminPanel = ({ user, onUserUpdated, onLogout }: any) => {
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-md overflow-hidden p-0.5">
               <img
-                src="/brand/colmapro-app-icon.png"
+                src="/brand/wamercio-app-icon.png"
                 alt="WAMERCIO"
                 className="w-full h-full object-cover"
               />
@@ -10129,14 +10129,14 @@ const BusinessTypeForm = ({ item = null, onCancel, onSaved }: any) => {
               value={form.name}
               onChange={(value) => update("name", value)}
               required
-              placeholder="Colmado"
+              placeholder="Tienda"
             />
             <Field
               label="Identificador URL *"
               value={form.slug}
               onChange={(value) => update("slug", value)}
               required
-              placeholder="colmado"
+              placeholder="tienda"
             />
             <Field
               label="Dominio / Sufijo"
@@ -10278,7 +10278,7 @@ const BusinessTypesView = ({ types, onNew, onEdit, onDelete }: any) => (
         <EmptyState
           icon={FiHome}
           title="Sin tipos de negocio"
-          text="Crea tipos como Colmado, Minimarket, Provisiones o Surtidora."
+          text="Crea tipos como Tienda, Supermercado, Minimarket, Provisiones o Surtidora."
           compact
         />
       )}
@@ -12373,7 +12373,7 @@ const defaultBackupConfig = (settings: any = {}) => {
       bucket: primary.bucket || "",
       access_key: primary.access_key || "",
       secret_key: primary.secret_key || "",
-      prefix: primary.prefix || "colmapro/primary",
+      prefix: primary.prefix || "wamercio/primary",
     },
     secondary: {
       enabled: secondary.enabled !== false,
@@ -12384,7 +12384,7 @@ const defaultBackupConfig = (settings: any = {}) => {
       bucket: secondary.bucket || "",
       access_key: secondary.access_key || "",
       secret_key: secondary.secret_key || "",
-      prefix: secondary.prefix || "colmapro/critical",
+      prefix: secondary.prefix || "wamercio/critical",
     },
   };
 };
@@ -12481,10 +12481,10 @@ const BackupConfigView = ({ settings, onSaved }: any) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div className="md:col-span-2"><Field label="Endpoint S3" value={form.primary.endpoint} onChange={(value) => updateProvider("primary", "endpoint", value)} placeholder="https://...contabostorage.com" /></div>
             <Field label="Región" value={form.primary.region} onChange={(value) => updateProvider("primary", "region", value)} placeholder="default" />
-            <Field label="Bucket" value={form.primary.bucket} onChange={(value) => updateProvider("primary", "bucket", value)} placeholder="colmapro-backups" />
+            <Field label="Bucket" value={form.primary.bucket} onChange={(value) => updateProvider("primary", "bucket", value)} placeholder="wamercio-backups" />
             <Field label="Access Key" value={form.primary.access_key} onChange={(value) => updateProvider("primary", "access_key", value)} />
             <Field label="Secret Key" type="password" value={form.primary.secret_key} onChange={(value) => updateProvider("primary", "secret_key", value)} />
-            <div className="md:col-span-2"><Field label="Prefijo" value={form.primary.prefix} onChange={(value) => updateProvider("primary", "prefix", value)} placeholder="colmapro/primary" /></div>
+            <div className="md:col-span-2"><Field label="Prefijo" value={form.primary.prefix} onChange={(value) => updateProvider("primary", "prefix", value)} placeholder="wamercio/primary" /></div>
           </div>
         </div>
 
@@ -12495,11 +12495,11 @@ const BackupConfigView = ({ settings, onSaved }: any) => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <Field label="Account ID" value={form.secondary.account_id} onChange={(value) => updateProvider("secondary", "account_id", value)} />
-            <Field label="Bucket" value={form.secondary.bucket} onChange={(value) => updateProvider("secondary", "bucket", value)} placeholder="colmapro-critical" />
+            <Field label="Bucket" value={form.secondary.bucket} onChange={(value) => updateProvider("secondary", "bucket", value)} placeholder="wamercio-critical" />
             <div className="md:col-span-2"><Field label="Endpoint S3" value={form.secondary.endpoint} onChange={(value) => updateProvider("secondary", "endpoint", value)} placeholder="https://ACCOUNT_ID.r2.cloudflarestorage.com" /></div>
             <Field label="Access Key ID" value={form.secondary.access_key} onChange={(value) => updateProvider("secondary", "access_key", value)} />
             <Field label="Secret Access Key" type="password" value={form.secondary.secret_key} onChange={(value) => updateProvider("secondary", "secret_key", value)} />
-            <div className="md:col-span-2"><Field label="Prefijo" value={form.secondary.prefix} onChange={(value) => updateProvider("secondary", "prefix", value)} placeholder="colmapro/critical" /></div>
+            <div className="md:col-span-2"><Field label="Prefijo" value={form.secondary.prefix} onChange={(value) => updateProvider("secondary", "prefix", value)} placeholder="wamercio/critical" /></div>
           </div>
         </div>
       </div>
@@ -12602,7 +12602,7 @@ const defaultPlatformIdentityForm = {
   enabled: false,
   required: false,
   base_url: "https://id.ltd.do",
-  client_id: "colmapro",
+  client_id: "wamercio",
   timeout_seconds: 12,
   device_limit_enabled: true,
   device_limit_max: 20,
@@ -12618,7 +12618,7 @@ const normalizePlatformIdentityForm = (payload: any = {}) => {
     enabled: Boolean(identity.enabled),
     required: Boolean(identity.required),
     base_url: String(identity.base_url || "https://id.ltd.do"),
-    client_id: String(identity.client_id || "colmapro"),
+    client_id: String(identity.client_id || "wamercio"),
     timeout_seconds: Number(identity.timeout_seconds || 12),
     device_limit_enabled: identity.device_limit_enabled !== false,
     device_limit_max: Number(identity.device_limit_max || 20),
@@ -12854,7 +12854,7 @@ const IdentityConfigurationView = ({ onSaved }: any) => {
               label="Client ID"
               value={form.client_id}
               onChange={(value) => update("client_id", value)}
-              placeholder="colmapro"
+              placeholder="wamercio"
               required
             />
             <Field

@@ -59,10 +59,10 @@ func TestRequestWaxumPhonePairingCodeRequestsPushNotificationWithoutConnect(t *t
 	pair, err := requestWaxumPhonePairingCode(
 		context.Background(),
 		client,
-		"colmado-prueba",
+		"negocio-prueba",
 		"18095551212",
 		businessWhatsAppDevice(),
-		&waxum.CreateSessionRequest{ID: waxum.Ptr("colmado-prueba"), Name: waxum.Ptr("colmado-prueba"), Device: businessWhatsAppDevice()},
+		&waxum.CreateSessionRequest{ID: waxum.Ptr("negocio-prueba"), Name: waxum.Ptr("negocio-prueba"), Device: businessWhatsAppDevice()},
 	)
 	if err != nil {
 		t.Fatalf("request pairing code: %v", err)
@@ -113,7 +113,7 @@ func TestRequestWaxumPhonePairingCodeRecoversFromIQFailure(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/sessions":
 			created = true
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{"session":{"id":"colmado-prueba","name":"colmado-prueba","status":"connecting","is_logged_in":false,"created_at":1,"updated_at":1}}`))
+			_, _ = w.Write([]byte(`{"session":{"id":"negocio-prueba","name":"negocio-prueba","status":"connecting","is_logged_in":false,"created_at":1,"updated_at":1}}`))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/pair"):
 			pairAttempts++
 			if pairAttempts == 1 {
@@ -132,10 +132,10 @@ func TestRequestWaxumPhonePairingCodeRecoversFromIQFailure(t *testing.T) {
 	pair, err := requestWaxumPhonePairingCode(
 		context.Background(),
 		client,
-		"colmado-prueba",
+		"negocio-prueba",
 		"18095551212",
 		businessWhatsAppDevice(),
-		&waxum.CreateSessionRequest{ID: waxum.Ptr("colmado-prueba"), Name: waxum.Ptr("colmado-prueba"), Device: businessWhatsAppDevice()},
+		&waxum.CreateSessionRequest{ID: waxum.Ptr("negocio-prueba"), Name: waxum.Ptr("negocio-prueba"), Device: businessWhatsAppDevice()},
 	)
 	if err != nil {
 		t.Fatalf("expected recovery, got %v", err)

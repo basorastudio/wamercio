@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BACKUP_ROOT="${COLMAPRO_BACKUP_ROOT:-/opt/colmapro_backups}"
-DAILY_DAYS="${COLMAPRO_BACKUP_DAILY_DAYS:-7}"
-WEEKLY_WEEKS="${COLMAPRO_BACKUP_WEEKLY_WEEKS:-4}"
-MONTHLY_MONTHS="${COLMAPRO_BACKUP_MONTHLY_MONTHS:-12}"
+BACKUP_ROOT="${WAMERCIO_BACKUP_ROOT:-/opt/wamercio_backups}"
+DAILY_DAYS="${WAMERCIO_BACKUP_DAILY_DAYS:-7}"
+WEEKLY_WEEKS="${WAMERCIO_BACKUP_WEEKLY_WEEKS:-4}"
+MONTHLY_MONTHS="${WAMERCIO_BACKUP_MONTHLY_MONTHS:-12}"
 
 [[ -d "$BACKUP_ROOT" ]] || exit 0
 mapfile -t backups < <(find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d -name '20*T*Z' -printf '%f\n' | sort -r)

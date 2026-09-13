@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-PROJECT_DIR="${COLMAPRO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
-BACKUP_ROOT="${COLMAPRO_BACKUP_ROOT:-/opt/colmapro_backups}"
-STATE_ROOT="${COLMAPRO_BACKUP_STATE_ROOT:-/var/lib/colmapro}"
+PROJECT_DIR="${WAMERCIO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+BACKUP_ROOT="${WAMERCIO_BACKUP_ROOT:-/opt/wamercio_backups}"
+STATE_ROOT="${WAMERCIO_BACKUP_STATE_ROOT:-/var/lib/wamercio}"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 DESTINATION="${BACKUP_ROOT}/${STAMP}"
 COMPOSE=(docker compose --project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
@@ -19,7 +19,7 @@ source "$PROJECT_DIR/.env"
 [[ -f "$PROJECT_DIR/.env.auto" ]] && source "$PROJECT_DIR/.env.auto"
 set +a
 
-POSTGRES_USER="${POSTGRES_USER:-colmapro}"
+POSTGRES_USER="${POSTGRES_USER:-wamercio}"
 mkdir -p "$DESTINATION/databases" "$STATE_ROOT"
 chmod 700 "$DESTINATION" "$STATE_ROOT"
 
@@ -43,38 +43,38 @@ trap 'rc=$?; if [[ $rc -ne 0 ]]; then write_status failed "La copia de seguridad
 
 # Load the configuration saved by the superadministrator. Environment variables
 # can override every value for emergency recovery or first-time bootstrap.
-backup_json="$(${COMPOSE[@]} exec -T postgres sh -lc 'psql -U "$POSTGRES_USER" -d "${SAAS_DB_NAME:-colmapro_saas}" -Atqc "SELECT value::text FROM platform_settings WHERE key='"'"'backups'"'"' LIMIT 1"' 2>/dev/null | tr -d '\r' || true)"
+backup_json="$(${COMPOSE[@]} exec -T postgres sh -lc 'psql -U "$POSTGRES_USER" -d "${SAAS_DB_NAME:-wamercio_saas}" -Atqc "SELECT value::text FROM platform_settings WHERE key='"'"'backups'"'"' LIMIT 1"' 2>/dev/null | tr -d '\r' || true)"
 [[ -n "$backup_json" ]] || backup_json='{}'
 
 json_value() { jq -r "$1 // empty" <<<"$backup_json"; }
 json_bool() { jq -r "$1 // false" <<<"$backup_json"; }
 
-BACKUP_ENABLED="${COLMAPRO_BACKUP_ENABLED:-$(json_bool '.enabled')}"
+BACKUP_ENABLED="${WAMERCIO_BACKUP_ENABLED:-$(json_bool '.enabled')}"
 [[ "$BACKUP_ENABLED" == "true" ]] || { write_status skipped "Los respaldos automáticos están desactivados"; echo "Respaldos desactivados."; exit 0; }
 
-RESTIC_PASSWORD="${COLMAPRO_RESTIC_PASSWORD:-$(json_value '.restic_password')}"
+RESTIC_PASSWORD="${WAMERCIO_RESTIC_PASSWORD:-$(json_value '.restic_password')}"
 [[ -n "$RESTIC_PASSWORD" ]] || { echo "No se configuró la contraseña de Restic" >&2; exit 1; }
 export RESTIC_PASSWORD
 
-PRIMARY_ENABLED="${COLMAPRO_BACKUP_PRIMARY_ENABLED:-$(json_bool '.primary.enabled')}"
-PRIMARY_ENDPOINT="${COLMAPRO_BACKUP_PRIMARY_ENDPOINT:-$(json_value '.primary.endpoint')}"
-PRIMARY_REGION="${COLMAPRO_BACKUP_PRIMARY_REGION:-$(json_value '.primary.region')}"
-PRIMARY_BUCKET="${COLMAPRO_BACKUP_PRIMARY_BUCKET:-$(json_value '.primary.bucket')}"
-PRIMARY_ACCESS_KEY="${COLMAPRO_BACKUP_PRIMARY_ACCESS_KEY:-$(json_value '.primary.access_key')}"
-PRIMARY_SECRET_KEY="${COLMAPRO_BACKUP_PRIMARY_SECRET_KEY:-$(json_value '.primary.secret_key')}"
-PRIMARY_PREFIX="${COLMAPRO_BACKUP_PRIMARY_PREFIX:-$(json_value '.primary.prefix')}"
+PRIMARY_ENABLED="${WAMERCIO_BACKUP_PRIMARY_ENABLED:-$(json_bool '.primary.enabled')}"
+PRIMARY_ENDPOINT="${WAMERCIO_BACKUP_PRIMARY_ENDPOINT:-$(json_value '.primary.endpoint')}"
+PRIMARY_REGION="${WAMERCIO_BACKUP_PRIMARY_REGION:-$(json_value '.primary.region')}"
+PRIMARY_BUCKET="${WAMERCIO_BACKUP_PRIMARY_BUCKET:-$(json_value '.primary.bucket')}"
+PRIMARY_ACCESS_KEY="${WAMERCIO_BACKUP_PRIMARY_ACCESS_KEY:-$(json_value '.primary.access_key')}"
+PRIMARY_SECRET_KEY="${WAMERCIO_BACKUP_PRIMARY_SECRET_KEY:-$(json_value '.primary.secret_key')}"
+PRIMARY_PREFIX="${WAMERCIO_BACKUP_PRIMARY_PREFIX:-$(json_value '.primary.prefix')}"
 
-SECONDARY_ENABLED="${COLMAPRO_BACKUP_SECONDARY_ENABLED:-$(json_bool '.secondary.enabled')}"
-SECONDARY_ENDPOINT="${COLMAPRO_BACKUP_SECONDARY_ENDPOINT:-$(json_value '.secondary.endpoint')}"
-SECONDARY_REGION="${COLMAPRO_BACKUP_SECONDARY_REGION:-$(json_value '.secondary.region')}"
-SECONDARY_BUCKET="${COLMAPRO_BACKUP_SECONDARY_BUCKET:-$(json_value '.secondary.bucket')}"
-SECONDARY_ACCESS_KEY="${COLMAPRO_BACKUP_SECONDARY_ACCESS_KEY:-$(json_value '.secondary.access_key')}"
-SECONDARY_SECRET_KEY="${COLMAPRO_BACKUP_SECONDARY_SECRET_KEY:-$(json_value '.secondary.secret_key')}"
-SECONDARY_PREFIX="${COLMAPRO_BACKUP_SECONDARY_PREFIX:-$(json_value '.secondary.prefix')}"
+SECONDARY_ENABLED="${WAMERCIO_BACKUP_SECONDARY_ENABLED:-$(json_bool '.secondary.enabled')}"
+SECONDARY_ENDPOINT="${WAMERCIO_BACKUP_SECONDARY_ENDPOINT:-$(json_value '.secondary.endpoint')}"
+SECONDARY_REGION="${WAMERCIO_BACKUP_SECONDARY_REGION:-$(json_value '.secondary.region')}"
+SECONDARY_BUCKET="${WAMERCIO_BACKUP_SECONDARY_BUCKET:-$(json_value '.secondary.bucket')}"
+SECONDARY_ACCESS_KEY="${WAMERCIO_BACKUP_SECONDARY_ACCESS_KEY:-$(json_value '.secondary.access_key')}"
+SECONDARY_SECRET_KEY="${WAMERCIO_BACKUP_SECONDARY_SECRET_KEY:-$(json_value '.secondary.secret_key')}"
+SECONDARY_PREFIX="${WAMERCIO_BACKUP_SECONDARY_PREFIX:-$(json_value '.secondary.prefix')}"
 
-DAILY_KEEP="${COLMAPRO_BACKUP_DAILY_DAYS:-$(json_value '.retention_daily')}"; DAILY_KEEP="${DAILY_KEEP:-7}"
-WEEKLY_KEEP="${COLMAPRO_BACKUP_WEEKLY_WEEKS:-$(json_value '.retention_weekly')}"; WEEKLY_KEEP="${WEEKLY_KEEP:-4}"
-MONTHLY_KEEP="${COLMAPRO_BACKUP_MONTHLY_MONTHS:-$(json_value '.retention_monthly')}"; MONTHLY_KEEP="${MONTHLY_KEEP:-12}"
+DAILY_KEEP="${WAMERCIO_BACKUP_DAILY_DAYS:-$(json_value '.retention_daily')}"; DAILY_KEEP="${DAILY_KEEP:-7}"
+WEEKLY_KEEP="${WAMERCIO_BACKUP_WEEKLY_WEEKS:-$(json_value '.retention_weekly')}"; WEEKLY_KEEP="${WEEKLY_KEEP:-4}"
+MONTHLY_KEEP="${WAMERCIO_BACKUP_MONTHLY_MONTHS:-$(json_value '.retention_monthly')}"; MONTHLY_KEEP="${MONTHLY_KEEP:-12}"
 
 "${COMPOSE[@]}" exec -T postgres sh -lc 'pg_isready -U "$POSTGRES_USER" -h 127.0.0.1 >/dev/null'
 
@@ -124,7 +124,7 @@ upload_repository() {
   if ! restic snapshots >/dev/null 2>&1; then
     restic init
   fi
-  restic backup "$DESTINATION" --tag colmapro --tag "$label" --host "$(hostname)" --json >/dev/null
+  restic backup "$DESTINATION" --tag wamercio --tag "$label" --host "$(hostname)" --json >/dev/null
   restic forget --keep-daily "$DAILY_KEEP" --keep-weekly "$WEEKLY_KEEP" --keep-monthly "$MONTHLY_KEEP" --prune
   restic check --read-data-subset=1/50
 }
@@ -144,7 +144,7 @@ fi
 ln -sfn "$DESTINATION" "$BACKUP_ROOT/latest"
 printf '%s\n' "$DESTINATION" > "$BACKUP_ROOT/latest.txt"
 chmod -R go-rwx "$DESTINATION"
-COLMAPRO_BACKUP_DAILY_DAYS="$DAILY_KEEP" COLMAPRO_BACKUP_WEEKLY_WEEKS="$WEEKLY_KEEP" COLMAPRO_BACKUP_MONTHLY_MONTHS="$MONTHLY_KEEP" "$PROJECT_DIR/scripts/backup/retention.sh"
+WAMERCIO_BACKUP_DAILY_DAYS="$DAILY_KEEP" WAMERCIO_BACKUP_WEEKLY_WEEKS="$WEEKLY_KEEP" WAMERCIO_BACKUP_MONTHLY_MONTHS="$MONTHLY_KEEP" "$PROJECT_DIR/scripts/backup/retention.sh"
 write_status completed "Copia verificada y replicada correctamente"
 trap - EXIT
 

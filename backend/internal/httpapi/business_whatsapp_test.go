@@ -3,13 +3,13 @@ package httpapi
 import (
 	"testing"
 
-	"colmapro/backend/internal/platform/tenancy"
 	waxum "github.com/basoradev/waxum-go"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 func TestBusinessWhatsAppSessionIDUsesTenantSlug(t *testing.T) {
-	tenant := tenancy.Tenant{ID: "5df1fbe4-6de9-46ce-a57d-7f449701e1cc", Slug: "Colmado Rafael MNBLT"}
-	if got, want := businessWhatsAppSessionID(tenant), "colmado-rafael-mnblt"; got != want {
+	tenant := tenancy.Tenant{ID: "5df1fbe4-6de9-46ce-a57d-7f449701e1cc", Slug: "Negocio Rafael MNBLT"}
+	if got, want := businessWhatsAppSessionID(tenant), "negocio-rafael-mnblt"; got != want {
 		t.Fatalf("businessWhatsAppSessionID() = %q, want %q", got, want)
 	}
 }
@@ -23,8 +23,8 @@ func TestBusinessWhatsAppSessionIDFallsBackToTenantID(t *testing.T) {
 
 func TestApplyWaxumBusinessSessionStatus(t *testing.T) {
 	phone := "18495551234"
-	pushName := "Colmado Rafael"
-	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "colmadorafael-mnblt"}
+	pushName := "Negocio Rafael"
+	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "negociorafael-mnblt"}
 	got := applyWaxumBusinessSessionStatus(businessWhatsAppConfig{}, &waxum.SessionStatusResponse{
 		Status:      waxum.SessionStatusLoggedIn,
 		IsLoggedIn:  true,

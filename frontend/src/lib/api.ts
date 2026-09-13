@@ -103,7 +103,7 @@ export const getTenantScope = () => {
 
 const scopedKey = (key) => `${key}:${getTenantScope()}`;
 const COOKIE_SESSION_MARKER = 'cookie-session';
-const DEVICE_ID_STORAGE_KEY = 'colmapro_identity_device_id_v1';
+const DEVICE_ID_STORAGE_KEY = 'wamercio_identity_device_id_v1';
 
 const createDeviceId = () => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -175,21 +175,21 @@ const isTenantProvisioningPath = (path) => {
   return normalized === '/platform/businesses' || normalized === '/admin/businesses';
 };
 
-const getPlatformToken = () => getStored('colmapro_platform_token');
-const getAdminToken = () => getStored('colmapro_admin_token');
-const getClientToken = () => getStored('colmapro_client_token');
-const getStaffToken = () => getStored('colmapro_staff_token');
-const getAdminTenant = () => getStored('colmapro_admin_tenant');
-const getAdminTenantName = () => getStored('colmapro_admin_tenant_name');
+const getPlatformToken = () => getStored('wamercio_platform_token');
+const getAdminToken = () => getStored('wamercio_admin_token');
+const getClientToken = () => getStored('wamercio_client_token');
+const getStaffToken = () => getStored('wamercio_staff_token');
+const getAdminTenant = () => getStored('wamercio_admin_tenant');
+const getAdminTenantName = () => getStored('wamercio_admin_tenant_name');
 
 const setAdminTenant = (tenant) => {
   const slug = typeof tenant === 'string' ? tenant : (tenant?.slug || tenant?.id || '');
   const name = typeof tenant === 'string' ? tenant : (tenant?.name || tenant?.slug || '');
-  setStored('colmapro_admin_tenant', slug);
-  setStored('colmapro_admin_tenant_name', name);
+  setStored('wamercio_admin_tenant', slug);
+  setStored('wamercio_admin_tenant_name', name);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('colmapro:tenant-changed', { detail: { slug, name, tenant } }));
-    window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+    window.dispatchEvent(new CustomEvent('wamercio:tenant-changed', { detail: { slug, name, tenant } }));
+    window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
   }
 };
 
@@ -362,38 +362,38 @@ export const api = {
   getAdminTenant,
   getAdminTenantName,
   setAdminTenant,
-  setPlatformToken: (_token = '') => setStored('colmapro_platform_token', COOKIE_SESSION_MARKER),
-  setAdminToken: (_token = '') => setStored('colmapro_admin_token', COOKIE_SESSION_MARKER),
-  setClientToken: (_token = '') => setStored('colmapro_client_token', COOKIE_SESSION_MARKER),
-  setStaffToken: (_token = '') => setStored('colmapro_staff_token', COOKIE_SESSION_MARKER),
-  setPlatformUser: (user) => setStored('colmapro_platform_user', user),
-  setAdminUser: (user) => setStored('colmapro_admin_user', user),
-  setStaffUser: (user) => setStored('colmapro_staff_user', user),
-  setStaffRole: (role) => setStored('colmapro_staff_role', role),
-  getPlatformUser: () => getStored('colmapro_platform_user'),
-  getAdminUser: () => getStored('colmapro_admin_user'),
-  getStaffUser: () => getStored('colmapro_staff_user'),
-  getStaffRole: () => getStored('colmapro_staff_role'),
+  setPlatformToken: (_token = '') => setStored('wamercio_platform_token', COOKIE_SESSION_MARKER),
+  setAdminToken: (_token = '') => setStored('wamercio_admin_token', COOKIE_SESSION_MARKER),
+  setClientToken: (_token = '') => setStored('wamercio_client_token', COOKIE_SESSION_MARKER),
+  setStaffToken: (_token = '') => setStored('wamercio_staff_token', COOKIE_SESSION_MARKER),
+  setPlatformUser: (user) => setStored('wamercio_platform_user', user),
+  setAdminUser: (user) => setStored('wamercio_admin_user', user),
+  setStaffUser: (user) => setStored('wamercio_staff_user', user),
+  setStaffRole: (role) => setStored('wamercio_staff_role', role),
+  getPlatformUser: () => getStored('wamercio_platform_user'),
+  getAdminUser: () => getStored('wamercio_admin_user'),
+  getStaffUser: () => getStored('wamercio_staff_user'),
+  getStaffRole: () => getStored('wamercio_staff_role'),
   clearPlatformSession: () => {
     logoutScope('platform');
-    removeStored('colmapro_platform_token');
-    removeStored('colmapro_platform_user');
+    removeStored('wamercio_platform_token');
+    removeStored('wamercio_platform_user');
   },
   clearAdminSession: () => {
     logoutScope('admin');
-    removeStored('colmapro_admin_token');
-    removeStored('colmapro_admin_user');
-    removeStored('colmapro_admin_tenant');
-    removeStored('colmapro_admin_tenant_name');
+    removeStored('wamercio_admin_token');
+    removeStored('wamercio_admin_user');
+    removeStored('wamercio_admin_tenant');
+    removeStored('wamercio_admin_tenant_name');
   },
   clearClientSession: () => {
     logoutScope('client');
-    removeStored('colmapro_client_token');
+    removeStored('wamercio_client_token');
   },
   clearStaffSession: () => {
     logoutScope('staff');
-    removeStored('colmapro_staff_token');
-    removeStored('colmapro_staff_user');
-    removeStored('colmapro_staff_role');
+    removeStored('wamercio_staff_token');
+    removeStored('wamercio_staff_user');
+    removeStored('wamercio_staff_role');
   },
 };

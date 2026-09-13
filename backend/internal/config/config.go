@@ -134,12 +134,12 @@ func Load() Config {
 		redisDefaultAddr = "redis:6379"
 	}
 
-	centralURL := getenv("CENTRAL_DATABASE_URL", "postgres://colmapro:colmapro@"+databaseHost+"/colmapro_core?sslmode=disable")
+	centralURL := getenv("CENTRAL_DATABASE_URL", "postgres://wamercio:wamercio@"+databaseHost+"/wamercio_core?sslmode=disable")
 	centralURL = normalizeProductionDatabaseHost(centralURL, appEnv, "postgres:5432")
-	globalCustomerDBName := getenv("GLOBAL_CUSTOMERS_DATABASE_NAME", "colmapro_global_customers")
+	globalCustomerDBName := getenv("GLOBAL_CUSTOMERS_DATABASE_NAME", "wamercio_global_customers")
 	globalCustomerURL := getenv("GLOBAL_CUSTOMERS_DATABASE_URL", databaseURLWithName(centralURL, globalCustomerDBName))
 	globalCustomerURL = normalizeProductionDatabaseHost(globalCustomerURL, appEnv, "postgres:5432")
-	tenantURLTemplate := getenv("TENANT_DATABASE_URL_TEMPLATE", "postgres://colmapro:colmapro@"+databaseHost+"/{{database}}?sslmode=disable")
+	tenantURLTemplate := getenv("TENANT_DATABASE_URL_TEMPLATE", "postgres://wamercio:wamercio@"+databaseHost+"/{{database}}?sslmode=disable")
 	tenantURLTemplate = normalizeProductionDatabaseHost(tenantURLTemplate, appEnv, "postgres:5432")
 	usePgBouncer := getenvBool("USE_PGBOUNCER", true)
 	pgBouncerAddr := getenv("PGBOUNCER_ADDR", "pgbouncer:6432")
@@ -183,11 +183,11 @@ func Load() Config {
 		TenantMigrationsPath:             getenv("TENANT_MIGRATIONS_PATH", "file://db/tenant_migrations"),
 		AdminUsername:                    getenv("ADMIN_USERNAME", ""),
 		AdminPasswordSHA256:              getenv("ADMIN_PASSWORD_SHA256", ""),
-		AdminTokenSecret:                 getenv("ADMIN_TOKEN_SECRET", "colmapro-dev-secret-change-me"),
-		PlatformAdminSecret:              getenv("PLATFORM_ADMIN_SECRET", getenv("ADMIN_TOKEN_SECRET", "colmapro-dev-secret-change-me")),
+		AdminTokenSecret:                 getenv("ADMIN_TOKEN_SECRET", "wamercio-dev-secret-change-me"),
+		PlatformAdminSecret:              getenv("PLATFORM_ADMIN_SECRET", getenv("ADMIN_TOKEN_SECRET", "wamercio-dev-secret-change-me")),
 		PlatformAdminUsername:            getenv("PLATFORM_ADMIN_USERNAME", "superadmin"),
 		PlatformAdminPasswordSHA256:      getenv("PLATFORM_ADMIN_PASSWORD_SHA256", ""),
-		PlatformTokenSecret:              getenv("PLATFORM_TOKEN_SECRET", getenv("PLATFORM_ADMIN_SECRET", getenv("ADMIN_TOKEN_SECRET", "colmapro-dev-secret-change-me"))),
+		PlatformTokenSecret:              getenv("PLATFORM_TOKEN_SECRET", getenv("PLATFORM_ADMIN_SECRET", getenv("ADMIN_TOKEN_SECRET", "wamercio-dev-secret-change-me"))),
 		AppTimezone:                      getenv("APP_TIMEZONE", getenv("TZ", "America/Santo_Domingo")),
 		TerritoryDataDir:                 getenv("TERRITORY_DATA_DIR", "data"),
 		CatalogDataFile:                  getenv("CATALOG_DATA_FILE", "data/catalog.json"),
@@ -231,7 +231,7 @@ func Load() Config {
 		SSEMaxConnectionsTotal:           getenvInt("SSE_MAX_CONNECTIONS_TOTAL", 5000),
 		SSEMaxConnectionsPerTenant:       getenvInt("SSE_MAX_CONNECTIONS_PER_TENANT", 1000),
 		SSEMaxConnectionsPerClient:       getenvInt("SSE_MAX_CONNECTIONS_PER_CLIENT", 50),
-		SSERedisChannel:                  getenv("SSE_REDIS_CHANNEL", "colmapro:realtime:events"),
+		SSERedisChannel:                  getenv("SSE_REDIS_CHANNEL", "wamercio:realtime:events"),
 		MaxRequestsPerMinuteTenant:       getenvInt("MAX_REQUESTS_PER_MINUTE_PER_TENANT", 720),
 		MaxRequestsPerMinuteIP:           getenvInt("MAX_REQUESTS_PER_MINUTE_PER_IP", 180),
 		MaxLoginAttemptsPerMinute:        getenvInt("MAX_LOGIN_ATTEMPTS_PER_MINUTE", 10),
@@ -249,7 +249,7 @@ func Load() Config {
 		IdentityAPIRequired:              getenvBool("IDENTIDAD_API_REQUIRED", false),
 		IdentityAPIURL:                   strings.TrimRight(getenv("IDENTIDAD_API_URL", "https://id.ltd.do"), "/"),
 		IdentityAPIKey:                   strings.TrimSpace(os.Getenv("IDENTIDAD_API_KEY")),
-		IdentityAPIClientID:              getenv("IDENTIDAD_API_CLIENT_ID", "colmapro"),
+		IdentityAPIClientID:              getenv("IDENTIDAD_API_CLIENT_ID", "wamercio"),
 		IdentityAPITimeout:               getenvDuration("IDENTIDAD_API_TIMEOUT", 12*time.Second),
 		GeoRDMapEnabled:                  getenvBool("GEO_RD_MAP_ENABLED", false),
 		GeoRDMapURL:                      strings.TrimRight(getenv("GEO_RD_MAP_URL", "https://geo.ltd.do"), "/"),
@@ -349,7 +349,7 @@ func normalizeProductionDatabaseHost(databaseURL, appEnv, serviceHost string) st
 	if !isContainerProduction(appEnv) {
 		return databaseURL
 	}
-	placeholder := "__COLMAPRO_DATABASE_PLACEHOLDER__"
+	placeholder := "__WAMERCIO_DATABASE_PLACEHOLDER__"
 	working := strings.ReplaceAll(strings.TrimSpace(databaseURL), "{{database}}", placeholder)
 	u, err := url.Parse(working)
 	if err != nil || u.Scheme == "" || u.Host == "" || !isLoopbackHost(u.Hostname()) {
@@ -378,7 +378,7 @@ func databaseURLTemplateWithHost(databaseURL, hostPort string, simpleProtocol bo
 	if strings.TrimSpace(databaseURL) == "" || strings.TrimSpace(hostPort) == "" {
 		return databaseURL
 	}
-	placeholder := "__COLMAPRO_DATABASE_PLACEHOLDER__"
+	placeholder := "__WAMERCIO_DATABASE_PLACEHOLDER__"
 	working := strings.ReplaceAll(databaseURL, "{{database}}", placeholder)
 	u, err := url.Parse(strings.TrimSpace(working))
 	if err != nil || u.Scheme == "" || u.Host == "" {

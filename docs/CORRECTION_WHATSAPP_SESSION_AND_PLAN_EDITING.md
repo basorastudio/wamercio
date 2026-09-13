@@ -7,7 +7,7 @@ La consola de WAXUM muestra el **ID** de la sesión en la tabla principal. Cambi
 - ID: `WAMERCIO`
 - Nombre: `WAMERCIO`
 
-La migración central `000020_colmapro_whatsapp_session_id` actualiza la configuración persistida. Como la API actual de WAXUM no permite renombrar el ID de una sesión existente, el backend crea automáticamente la sesión `WAMERCIO` y conserva temporalmente `colmapro-saas-superadmin` hasta que la nueva sesión quede vinculada. Después de vincular `WAMERCIO`, la sesión heredada se desconecta y elimina automáticamente.
+La migración central `000020_wamercio_whatsapp_session_id` actualiza la configuración persistida. Como la API actual de WAXUM no permite renombrar el ID de una sesión existente, el backend crea automáticamente la sesión `WAMERCIO` y conserva temporalmente `wamercio-saas-superadmin` hasta que la nueva sesión quede vinculada. Después de vincular `WAMERCIO`, la sesión heredada se desconecta y elimina automáticamente.
 
 Esto requiere escanear el QR o usar el código de emparejamiento una sola vez después del despliegue.
 

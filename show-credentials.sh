@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP_DIR="/opt/colmapro"
+APP_DIR="/opt/wamercio"
 CREDENTIALS_FILE="${APP_DIR}/CREDENCIALES_ADMIN.txt"
 SUPERADMIN_CREDENTIALS_FILE="${APP_DIR}/CREDENCIALES_SUPERADMIN.txt"
 if [[ "${EUID}" -ne 0 ]]; then

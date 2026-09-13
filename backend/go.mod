@@ -1,4 +1,4 @@
-module colmapro/backend
+module wamercio/backend
 
 go 1.26
 

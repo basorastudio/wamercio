@@ -80,7 +80,7 @@ const buildSharePayload = (
   const storeName = firstText(activeStore?.name, tenant?.name, "Mi negocio");
   const slogan = firstText(
     activeStore?.slogan,
-    "Compra fácil, rápido y seguro desde tu colmado.",
+    "Compra fácil, rápido y seguro desde tu tienda.",
   );
   const address = firstText(activeStore?.address, "Dirección no configurada");
   const whatsapp = firstText(

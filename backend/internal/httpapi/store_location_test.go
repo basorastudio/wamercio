@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 func TestNormalizeStoreLocationInput(t *testing.T) {
@@ -72,13 +72,13 @@ func TestNormalizeTenantProvisionLocationRequiresPair(t *testing.T) {
 
 func TestTenantGeoKeysAreIsolated(t *testing.T) {
 	ctx := tenancy.WithTenant(context.Background(), tenancy.Tenant{ID: "tenant-123"}, nil)
-	if got := storeGeoKey(ctx); got != "colmapro:tenant:tenant-123:geo:stores" {
+	if got := storeGeoKey(ctx); got != "wamercio:tenant:tenant-123:geo:stores" {
 		t.Fatalf("unexpected store GEO key: %s", got)
 	}
-	if got := deliveryDriversGeoKey(ctx); got != "colmapro:tenant:tenant-123:geo:drivers:live" {
+	if got := deliveryDriversGeoKey(ctx); got != "wamercio:tenant:tenant-123:geo:drivers:live" {
 		t.Fatalf("unexpected driver GEO key: %s", got)
 	}
-	if got := deliveryDestinationsGeoKey(ctx); got != "colmapro:tenant:tenant-123:geo:deliveries:active" {
+	if got := deliveryDestinationsGeoKey(ctx); got != "wamercio:tenant:tenant-123:geo:deliveries:active" {
 		t.Fatalf("unexpected delivery GEO key: %s", got)
 	}
 }

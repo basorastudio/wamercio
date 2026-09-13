@@ -227,7 +227,7 @@ const AdminLayout = ({ children, onExit = () => {}, tenants = [], selectedTenant
         <div className="p-5 border-b border-white/10">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-md overflow-hidden p-0.5">
-              <img src="/brand/colmapro-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
+              <img src="/brand/wamercio-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
             </div>
             <div>
               <p className="font-black text-white text-sm leading-tight">WAMERCIO</p>
@@ -272,7 +272,7 @@ const AdminLayout = ({ children, onExit = () => {}, tenants = [], selectedTenant
               <div className="p-5 border-b border-white/10 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center overflow-hidden p-0.5">
-                    <img src="/brand/colmapro-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
+                    <img src="/brand/wamercio-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
                   </div>
                   <div>
                     <p className="font-black text-white text-sm">WAMERCIO</p>
@@ -326,7 +326,7 @@ const AdminLayout = ({ children, onExit = () => {}, tenants = [], selectedTenant
           </button>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-white rounded-lg flex items-center justify-center overflow-hidden ring-1 ring-emerald-100">
-              <img src="/brand/colmapro-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
+              <img src="/brand/wamercio-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" />
             </div>
             <span className="font-black text-gray-800 text-sm">{currentLabel}</span>
           </div>

@@ -1,12 +1,12 @@
 (function () {
   'use strict';
 
-  if (typeof window.__COLMAPRO_RECOVER_CHUNK__ === 'function') {
-    window.__COLMAPRO_RECOVER_CHUNK__('missing-next-chunk');
+  if (typeof window.__WAMERCIO_RECOVER_CHUNK__ === 'function') {
+    window.__WAMERCIO_RECOVER_CHUNK__('missing-next-chunk');
     return;
   }
 
-  var attemptKey = 'colmapro:asset-recovery-attempt';
+  var attemptKey = 'wamercio:asset-recovery-attempt';
   var now = Date.now();
   var previous = 0;
 
@@ -42,7 +42,7 @@
       window.caches.keys()
         .then(function (keys) {
           return Promise.all(keys
-            .filter(function (key) { return key.indexOf('colmapro-spa-pwa-') === 0; })
+            .filter(function (key) { return key.indexOf('wamercio-spa-pwa-') === 0; })
             .map(function (key) { return window.caches.delete(key); }));
         })
         .catch(function () { return undefined; }),
@@ -51,7 +51,7 @@
 
   Promise.all(cleanup).finally(function () {
     var nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('__colmapro_refresh', String(now));
+    nextUrl.searchParams.set('__wamercio_refresh', String(now));
     window.location.replace(nextUrl.pathname + nextUrl.search + nextUrl.hash);
   });
 })();

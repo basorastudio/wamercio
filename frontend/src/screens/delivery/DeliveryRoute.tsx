@@ -61,11 +61,11 @@ export default function DeliveryRoute() {
 
   useEffect(() => {
     const handler = (event: Event) => setLiveLocation((event as CustomEvent).detail || null);
-    window.addEventListener('colmapro:driver-location', handler);
+    window.addEventListener('wamercio:driver-location', handler);
     currentPosition().then((position) => {
       if (pointFrom(position)) setLiveLocation(position);
     });
-    return () => window.removeEventListener('colmapro:driver-location', handler);
+    return () => window.removeEventListener('wamercio:driver-location', handler);
   }, []);
 
   useEffect(() => {

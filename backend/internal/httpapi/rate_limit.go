@@ -194,7 +194,7 @@ func (s *Server) allowRequestWindow(ctx context.Context, key string, limit int, 
 		windowSeconds := int64(window / time.Second)
 		windowStart := time.Unix((now.Unix()/windowSeconds)*windowSeconds, 0)
 		redisContext, cancel := context.WithTimeout(ctx, timeout)
-		redisKey := "colmapro:ratelimit:" + key + ":" + strconv.FormatInt(windowStart.Unix(), 10)
+		redisKey := "wamercio:ratelimit:" + key + ":" + strconv.FormatInt(windowStart.Unix(), 10)
 		expirySeconds := windowSeconds * 2
 		if expirySeconds < 120 {
 			expirySeconds = 120
@@ -273,7 +273,7 @@ func (s *Server) authFailureKey(_ *http.Request, scope, identity string) string 
 	}
 	// Route limiting already protects each source IP. This key intentionally
 	// excludes the IP so rotating networks cannot bypass the account lockout.
-	return "colmapro:auth-failures:" + strings.ToLower(strings.TrimSpace(scope)) + ":" + safeLogIdentifier(identity)
+	return "wamercio:auth-failures:" + strings.ToLower(strings.TrimSpace(scope)) + ":" + safeLogIdentifier(identity)
 }
 
 func (s *Server) authLocked(ctx context.Context, key string) bool {

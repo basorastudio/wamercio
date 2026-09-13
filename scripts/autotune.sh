@@ -131,7 +131,7 @@ EOF_ENV
 chmod 600 "$ENV_AUTO" || true
 
 mkdir -p "$PGBOUNCER_DIR"
-postgres_user="$(get_env POSTGRES_USER colmapro)"
+postgres_user="$(get_env POSTGRES_USER wamercio)"
 postgres_password="$(get_env POSTGRES_PASSWORD change_this_secure_password)"
 
 cat > "${PGBOUNCER_DIR}/pgbouncer.ini" <<EOF_PGB

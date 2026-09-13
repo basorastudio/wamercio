@@ -124,7 +124,7 @@ const ProductBatchesPanel = ({ storeId, products = [] }: { storeId: string; prod
 
       {trackedProducts.length === 0 && <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"><b>Activa el control por lotes</b> desde la pestaña Compras y reposición, dentro de la política de cada producto que tenga vencimiento.</div>}
 
-      {showCreate && <CreateBatchModal storeId={storeId} products={products} onClose={() => setShowCreate(false)} onSaved={async () => { setShowCreate(false); window.dispatchEvent(new CustomEvent('colmapro:data-changed')); await load(); }} />}
+      {showCreate && <CreateBatchModal storeId={storeId} products={products} onClose={() => setShowCreate(false)} onSaved={async () => { setShowCreate(false); window.dispatchEvent(new CustomEvent('wamercio:data-changed')); await load(); }} />}
       {editing && <EditBatchModal batch={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
     </div>
   );

@@ -41,9 +41,9 @@ El instalador agrega `jq`, `zstd` y `restic`. Docker Compose y PostgreSQL contin
 ## Ejecución manual
 
 ```bash
-sudo COLMAPRO_PROJECT_DIR=/opt/colmapro \
-  COLMAPRO_BACKUP_ROOT=/opt/colmapro_backups \
-  /opt/colmapro/scripts/backup/create-backup.sh
+sudo WAMERCIO_PROJECT_DIR=/opt/wamercio \
+  WAMERCIO_BACKUP_ROOT=/opt/wamercio_backups \
+  /opt/wamercio/scripts/backup/create-backup.sh
 ```
 
 La ejecución:
@@ -57,15 +57,15 @@ La ejecución:
 7. Envía la copia cifrada a Contabo y Cloudflare R2.
 8. Aplica la retención en ambos destinos.
 9. Ejecuta una comprobación parcial de integridad de Restic.
-10. Actualiza `/var/lib/colmapro/backup-status.json` sin incluir secretos.
+10. Actualiza `/var/lib/wamercio/backup-status.json` sin incluir secretos.
 
 ## Programación diaria
 
 ```bash
-sudo cp deploy/systemd/colmapro-backup.* /etc/systemd/system/
+sudo cp deploy/systemd/wamercio-backup.* /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now colmapro-backup.timer
-sudo systemctl list-timers colmapro-backup.timer
+sudo systemctl enable --now wamercio-backup.timer
+sudo systemctl list-timers wamercio-backup.timer
 ```
 
 El temporizador se ejecuta a las 03:15 en `America/Santo_Domingo` con retraso aleatorio. La retención exacta se obtiene desde la pestaña Backups.
@@ -73,7 +73,7 @@ El temporizador se ejecuta a las 03:15 en `America/Santo_Domingo` con retraso al
 ## Verificación local
 
 ```bash
-sudo /opt/colmapro/scripts/backup/verify-backup.sh /opt/colmapro_backups/latest
+sudo /opt/wamercio/scripts/backup/verify-backup.sh /opt/wamercio_backups/latest
 ```
 
 Una copia no se considera válida hasta superar sumas SHA-256, prueba Zstandard y validación estructural de todos los dumps.
@@ -83,17 +83,17 @@ Una copia no se considera válida hasta superar sumas SHA-256, prueba Zstandard 
 La restauración detiene frontend, backend y PgBouncer para impedir escrituras concurrentes.
 
 ```bash
-sudo COLMAPRO_RESTORE_CONFIRM=RESTORE_COLMAPRO \
-  /opt/colmapro/scripts/backup/restore-backup.sh \
-  /opt/colmapro_backups/20260716T071500Z all
+sudo WAMERCIO_RESTORE_CONFIRM=RESTORE_WAMERCIO \
+  /opt/wamercio/scripts/backup/restore-backup.sh \
+  /opt/wamercio_backups/20260716T071500Z all
 ```
 
 Una sola base:
 
 ```bash
-sudo COLMAPRO_RESTORE_CONFIRM=RESTORE_COLMAPRO \
-  /opt/colmapro/scripts/backup/restore-backup.sh \
-  /opt/colmapro_backups/20260716T071500Z cp_example_business
+sudo WAMERCIO_RESTORE_CONFIRM=RESTORE_WAMERCIO \
+  /opt/wamercio/scripts/backup/restore-backup.sh \
+  /opt/wamercio_backups/20260716T071500Z cp_example_business
 ```
 
 ## Simulacro obligatorio

@@ -54,4 +54,4 @@ La migración tenant `000029_accounting_procurement_batches` crea las tablas, í
 
 ## Despliegue seguro
 
-El instalador conserva el preflight incorporado en R29/R30: compila backend y frontend antes de respaldar o copiar la nueva versión. Si cualquiera falla, `/opt/colmapro` permanece sin modificaciones.
+El instalador conserva el preflight incorporado en R29/R30: compila backend y frontend antes de respaldar o copiar la nueva versión. Si cualquiera falla, `/opt/wamercio` permanece sin modificaciones.

@@ -5,13 +5,13 @@ WAMERCIO permite que cada propietario o administrador vincule el WhatsApp de su 
 ## Flujo
 
 1. El usuario presiona **Vincular WhatsApp**.
-2. El backend crea en WAXUM una sesión cuyo identificador es el `slug` del negocio, por ejemplo `colmadorafael-mnblt`.
+2. El backend crea en WAXUM una sesión cuyo identificador es el `slug` del negocio, por ejemplo `negociorafael-mnblt`.
 3. El usuario elige **Código QR** o **Emparejamiento**.
 4. WAMERCIO consulta periódicamente el estado de la sesión.
 5. Cuando WAXUM confirma la vinculación, se muestran el número, nombre e imagen de perfil.
 6. Las notificaciones de pedidos, estados y otros eventos del negocio se envían por esa sesión.
 
-El nombre visible del dispositivo vinculado en WhatsApp es **COLMAPRO**. Las credenciales de administración de WAXUM solo existen en el backend y se reutilizan desde la configuración global del panel SaaS.
+El nombre visible del dispositivo vinculado en WhatsApp es **WAMERCIO**. Las credenciales de administración de WAXUM solo existen en el backend y se reutilizan desde la configuración global del panel SaaS.
 
 ## Persistencia
 
@@ -38,7 +38,7 @@ WAMERCIO envía a WAXUM la solicitud `POST /api/v1/sessions/{session_id}/pair` c
   "phone_number": "+18095551212",
   "show_push_notification": true,
   "device": {
-    "os": "COLMAPRO",
+    "os": "WAMERCIO",
     "platform": "chrome"
   }
 }
@@ -68,7 +68,7 @@ Si la ventana de vinculación vence sin autenticar la cuenta, el backend ejecuta
 - el usuario cancela o cierra una vinculación pendiente;
 - el propietario presiona **Desvincular** en WAMERCIO;
 - WAXUM informa que una cuenta previamente vinculada dejó de estar autenticada;
-- el dispositivo elimina a COLMAPRO desde **Dispositivos vinculados**;
+- el dispositivo elimina a WAMERCIO desde **Dispositivos vinculados**;
 - el worker de notificaciones detecta la pérdida de autenticación antes de enviar un mensaje.
 
 La operación usa primero una desconexión compatible con versiones anteriores y después `DELETE /api/v1/sessions/{session_id}`. WAMERCIO solo limpia el estado local cuando WAXUM confirma la eliminación o informa que la sesión ya no existe. Una falla remota mantiene el error visible para no aparentar que la cuenta fue eliminada mientras todavía existe en WAXUM.

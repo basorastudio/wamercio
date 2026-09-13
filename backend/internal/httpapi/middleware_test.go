@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"colmapro/backend/internal/config"
+	"wamercio/backend/internal/config"
 )
 
 func TestLimitRequestBodyRejectsKnownOversizePayload(t *testing.T) {

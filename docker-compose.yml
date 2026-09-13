@@ -6,8 +6,8 @@ services:
     env_file:
       - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-colmapro_core}
-      POSTGRES_USER: ${POSTGRES_USER:-colmapro}
+      POSTGRES_DB: ${POSTGRES_DB:-wamercio_core}
+      POSTGRES_USER: ${POSTGRES_USER:-wamercio}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_secure_password}
       TZ: ${TZ:-America/Santo_Domingo}
     command:
@@ -21,7 +21,7 @@ services:
     healthcheck:
       test:
         - "CMD-SHELL"
-        - "pg_isready -U $${POSTGRES_USER:-colmapro} -d $${POSTGRES_DB:-colmapro_core} -h 127.0.0.1"
+        - "pg_isready -U $${POSTGRES_USER:-wamercio} -d $${POSTGRES_DB:-wamercio_core} -h 127.0.0.1"
       interval: 10s
       timeout: 5s
       retries: 18
@@ -42,7 +42,7 @@ services:
     healthcheck:
       test:
         - "CMD-SHELL"
-        - "pg_isready -h 127.0.0.1 -p 6432 -U $${POSTGRES_USER:-colmapro} >/dev/null 2>&1"
+        - "pg_isready -h 127.0.0.1 -p 6432 -U $${POSTGRES_USER:-wamercio} >/dev/null 2>&1"
       interval: 10s
       timeout: 5s
       retries: 12

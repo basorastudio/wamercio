@@ -120,7 +120,7 @@ const formatDate = (value?: string) => {
 const previewMessage = (body: string) => {
   const values: Record<string, string> = {
     cliente: "María Pérez",
-    negocio: "Colmado Central",
+    negocio: "Mi Negocio",
     pedido_id: "#1048",
     total: "1,285.00",
     estado: "Listo para entregar",

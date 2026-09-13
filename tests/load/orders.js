@@ -1,10 +1,10 @@
 import http from 'k6/http';
 import { check, fail, sleep } from 'k6';
 
-const baseURL = __ENV.COLMAPRO_LOAD_BASE_URL || 'http://127.0.0.1';
-const sessionCookie = __ENV.COLMAPRO_LOAD_CLIENT_COOKIE || '';
-const storeID = __ENV.COLMAPRO_LOAD_STORE_ID || '';
-const productID = __ENV.COLMAPRO_LOAD_PRODUCT_ID || '';
+const baseURL = __ENV.WAMERCIO_LOAD_BASE_URL || 'http://127.0.0.1';
+const sessionCookie = __ENV.WAMERCIO_LOAD_CLIENT_COOKIE || '';
+const storeID = __ENV.WAMERCIO_LOAD_STORE_ID || '';
+const productID = __ENV.WAMERCIO_LOAD_PRODUCT_ID || '';
 
 export const options = {
   scenarios: {
@@ -18,7 +18,7 @@ export const options = {
 
 export default function () {
   if (!sessionCookie || !storeID || !productID) {
-    fail('Define COLMAPRO_LOAD_CLIENT_COOKIE, COLMAPRO_LOAD_STORE_ID y COLMAPRO_LOAD_PRODUCT_ID.');
+    fail('Define WAMERCIO_LOAD_CLIENT_COOKIE, WAMERCIO_LOAD_STORE_ID y WAMERCIO_LOAD_PRODUCT_ID.');
   }
   const idempotencyKey = `k6-${__VU}-${__ITER}-${Date.now()}`;
   const payload = {

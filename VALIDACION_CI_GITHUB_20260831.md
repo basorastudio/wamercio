@@ -18,7 +18,7 @@ La incorporación de geocercas añadió helpers en `frontend/src/screens/MyCart.
 
 TypeScript infiere esos parámetros como `{}`. Por ello `npm run typecheck` rechaza accesos como `address.lat`, `address.location`, `zone.geoPolygon` y `zone.geo_polygon` con `TS2339`.
 
-El workflow de publicación de imágenes ejecuta el mismo `npm run typecheck` dentro del Dockerfile del frontend, por lo que el mismo error detenía también la construcción/publicación de `colmapro-frontend` en GHCR. No era un fallo independiente de GHCR.
+El workflow de publicación de imágenes ejecuta el mismo `npm run typecheck` dentro del Dockerfile del frontend, por lo que el mismo error detenía también la construcción/publicación de `wamercio-frontend` en GHCR. No era un fallo independiente de GHCR.
 
 ## Corrección
 

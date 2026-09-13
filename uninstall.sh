@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-APP_DIR="/opt/colmapro"
+APP_DIR="/opt/wamercio"
 if [[ "${EUID}" -ne 0 ]]; then
   echo "Ejecuta como root: sudo bash uninstall.sh"
   exit 1

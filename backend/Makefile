@@ -24,4 +24,4 @@ build:
 	mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=true -pgo=auto \
 		-ldflags="-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.buildTime=$(BUILD_TIME)" \
-		-o $(BUILD_DIR)/colmapro-api ./cmd/api
+		-o $(BUILD_DIR)/wamercio-api ./cmd/api

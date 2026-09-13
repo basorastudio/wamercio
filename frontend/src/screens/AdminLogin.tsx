@@ -198,7 +198,7 @@ const AdminLogin = ({ onSuccess, onBack }) => {
         </div>
         <div className="relative z-10">
           <div className="flex items-center gap-4 mb-12">
-            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30 overflow-hidden p-0.5"><img src="/brand/colmapro-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" /></div>
+            <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30 overflow-hidden p-0.5"><img src="/brand/wamercio-app-icon.png" alt="WAMERCIO" className="w-full h-full object-cover" /></div>
             <div>
               <h1 className="text-white font-black text-2xl leading-none">WAMERCIO</h1>
               <p className="text-white/60 text-sm font-medium">Panel protegido</p>
@@ -246,7 +246,7 @@ const AdminLogin = ({ onSuccess, onBack }) => {
                 value={whatsapp}
                 onChange={(phone) => setWhatsapp(phonePayloadToDigits(phone))}
                 placeholder="809 302 4075"
-                name="colmapro_admin_whatsapp"
+                name="wamercio_admin_whatsapp"
                 autoComplete="off"
                 required
               />

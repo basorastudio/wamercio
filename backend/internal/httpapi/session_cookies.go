@@ -7,10 +7,10 @@ import (
 )
 
 const (
-	platformSessionCookie = "colmapro_platform_session"
-	adminSessionCookie    = "colmapro_admin_session"
-	staffSessionCookie    = "colmapro_staff_session"
-	clientSessionCookie   = "colmapro_client_session"
+	platformSessionCookie = "wamercio_platform_session"
+	adminSessionCookie    = "wamercio_admin_session"
+	staffSessionCookie    = "wamercio_staff_session"
+	clientSessionCookie   = "wamercio_client_session"
 )
 
 func (s *Server) secureCookies() bool {

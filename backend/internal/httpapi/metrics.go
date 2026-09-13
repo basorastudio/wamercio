@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"colmapro/backend/internal/platform/database"
+	"wamercio/backend/internal/platform/database"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -104,15 +104,15 @@ func (m *serviceMetrics) handler(server *Server) http.Handler {
 }
 
 func (m *serviceMetrics) writeHTTPMetrics(w http.ResponseWriter) {
-	fmt.Fprintln(w, "# HELP colmapro_http_requests_active Requests currently being processed.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_requests_active gauge")
-	fmt.Fprintf(w, "colmapro_http_requests_active %d\n", m.activeRequests.Load())
-	fmt.Fprintln(w, "# HELP colmapro_http_request_body_rejected_total Request bodies rejected because they exceeded the configured limit.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_request_body_rejected_total counter")
-	fmt.Fprintf(w, "colmapro_http_request_body_rejected_total %d\n", m.bodyRejected.Load())
-	fmt.Fprintln(w, "# HELP colmapro_http_rate_limited_total Requests rejected by rate limiting.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_rate_limited_total counter")
-	fmt.Fprintf(w, "colmapro_http_rate_limited_total %d\n", m.rateLimited.Load())
+	fmt.Fprintln(w, "# HELP wamercio_http_requests_active Requests currently being processed.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_requests_active gauge")
+	fmt.Fprintf(w, "wamercio_http_requests_active %d\n", m.activeRequests.Load())
+	fmt.Fprintln(w, "# HELP wamercio_http_request_body_rejected_total Request bodies rejected because they exceeded the configured limit.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_request_body_rejected_total counter")
+	fmt.Fprintf(w, "wamercio_http_request_body_rejected_total %d\n", m.bodyRejected.Load())
+	fmt.Fprintln(w, "# HELP wamercio_http_rate_limited_total Requests rejected by rate limiting.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_rate_limited_total counter")
+	fmt.Fprintf(w, "wamercio_http_rate_limited_total %d\n", m.rateLimited.Load())
 
 	m.mu.RLock()
 	routeKeys := make([]routeMetricKey, 0, len(m.routes))
@@ -126,23 +126,23 @@ func (m *serviceMetrics) writeHTTPMetrics(w http.ResponseWriter) {
 		return routeKeys[i].route < routeKeys[j].route
 	})
 
-	fmt.Fprintln(w, "# HELP colmapro_http_request_duration_seconds HTTP request duration histogram.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_request_duration_seconds histogram")
-	fmt.Fprintln(w, "# HELP colmapro_http_request_duration_quantile_seconds Approximate p50, p95 and p99 request latency from bounded histogram buckets.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_request_duration_quantile_seconds gauge")
+	fmt.Fprintln(w, "# HELP wamercio_http_request_duration_seconds HTTP request duration histogram.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_request_duration_seconds histogram")
+	fmt.Fprintln(w, "# HELP wamercio_http_request_duration_quantile_seconds Approximate p50, p95 and p99 request latency from bounded histogram buckets.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_request_duration_quantile_seconds gauge")
 	for _, key := range routeKeys {
 		metric := m.routes[key]
 		labels := fmt.Sprintf("method=%q,route=%q", escapeMetricLabel(key.method), escapeMetricLabel(key.route))
 		cumulative := uint64(0)
 		for index, upperBound := range httpDurationBuckets {
 			cumulative += metric.buckets[index]
-			fmt.Fprintf(w, "colmapro_http_request_duration_seconds_bucket{%s,le=%q} %d\n", labels, strconv.FormatFloat(upperBound, 'f', -1, 64), cumulative)
+			fmt.Fprintf(w, "wamercio_http_request_duration_seconds_bucket{%s,le=%q} %d\n", labels, strconv.FormatFloat(upperBound, 'f', -1, 64), cumulative)
 		}
-		fmt.Fprintf(w, "colmapro_http_request_duration_seconds_bucket{%s,le=\"+Inf\"} %d\n", labels, metric.count)
-		fmt.Fprintf(w, "colmapro_http_request_duration_seconds_sum{%s} %g\n", labels, metric.sum)
-		fmt.Fprintf(w, "colmapro_http_request_duration_seconds_count{%s} %d\n", labels, metric.count)
+		fmt.Fprintf(w, "wamercio_http_request_duration_seconds_bucket{%s,le=\"+Inf\"} %d\n", labels, metric.count)
+		fmt.Fprintf(w, "wamercio_http_request_duration_seconds_sum{%s} %g\n", labels, metric.sum)
+		fmt.Fprintf(w, "wamercio_http_request_duration_seconds_count{%s} %d\n", labels, metric.count)
 		for _, quantile := range []float64{0.5, 0.95, 0.99} {
-			fmt.Fprintf(w, "colmapro_http_request_duration_quantile_seconds{%s,quantile=%q} %g\n", labels, strconv.FormatFloat(quantile, 'f', 2, 64), approximateQuantile(metric, quantile))
+			fmt.Fprintf(w, "wamercio_http_request_duration_quantile_seconds{%s,quantile=%q} %g\n", labels, strconv.FormatFloat(quantile, 'f', 2, 64), approximateQuantile(metric, quantile))
 		}
 	}
 
@@ -159,10 +159,10 @@ func (m *serviceMetrics) writeHTTPMetrics(w http.ResponseWriter) {
 		}
 		return statusKeys[i].status < statusKeys[j].status
 	})
-	fmt.Fprintln(w, "# HELP colmapro_http_responses_total HTTP responses by route and status.")
-	fmt.Fprintln(w, "# TYPE colmapro_http_responses_total counter")
+	fmt.Fprintln(w, "# HELP wamercio_http_responses_total HTTP responses by route and status.")
+	fmt.Fprintln(w, "# TYPE wamercio_http_responses_total counter")
 	for _, key := range statusKeys {
-		fmt.Fprintf(w, "colmapro_http_responses_total{method=%q,route=%q,status=%q} %d\n", escapeMetricLabel(key.method), escapeMetricLabel(key.route), strconv.Itoa(key.status), m.statuses[key])
+		fmt.Fprintf(w, "wamercio_http_responses_total{method=%q,route=%q,status=%q} %d\n", escapeMetricLabel(key.method), escapeMetricLabel(key.route), strconv.Itoa(key.status), m.statuses[key])
 	}
 	m.mu.RUnlock()
 }
@@ -197,23 +197,23 @@ func (m *serviceMetrics) writeRuntimeMetrics(w http.ResponseWriter) {
 		{Name: "/cpu/classes/gc/pause:cpu-seconds"},
 	}
 	metrics.Read(samples)
-	fmt.Fprintln(w, "# HELP colmapro_go_runtime_value Go runtime metric exposed through runtime/metrics.")
-	fmt.Fprintln(w, "# TYPE colmapro_go_runtime_value gauge")
+	fmt.Fprintln(w, "# HELP wamercio_go_runtime_value Go runtime metric exposed through runtime/metrics.")
+	fmt.Fprintln(w, "# TYPE wamercio_go_runtime_value gauge")
 	for _, sample := range samples {
 		name := escapeMetricLabel(sample.Name)
 		switch sample.Value.Kind() {
 		case metrics.KindUint64:
-			fmt.Fprintf(w, "colmapro_go_runtime_value{name=%q} %d\n", name, sample.Value.Uint64())
+			fmt.Fprintf(w, "wamercio_go_runtime_value{name=%q} %d\n", name, sample.Value.Uint64())
 		case metrics.KindFloat64:
-			fmt.Fprintf(w, "colmapro_go_runtime_value{name=%q} %g\n", name, sample.Value.Float64())
+			fmt.Fprintf(w, "wamercio_go_runtime_value{name=%q} %g\n", name, sample.Value.Float64())
 		}
 	}
-	fmt.Fprintln(w, "# HELP colmapro_ready Whether the instance currently accepts traffic.")
-	fmt.Fprintln(w, "# TYPE colmapro_ready gauge")
+	fmt.Fprintln(w, "# HELP wamercio_ready Whether the instance currently accepts traffic.")
+	fmt.Fprintln(w, "# TYPE wamercio_ready gauge")
 	if m.ready.Load() {
-		fmt.Fprintln(w, "colmapro_ready 1")
+		fmt.Fprintln(w, "wamercio_ready 1")
 	} else {
-		fmt.Fprintln(w, "colmapro_ready 0")
+		fmt.Fprintln(w, "wamercio_ready 0")
 	}
 }
 
@@ -233,21 +233,21 @@ func (m *serviceMetrics) writeDependencyMetrics(ctx context.Context, w http.Resp
 	}
 	if server.tenantManager != nil {
 		stats := server.tenantManager.PoolStats()
-		fmt.Fprintf(w, "colmapro_tenant_pools_active %d\n", stats.ActivePools)
-		fmt.Fprintf(w, "colmapro_tenant_pools_limit %d\n", stats.MaxPools)
-		fmt.Fprintf(w, "colmapro_tenant_pool_connections{state=\"total\"} %d\n", stats.TotalConns)
-		fmt.Fprintf(w, "colmapro_tenant_pool_connections{state=\"acquired\"} %d\n", stats.AcquiredConns)
-		fmt.Fprintf(w, "colmapro_tenant_pool_connections{state=\"idle\"} %d\n", stats.IdleConns)
-		fmt.Fprintf(w, "colmapro_tenant_pool_empty_acquire_total %d\n", stats.EmptyAcquireCount)
-		fmt.Fprintf(w, "colmapro_tenant_pool_acquire_duration_seconds %g\n", stats.AcquireDuration.Seconds())
+		fmt.Fprintf(w, "wamercio_tenant_pools_active %d\n", stats.ActivePools)
+		fmt.Fprintf(w, "wamercio_tenant_pools_limit %d\n", stats.MaxPools)
+		fmt.Fprintf(w, "wamercio_tenant_pool_connections{state=\"total\"} %d\n", stats.TotalConns)
+		fmt.Fprintf(w, "wamercio_tenant_pool_connections{state=\"acquired\"} %d\n", stats.AcquiredConns)
+		fmt.Fprintf(w, "wamercio_tenant_pool_connections{state=\"idle\"} %d\n", stats.IdleConns)
+		fmt.Fprintf(w, "wamercio_tenant_pool_empty_acquire_total %d\n", stats.EmptyAcquireCount)
+		fmt.Fprintf(w, "wamercio_tenant_pool_acquire_duration_seconds %g\n", stats.AcquireDuration.Seconds())
 	}
 	if server.redis != nil {
 		stats := server.redis.PoolStats()
-		fmt.Fprintf(w, "colmapro_redis_pool_connections{state=\"total\"} %d\n", stats.TotalConns)
-		fmt.Fprintf(w, "colmapro_redis_pool_connections{state=\"idle\"} %d\n", stats.IdleConns)
-		fmt.Fprintf(w, "colmapro_redis_pool_hits_total %d\n", stats.Hits)
-		fmt.Fprintf(w, "colmapro_redis_pool_misses_total %d\n", stats.Misses)
-		fmt.Fprintf(w, "colmapro_redis_pool_stale_total %d\n", stats.StaleConns)
+		fmt.Fprintf(w, "wamercio_redis_pool_connections{state=\"total\"} %d\n", stats.TotalConns)
+		fmt.Fprintf(w, "wamercio_redis_pool_connections{state=\"idle\"} %d\n", stats.IdleConns)
+		fmt.Fprintf(w, "wamercio_redis_pool_hits_total %d\n", stats.Hits)
+		fmt.Fprintf(w, "wamercio_redis_pool_misses_total %d\n", stats.Misses)
+		fmt.Fprintf(w, "wamercio_redis_pool_stale_total %d\n", stats.StaleConns)
 		redisTimeout := server.cfg.RedisOperationTimeout
 		if redisTimeout <= 0 {
 			redisTimeout = 300 * time.Millisecond
@@ -258,39 +258,39 @@ func (m *serviceMetrics) writeDependencyMetrics(ctx context.Context, w http.Resp
 		cancel()
 		m.observeRedis(startedAt, err)
 		if err == nil {
-			fmt.Fprintf(w, "colmapro_redis_memory_used_bytes %d\n", redisInfoUint(info, "used_memory"))
-			fmt.Fprintf(w, "colmapro_redis_evicted_keys_total %d\n", redisInfoUint(info, "evicted_keys"))
+			fmt.Fprintf(w, "wamercio_redis_memory_used_bytes %d\n", redisInfoUint(info, "used_memory"))
+			fmt.Fprintf(w, "wamercio_redis_evicted_keys_total %d\n", redisInfoUint(info, "evicted_keys"))
 		}
 	}
 	redisOperations := m.redisOperations.Load()
-	fmt.Fprintf(w, "colmapro_redis_operations_total %d\n", redisOperations)
-	fmt.Fprintf(w, "colmapro_redis_operation_errors_total %d\n", m.redisErrors.Load())
-	fmt.Fprintf(w, "colmapro_redis_operation_timeouts_total %d\n", m.redisTimeouts.Load())
-	fmt.Fprintf(w, "colmapro_cache_requests_total{result=\"hit\"} %d\n", m.cacheHits.Load())
-	fmt.Fprintf(w, "colmapro_cache_requests_total{result=\"miss\"} %d\n", m.cacheMisses.Load())
+	fmt.Fprintf(w, "wamercio_redis_operations_total %d\n", redisOperations)
+	fmt.Fprintf(w, "wamercio_redis_operation_errors_total %d\n", m.redisErrors.Load())
+	fmt.Fprintf(w, "wamercio_redis_operation_timeouts_total %d\n", m.redisTimeouts.Load())
+	fmt.Fprintf(w, "wamercio_cache_requests_total{result=\"hit\"} %d\n", m.cacheHits.Load())
+	fmt.Fprintf(w, "wamercio_cache_requests_total{result=\"miss\"} %d\n", m.cacheMisses.Load())
 	if redisOperations > 0 {
-		fmt.Fprintf(w, "colmapro_redis_operation_duration_seconds_average %g\n", time.Duration(m.redisNanos.Load()/redisOperations).Seconds())
+		fmt.Fprintf(w, "wamercio_redis_operation_duration_seconds_average %g\n", time.Duration(m.redisNanos.Load()/redisOperations).Seconds())
 	} else {
-		fmt.Fprintln(w, "colmapro_redis_operation_duration_seconds_average 0")
+		fmt.Fprintln(w, "wamercio_redis_operation_duration_seconds_average 0")
 	}
 	if server.events != nil {
 		stats := server.events.Stats()
-		fmt.Fprintf(w, "colmapro_sse_connections_active %d\n", stats.ActiveConnections)
-		fmt.Fprintf(w, "colmapro_sse_events_published_total %d\n", stats.PublishedEvents)
-		fmt.Fprintf(w, "colmapro_sse_events_dropped_total %d\n", stats.DroppedEvents)
-		fmt.Fprintf(w, "colmapro_sse_slow_clients_total %d\n", stats.SlowClients)
-		fmt.Fprintf(w, "colmapro_sse_reconnections_total %d\n", stats.Reconnections)
+		fmt.Fprintf(w, "wamercio_sse_connections_active %d\n", stats.ActiveConnections)
+		fmt.Fprintf(w, "wamercio_sse_events_published_total %d\n", stats.PublishedEvents)
+		fmt.Fprintf(w, "wamercio_sse_events_dropped_total %d\n", stats.DroppedEvents)
+		fmt.Fprintf(w, "wamercio_sse_slow_clients_total %d\n", stats.SlowClients)
+		fmt.Fprintf(w, "wamercio_sse_reconnections_total %d\n", stats.Reconnections)
 	}
 	queryStats := database.QueryMetrics()
-	fmt.Fprintf(w, "colmapro_postgres_queries_total %d\n", queryStats.TotalQueries)
-	fmt.Fprintf(w, "colmapro_postgres_query_errors_total %d\n", queryStats.FailedQueries)
-	fmt.Fprintf(w, "colmapro_postgres_slow_queries_total %d\n", queryStats.SlowQueries)
-	fmt.Fprintf(w, "colmapro_postgres_query_duration_seconds_total %g\n", queryStats.TotalDuration.Seconds())
-	fmt.Fprintf(w, "colmapro_business_orders_total{result=\"created\"} %d\n", m.ordersCreated.Load())
-	fmt.Fprintf(w, "colmapro_business_orders_total{result=\"replayed\"} %d\n", m.ordersReplayed.Load())
-	fmt.Fprintf(w, "colmapro_business_orders_total{result=\"failed\"} %d\n", m.ordersFailed.Load())
-	fmt.Fprintf(w, "colmapro_business_tenant_provisioning_total{result=\"created\"} %d\n", m.tenantsCreated.Load())
-	fmt.Fprintf(w, "colmapro_business_tenant_provisioning_total{result=\"failed\"} %d\n", m.tenantsFailed.Load())
+	fmt.Fprintf(w, "wamercio_postgres_queries_total %d\n", queryStats.TotalQueries)
+	fmt.Fprintf(w, "wamercio_postgres_query_errors_total %d\n", queryStats.FailedQueries)
+	fmt.Fprintf(w, "wamercio_postgres_slow_queries_total %d\n", queryStats.SlowQueries)
+	fmt.Fprintf(w, "wamercio_postgres_query_duration_seconds_total %g\n", queryStats.TotalDuration.Seconds())
+	fmt.Fprintf(w, "wamercio_business_orders_total{result=\"created\"} %d\n", m.ordersCreated.Load())
+	fmt.Fprintf(w, "wamercio_business_orders_total{result=\"replayed\"} %d\n", m.ordersReplayed.Load())
+	fmt.Fprintf(w, "wamercio_business_orders_total{result=\"failed\"} %d\n", m.ordersFailed.Load())
+	fmt.Fprintf(w, "wamercio_business_tenant_provisioning_total{result=\"created\"} %d\n", m.tenantsCreated.Load())
+	fmt.Fprintf(w, "wamercio_business_tenant_provisioning_total{result=\"failed\"} %d\n", m.tenantsFailed.Load())
 }
 
 func (m *serviceMetrics) observeRedis(startedAt time.Time, err error) {
@@ -326,11 +326,11 @@ func writePoolMetrics(w http.ResponseWriter, poolName string, provider poolStats
 	}
 	stats := provider.Stat()
 	labels := fmt.Sprintf("pool=%q", escapeMetricLabel(poolName))
-	fmt.Fprintf(w, "colmapro_postgres_pool_connections{%s,state=\"total\"} %d\n", labels, stats.TotalConns())
-	fmt.Fprintf(w, "colmapro_postgres_pool_connections{%s,state=\"acquired\"} %d\n", labels, stats.AcquiredConns())
-	fmt.Fprintf(w, "colmapro_postgres_pool_connections{%s,state=\"idle\"} %d\n", labels, stats.IdleConns())
-	fmt.Fprintf(w, "colmapro_postgres_pool_empty_acquire_total{%s} %d\n", labels, stats.EmptyAcquireCount())
-	fmt.Fprintf(w, "colmapro_postgres_pool_acquire_duration_seconds{%s} %g\n", labels, stats.AcquireDuration().Seconds())
+	fmt.Fprintf(w, "wamercio_postgres_pool_connections{%s,state=\"total\"} %d\n", labels, stats.TotalConns())
+	fmt.Fprintf(w, "wamercio_postgres_pool_connections{%s,state=\"acquired\"} %d\n", labels, stats.AcquiredConns())
+	fmt.Fprintf(w, "wamercio_postgres_pool_connections{%s,state=\"idle\"} %d\n", labels, stats.IdleConns())
+	fmt.Fprintf(w, "wamercio_postgres_pool_empty_acquire_total{%s} %d\n", labels, stats.EmptyAcquireCount())
+	fmt.Fprintf(w, "wamercio_postgres_pool_acquire_duration_seconds{%s} %g\n", labels, stats.AcquireDuration().Seconds())
 }
 
 func escapeMetricLabel(value string) string {

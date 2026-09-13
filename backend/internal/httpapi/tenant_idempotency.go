@@ -8,8 +8,8 @@ import (
 	"errors"
 	"net/http"
 
-	"colmapro/backend/internal/db/sqlc"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/db/sqlc"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/jackc/pgx/v5"
 )

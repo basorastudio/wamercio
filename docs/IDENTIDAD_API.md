@@ -27,7 +27,7 @@ IDENTIDAD_API_ENABLED=false
 IDENTIDAD_API_REQUIRED=false
 IDENTIDAD_API_URL=https://id.ltd.do
 IDENTIDAD_API_KEY=
-IDENTIDAD_API_CLIENT_ID=colmapro
+IDENTIDAD_API_CLIENT_ID=wamercio
 IDENTIDAD_API_TIMEOUT=12s
 APP_DOMAIN=wamercio.com
 ```
@@ -61,7 +61,7 @@ El modal de propietarios ahora:
 El modal **Nuevo negocio** organiza el alta en este orden: datos principales, propietario y acceso, dirección y datos fiscales opcionales. La ubicación GPS se configura después, dentro del negocio, porque no forma parte del aprovisionamiento inicial.
 
 1. El RNC es siempre opcional, incluso cuando la política de verificación está configurada como obligatoria.
-2. Cuando se suministra un RNC, acepta documentos de 9 u 11 dígitos y consulta Identidad API con el contexto `registro_colmado`.
+2. Cuando se suministra un RNC, acepta documentos de 9 u 11 dígitos y consulta Identidad API con el contexto `registro_negocio`.
 3. Autocompleta razón social y nombre comercial cuando `puede_autocompletar=true`.
 4. Bloquea el alta cuando se suministra un RNC y `puede_registrarse=false`.
 5. Solicita confirmación cuando `requiere_confirmacion=true`.
@@ -115,7 +115,7 @@ Así, el navegador recibe el JSON real de Identidad API y muestra el motivo corr
 
 `/api/bootstrap` solo se solicita automáticamente desde:
 
-- un subdominio tenant, por ejemplo `colmado.ltd.do`;
+- un subdominio tenant, por ejemplo `negocio.ltd.do`;
 - el panel administrativo central cuando existe un tenant seleccionado explícitamente.
 
 La landing `wamercio.com`, el panel `/#/superadmin` y el dominio raíz `ltd.do` no deben consultar el bootstrap tenant. Esto evita respuestas `404` legítimas por ausencia de tenant y elimina reintentos innecesarios en la consola del navegador.

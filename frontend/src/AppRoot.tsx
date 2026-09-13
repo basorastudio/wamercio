@@ -162,8 +162,8 @@ const AdminGate = ({ children }) => {
         setTenantReady(true);
       }
     };
-    window.addEventListener('colmapro:tenant-changed', handler);
-    return () => window.removeEventListener('colmapro:tenant-changed', handler);
+    window.addEventListener('wamercio:tenant-changed', handler);
+    return () => window.removeEventListener('wamercio:tenant-changed', handler);
   }, []);
 
   useEffect(() => {
@@ -263,7 +263,7 @@ const AppContent = () => {
     const accent = String(activeStore.color || '#00a884').trim() || '#00a884';
     const logoUrl = String(activeStore.logoUrl || activeStore.logo_url || '').trim();
 
-    document.documentElement.style.setProperty('--colmapro-accent', accent);
+    document.documentElement.style.setProperty('--wamercio-accent', accent);
     document.title = `${storeName} | WAMERCIO`;
 
     let theme = document.querySelector('meta[name="theme-color"]');

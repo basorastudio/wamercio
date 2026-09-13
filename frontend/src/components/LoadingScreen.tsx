@@ -14,7 +14,7 @@ import {
 const PLATFORM_BRANDING: StoreBranding = {
   name: 'WAMERCIO',
   color: FALLBACK_STORE_ACCENT,
-  logoUrl: '/brand/colmapro-app-icon.png',
+  logoUrl: '/brand/wamercio-app-icon.png',
   icon: '',
 };
 

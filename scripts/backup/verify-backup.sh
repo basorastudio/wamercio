@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-BACKUP_DIR="${1:-${COLMAPRO_BACKUP_ROOT:-/opt/colmapro_backups}/latest}"
-PROJECT_DIR="${COLMAPRO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+BACKUP_DIR="${1:-${WAMERCIO_BACKUP_ROOT:-/opt/wamercio_backups}/latest}"
+PROJECT_DIR="${WAMERCIO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 COMPOSE=(docker compose --project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
 BACKUP_DIR="$(readlink -f "$BACKUP_DIR")"
 [[ -d "$BACKUP_DIR" ]] || { echo "Respaldo no encontrado: $BACKUP_DIR" >&2; exit 1; }

@@ -1298,7 +1298,7 @@ const AuthScreen = ({ isModal = false }) => {
           </div>
 
           <p className="text-[10px] text-gray-400 text-center mt-5">
-            WAMERCIO · Sistema de Gestión de Colmados
+            WAMERCIO · Sistema de Gestión Comercial
           </p>
         </div>
       </div>

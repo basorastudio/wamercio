@@ -400,7 +400,7 @@ const Inventory = () => {
     try {
       await api.patch(`/inventory/suggestions/${encodeURIComponent(id)}`, { action });
       await loadSuggestions();
-      if (action === "accept") window.dispatchEvent(new CustomEvent("colmapro:data-changed"));
+      if (action === "accept") window.dispatchEvent(new CustomEvent("wamercio:data-changed"));
     } catch (err: any) {
       setSuggestionError(err?.message || "No se pudo actualizar la sugerencia");
     }
@@ -452,7 +452,7 @@ const Inventory = () => {
       if (suggestionId) {
         await api.patch(`/inventory/suggestions/${encodeURIComponent(suggestionId)}`, { action: "accept" });
         await loadSuggestions();
-        window.dispatchEvent(new CustomEvent("colmapro:data-changed"));
+        window.dispatchEvent(new CustomEvent("wamercio:data-changed"));
       }
       return saved;
     },

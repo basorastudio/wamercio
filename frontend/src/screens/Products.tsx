@@ -152,7 +152,7 @@ const tenantLabel = (tenant: any = {}) => String(tenant.name || tenant.tenant_na
 const getProductStatus = (localProduct) => {
   if (!localProduct) return { label: "No agregado", dot: "bg-gray-300", text: "text-gray-400", bg: "bg-gray-100" };
   if (Number(localProduct.stock || 0) <= 0) return { label: "Activo sin existencia", dot: "bg-amber-400", text: "text-amber-700", bg: "bg-amber-50" };
-  return { label: "Activo en este colmado", dot: "bg-[#00a884]", text: "text-[#008f72]", bg: "bg-[#00a884]/10" };
+  return { label: "Activo en este negocio", dot: "bg-[#00a884]", text: "text-[#008f72]", bg: "bg-[#00a884]/10" };
 };
 
 const marginPercent = (price, cost) => {
@@ -669,7 +669,7 @@ export const GlobalProductDetailModal = ({ globalProduct, localProduct, categori
               <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-2">
                   <span className="rounded-full bg-[#eafaf1] text-[#008f72] text-[9px] font-black px-3 py-1 uppercase tracking-[0.22em]">Detalle del producto</span>
-                  {isActive && <span className="rounded-full bg-[#00a884]/10 text-[#008f72] text-[9px] font-black px-3 py-1">Versión personalizada del colmado</span>}
+                  {isActive && <span className="rounded-full bg-[#00a884]/10 text-[#008f72] text-[9px] font-black px-3 py-1">Versión personalizada del negocio</span>}
                 </div>
                 <h2 className="text-xl sm:text-2xl font-black text-gray-900 leading-tight">{getProductName(globalProduct)}</h2>
                 <p className="text-xs sm:text-sm text-gray-500 mt-2 leading-relaxed line-clamp-3">{getDescription(globalProduct) || "Sin descripción comercial registrada."}</p>
@@ -680,7 +680,7 @@ export const GlobalProductDetailModal = ({ globalProduct, localProduct, categori
             <div className="rounded-2xl border border-gray-200 bg-gray-50/80 p-4">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-gray-400">Contenido local del colmado</p>
+                  <p className="text-[9px] font-black uppercase tracking-[0.22em] text-gray-400">Contenido local del negocio</p>
                   <p className="text-xs text-gray-500 mt-1">Edita nombre, categoría y descripción sin alterar el catálogo global.</p>
                 </div>
                 <button type="button" onClick={() => setEditingText((value) => !value)} className="h-9 px-3 rounded-xl bg-white border border-gray-200 text-[#008f72] text-[10px] font-black flex items-center gap-1.5"><FiEdit3 /> {editingText ? "Cerrar" : "Editar texto"}</button>
@@ -756,7 +756,7 @@ export const GlobalProductDetailModal = ({ globalProduct, localProduct, categori
             <button type="button" disabled={saving} onClick={reset} className="px-4 py-3 rounded-2xl border border-amber-200 bg-amber-50 text-amber-700 text-xs font-black flex items-center justify-center gap-2 disabled:opacity-60"><FiRefreshCw /> Restaurar versión global</button>
           )}
           {isActive && (
-            <button type="button" disabled={saving} onClick={deactivate} className="px-4 py-3 rounded-2xl border border-red-100 bg-red-50 text-red-600 text-xs font-black flex items-center justify-center gap-2 disabled:opacity-60"><FiTrash2 /> Desactivar en este colmado</button>
+            <button type="button" disabled={saving} onClick={deactivate} className="px-4 py-3 rounded-2xl border border-red-100 bg-red-50 text-red-600 text-xs font-black flex items-center justify-center gap-2 disabled:opacity-60"><FiTrash2 /> Desactivar en este negocio</button>
           )}
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -908,10 +908,10 @@ const Products = () => {
       .then((items) => { if (alive) setOwnerTenants(Array.isArray(items) ? items : []); })
       .catch(() => { if (alive) setOwnerTenants([]); });
     load();
-    window.addEventListener('colmapro:tenant-changed', load);
+    window.addEventListener('wamercio:tenant-changed', load);
     return () => {
       alive = false;
-      window.removeEventListener('colmapro:tenant-changed', load);
+      window.removeEventListener('wamercio:tenant-changed', load);
     };
   }, []);
 
@@ -1191,7 +1191,7 @@ const Products = () => {
       delete payload.tenant_ids;
       const response = await api.post('/admin/catalog/global/activate-multi', { tenant_ids: selectedTargets, product: payload });
       if (selectedTargets.some((target) => currentRefs.includes(String(target)))) {
-        window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+        window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
       }
       return response;
     }
@@ -1293,7 +1293,7 @@ const Products = () => {
                   <div className="w-10 h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-xl shrink-0">{category.icon || categoryIconFor(category.name)}</div>
                   <div className="min-w-0">
                     <h3 className="font-black text-gray-900 truncate">{category.name}</h3>
-                    <p className="text-xs text-gray-400 font-bold">{category.products.length} activos en este colmado</p>
+                    <p className="text-xs text-gray-400 font-bold">{category.products.length} activos en este negocio</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
@@ -1684,10 +1684,10 @@ const Products = () => {
                 <div className="w-11 h-11 rounded-2xl bg-[#00a884] text-white flex items-center justify-center text-sm font-black shrink-0">{String(activeStore?.name || "CO").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase()}</div>
                 <div className="min-w-0">
                   <p className="font-black text-indigo-700 truncate">{activeStore?.name || "Negocio activo"}</p>
-                  <p className="text-[11px] font-bold text-[#008f72] truncate">{activeStore?.address || activeStore?.slug || activeStore?.domain || "Catálogo del colmado"}</p>
+                  <p className="text-[11px] font-bold text-[#008f72] truncate">{activeStore?.address || activeStore?.slug || activeStore?.domain || "Catálogo del negocio"}</p>
                 </div>
               </div>
-              <p className="text-xs font-black text-[#008f72] shrink-0">{products.length} productos en este colmado</p>
+              <p className="text-xs font-black text-[#008f72] shrink-0">{products.length} productos en este negocio</p>
             </div>
 
             {catalogView === "global" && section === "productos" && ownerTenants.length > 1 && (
@@ -1729,7 +1729,7 @@ const Products = () => {
 
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_auto] gap-3 items-center">
             <div className="flex flex-wrap items-center gap-4 text-[11px] font-bold text-gray-500">
-              <span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-[#00a884]" /> Activo en este colmado</span>
+              <span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-[#00a884]" /> Activo en este negocio</span>
               <span className="inline-flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" /> Disponible en global / inactivo</span>
               <span className="inline-flex items-center gap-2"><FiEdit3 className="text-[#00a884]" /> El local se llena solo al activar</span>
             </div>

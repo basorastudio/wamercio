@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -171,9 +171,9 @@ func normalizeTenantProvisionLocation(input *tenancy.TenantProvisionInput) error
 
 func tenantGeoPrefix(ctx context.Context) string {
 	if tenant, ok := tenancy.FromContext(ctx); ok && strings.TrimSpace(tenant.ID) != "" {
-		return "colmapro:tenant:" + strings.TrimSpace(tenant.ID) + ":geo"
+		return "wamercio:tenant:" + strings.TrimSpace(tenant.ID) + ":geo"
 	}
-	return "colmapro:tenant:default:geo"
+	return "wamercio:tenant:default:geo"
 }
 
 func storeGeoKey(ctx context.Context) string {

@@ -175,7 +175,7 @@ const SalesOperations = () => {
 
   const refreshAll = async () => {
     await loadSales();
-    window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+    window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
   };
 
   const submitAction = async () => {

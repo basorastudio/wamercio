@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
 	waxum "github.com/basoradev/waxum-go"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 const businessWhatsAppMetadataKey = "whatsapp"

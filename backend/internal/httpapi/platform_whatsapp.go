@@ -19,7 +19,7 @@ const (
 	platformWhatsAppSettingKey      = "whatsapp_platform"
 	platformWaxumSettingKey         = "waxum"
 	platformWhatsAppSessionID       = "WAMERCIO"
-	platformWhatsAppLegacySessionID = "colmapro-saas-superadmin"
+	platformWhatsAppLegacySessionID = "wamercio-saas-superadmin"
 	platformWhatsAppSessionName     = "WAMERCIO"
 )
 

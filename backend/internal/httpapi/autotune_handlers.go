@@ -126,7 +126,7 @@ func (s *Server) bootstrapCacheKey(ctx context.Context, storeID string) string {
 	if tenantID == "" || strings.TrimSpace(storeID) == "" {
 		return ""
 	}
-	return "colmapro:tenant:" + tenantID + ":bootstrap:" + strings.TrimSpace(storeID)
+	return "wamercio:tenant:" + tenantID + ":bootstrap:" + strings.TrimSpace(storeID)
 }
 
 func (s *Server) redisOperationContext(parent context.Context) (context.Context, context.CancelFunc) {
@@ -211,7 +211,7 @@ func (s *Server) invalidateTenantCache(ctx context.Context) {
 	redisContext, cancel := s.redisOperationContext(ctx)
 	defer cancel()
 	startedAt := time.Now()
-	pattern := "colmapro:tenant:" + tenantID + ":*"
+	pattern := "wamercio:tenant:" + tenantID + ":*"
 	iter := s.redis.Scan(redisContext, 0, pattern, 100).Iterator()
 	keys := []string{}
 	for iter.Next(redisContext) {

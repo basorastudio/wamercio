@@ -4,8 +4,8 @@ The backend is a Go API built with Chi, pgxpool, sqlc, golang-migrate and Redis.
 
 ## Database responsibilities
 
-- `colmapro_core`: businesses, domains, owners, plans, subscriptions, platform settings, audit logs and tenant database assignments.
-- `colmapro_global_customers`: global customer identity and authentication shared across businesses.
+- `wamercio_core`: businesses, domains, owners, plans, subscriptions, platform settings, audit logs and tenant database assignments.
+- `wamercio_global_customers`: global customer identity and authentication shared across businesses.
 - Tenant databases: products, inventory, orders, sales, store credit, cash history, delivery zones, staff and business configuration.
 
 ## Source layout

@@ -141,8 +141,8 @@ INSERT INTO platform_business_types (name, slug, domain_suffix, emoji, sort_orde
 VALUES
   ('Provisiones', 'provisiones', '.ltd.do', '🏠', 10),
   ('Surtidora', 'surtidora', '.ltd.do', '🏠', 20),
-  ('Colmado', 'colmado', '.ltd.do', '🏪', 30),
-  ('Super Colmado', 'super-colmado', '.ltd.do', '🏪', 40),
+  ('Tienda', 'tienda', '.ltd.do', '🏪', 30),
+  ('Supermercado', 'supermercado', '.ltd.do', '🏪', 40),
   ('Minimarket', 'minimarket', '.ltd.do', '🏬', 50),
   ('Pulpería', 'pulperia', '.ltd.do', '🏪', 60),
   ('Bodega', 'bodega', '.ltd.do', '🏪', 70)

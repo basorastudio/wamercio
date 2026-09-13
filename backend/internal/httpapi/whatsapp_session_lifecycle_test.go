@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
 	waxum "github.com/basoradev/waxum-go"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 func TestWhatsAppLinkingWindow(t *testing.T) {
@@ -48,7 +48,7 @@ func TestDeleteWaxumSessionCompletelyDisconnectsAndDeletes(t *testing.T) {
 	client, server := newWaxumPairingTestClient(t, handler)
 	defer server.Close()
 
-	if err := deleteWaxumSessionCompletely(context.Background(), client, "colmado-prueba"); err != nil {
+	if err := deleteWaxumSessionCompletely(context.Background(), client, "negocio-prueba"); err != nil {
 		t.Fatalf("delete complete session: %v", err)
 	}
 	mu.Lock()
@@ -80,7 +80,7 @@ func TestDeleteWaxumSessionCompletelyRetriesDelete(t *testing.T) {
 	client, server := newWaxumPairingTestClient(t, handler)
 	defer server.Close()
 
-	if err := deleteWaxumSessionCompletely(context.Background(), client, "colmado-prueba"); err != nil {
+	if err := deleteWaxumSessionCompletely(context.Background(), client, "negocio-prueba"); err != nil {
 		t.Fatalf("delete complete session after retry: %v", err)
 	}
 	if deleteAttempts != 2 {
@@ -96,7 +96,7 @@ func newWaxumLifecycleStateHandler(t *testing.T, status waxum.SessionStatus, del
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/status"):
 			_, _ = w.Write([]byte(`{"status":"` + string(status) + `","is_logged_in":false,"pair":{}}`))
 		case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/sessions/"):
-			_, _ = w.Write([]byte(`{"id":"colmado-prueba","name":"colmado-prueba","status":"` + string(status) + `","is_logged_in":false,"created_at":1,"updated_at":1}`))
+			_, _ = w.Write([]byte(`{"id":"negocio-prueba","name":"negocio-prueba","status":"` + string(status) + `","is_logged_in":false,"created_at":1,"updated_at":1}`))
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/disconnect"):
 			_, _ = w.Write([]byte(`{"success":true,"message":"Disconnected"}`))
 		case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/sessions/"):
@@ -113,7 +113,7 @@ func TestReconcileBusinessWhatsAppDeletesUnlinkedSession(t *testing.T) {
 	client, server := newWaxumPairingTestClient(t, newWaxumLifecycleStateHandler(t, waxum.SessionStatusDisconnected, &deleted))
 	defer server.Close()
 
-	tenant := tenancy.Tenant{ID: "tenant-id", Name: "Colmado Prueba", Slug: "colmado-prueba"}
+	tenant := tenancy.Tenant{ID: "tenant-id", Name: "Negocio Prueba", Slug: "negocio-prueba"}
 	config := touchBusinessWhatsAppConfig(businessWhatsAppConfig{
 		Status:    "linked",
 		LoggedIn:  true,
@@ -136,7 +136,7 @@ func TestReconcileBusinessWhatsAppKeepsActiveLinkingSession(t *testing.T) {
 	client, server := newWaxumPairingTestClient(t, newWaxumLifecycleStateHandler(t, waxum.SessionStatusWaitingForQR, &deleted))
 	defer server.Close()
 
-	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "colmado-prueba"}
+	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "negocio-prueba"}
 	config := touchBusinessWhatsAppConfig(businessWhatsAppConfig{
 		Status:           "qr_ready",
 		Connected:        true,
@@ -160,7 +160,7 @@ func TestReconcileBusinessWhatsAppDeletesExpiredReconnect(t *testing.T) {
 	client, server := newWaxumPairingTestClient(t, newWaxumLifecycleStateHandler(t, waxum.SessionStatusConnecting, &deleted))
 	defer server.Close()
 
-	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "colmado-prueba"}
+	tenant := tenancy.Tenant{ID: "tenant-id", Slug: "negocio-prueba"}
 	config := touchBusinessWhatsAppConfig(businessWhatsAppConfig{
 		Status:           "linked",
 		LoggedIn:         true,

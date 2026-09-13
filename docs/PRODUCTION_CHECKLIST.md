@@ -41,7 +41,7 @@ This checklist applies to each business panel and operation. The incomplete SaaS
 
 ## 5. Backup and recovery
 
-- Enable `colmapro-backup.timer`.
+- Enable `wamercio-backup.timer`.
 - Verify at least one backup with checksums and `pg_restore --list`.
 - Copy the verified backup to encrypted external storage.
 - Restore the complete backup in staging and document the outcome.

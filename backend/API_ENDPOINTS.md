@@ -271,7 +271,7 @@ Ejemplo de verificación interna:
 }
 ```
 
-Contextos permitidos: `registro_propietario`, `registro_colmado`, `alta_empleado`, `alta_repartidor`, `alta_proveedor`, `registro_cliente`, `actualizar_perfil` y `prueba_conexion`. El backend envía `X-Application-Domain` usando `APP_DOMAIN`, propaga `X-Request-ID`, enmascara documentos en auditoría y nunca devuelve `IDENTIDAD_API_KEY`.
+Contextos permitidos: `registro_propietario`, `registro_negocio`, `alta_empleado`, `alta_repartidor`, `alta_proveedor`, `registro_cliente`, `actualizar_perfil` y `prueba_conexion`. El backend envía `X-Application-Domain` usando `APP_DOMAIN`, propaga `X-Request-ID`, enmascara documentos en auditoría y nunca devuelve `IDENTIDAD_API_KEY`.
 
 ### Plantillas de notificaciones de WhatsApp
 

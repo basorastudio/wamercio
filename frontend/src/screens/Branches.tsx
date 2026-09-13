@@ -1612,7 +1612,7 @@ const OwnerTenantModal = ({ onClose }: any) => {
       if (tenant?.slug) api.setAdminTenant(tenant);
       onClose?.();
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+        window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
         window.location.hash = '/admin';
       }
     } catch (err) {
@@ -1820,11 +1820,11 @@ const Branches = () => {
     loadOwnerBusinessConfig();
     if (typeof window === 'undefined' || !useOwnerBusinessConfig) return undefined;
     const refresh = () => loadOwnerBusinessConfig();
-    window.addEventListener('colmapro:tenant-changed', refresh);
-    window.addEventListener('colmapro:data-changed', refresh);
+    window.addEventListener('wamercio:tenant-changed', refresh);
+    window.addEventListener('wamercio:data-changed', refresh);
     return () => {
-      window.removeEventListener('colmapro:tenant-changed', refresh);
-      window.removeEventListener('colmapro:data-changed', refresh);
+      window.removeEventListener('wamercio:tenant-changed', refresh);
+      window.removeEventListener('wamercio:data-changed', refresh);
     };
   }, [useOwnerBusinessConfig]);
 
@@ -1840,7 +1840,7 @@ const Branches = () => {
     const normalized = normalizeBusinessConfigMetric(updated || {});
     setOwnerBusinessMetrics((prev) => prev.map((item) => tenantID(item) === targetTenantId ? { ...item, ...normalized } : item));
     await loadOwnerBusinessConfig();
-    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
     return normalized;
   };
 
@@ -1953,7 +1953,7 @@ const Branches = () => {
       if (targetTenantId) await updateTenantStoreConfig(targetTenantId, { deliveryScope: scope, delivery_scope: scope });
       else await updateStore(storeId, { deliveryScope: scope, delivery_scope: scope });
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+        window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
       }
     } catch (err: any) {
       setScopeErrors((prev) => ({
@@ -1984,7 +1984,7 @@ const Branches = () => {
         await updateStore(store.id, { payment_settings: nextPaymentSettings, paymentSettings: nextPaymentSettings });
       }
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('colmapro:data-changed'));
+        window.dispatchEvent(new CustomEvent('wamercio:data-changed'));
       }
     } catch (err: any) {
       setOrderModeErrors((prev) => ({
@@ -2021,7 +2021,7 @@ const Branches = () => {
       if (tenantID(store)) await updateTenantStoreConfig(tenantID(store), payload);
       else await updateStore(store.id, payload);
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent("colmapro:data-changed"));
+        window.dispatchEvent(new CustomEvent("wamercio:data-changed"));
       }
     } catch (err: any) {
       setLocationErrors((prev) => ({

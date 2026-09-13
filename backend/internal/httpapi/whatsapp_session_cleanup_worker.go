@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
 	waxum "github.com/basoradev/waxum-go"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 const whatsappSessionCleanupInterval = 45 * time.Second

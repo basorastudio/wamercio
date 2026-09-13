@@ -174,85 +174,85 @@ input:focus, button:focus, select:focus, textarea:focus {
 .store-accent-border { border-color: rgba(var(--store-accent-rgb), 0.28) !important; }
 .store-accent-ring:focus { --tw-ring-color: rgba(var(--store-accent-rgb), 0.26) !important; border-color: var(--store-accent) !important; }
 
-html[data-colmapro-store-theme="true"] [class*="text-[#00a884]"],
-html[data-colmapro-store-theme="true"] [class*="text-[#008f72]"],
-html[data-colmapro-store-theme="true"] [class*="text-[#007a62]"] {
+html[data-wamercio-store-theme="true"] [class*="text-[#00a884]"],
+html[data-wamercio-store-theme="true"] [class*="text-[#008f72]"],
+html[data-wamercio-store-theme="true"] [class*="text-[#007a62]"] {
   color: var(--store-accent) !important;
 }
 
-html[data-colmapro-store-theme="true"] [class*="hover:text-[#00a884]"]:hover,
-html[data-colmapro-store-theme="true"] [class*="hover:text-[#008f72]"]:hover,
-html[data-colmapro-store-theme="true"] [class*="hover:text-[#007a62]"]:hover {
+html[data-wamercio-store-theme="true"] [class*="hover:text-[#00a884]"]:hover,
+html[data-wamercio-store-theme="true"] [class*="hover:text-[#008f72]"]:hover,
+html[data-wamercio-store-theme="true"] [class*="hover:text-[#007a62]"]:hover {
   color: var(--store-accent) !important;
 }
 
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]"] {
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]"] {
   background-color: var(--store-accent) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/5"] { background-color: rgba(var(--store-accent-rgb), 0.05) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/8"] { background-color: rgba(var(--store-accent-rgb), 0.08) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/10"] { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/15"] { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/20"] { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/30"] { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/35"] { background-color: rgba(var(--store-accent-rgb), 0.35) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/40"] { background-color: rgba(var(--store-accent-rgb), 0.40) !important; }
-html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/45"] { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/5"] { background-color: rgba(var(--store-accent-rgb), 0.05) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/8"] { background-color: rgba(var(--store-accent-rgb), 0.08) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/10"] { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/15"] { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/20"] { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/30"] { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/35"] { background-color: rgba(var(--store-accent-rgb), 0.35) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/40"] { background-color: rgba(var(--store-accent-rgb), 0.40) !important; }
+html[data-wamercio-store-theme="true"] [class*="bg-[#00a884]/45"] { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
 
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]"]:hover {
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]"]:hover {
   background-color: var(--store-accent) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/10"]:hover { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/15"]:hover { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/20"]:hover { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/30"]:hover { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/45"]:hover { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]/10"]:hover { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]/15"]:hover { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]/20"]:hover { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]/30"]:hover { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#00a884]/45"]:hover { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
 
-html[data-colmapro-store-theme="true"] [class*="bg-[#eafaf1]"],
-html[data-colmapro-store-theme="true"] [class*="bg-[#f0fbf8]"],
-html[data-colmapro-store-theme="true"] [class*="bg-[#f0fdf8]"],
-html[data-colmapro-store-theme="true"] [class*="bg-emerald-50"] {
+html[data-wamercio-store-theme="true"] [class*="bg-[#eafaf1]"],
+html[data-wamercio-store-theme="true"] [class*="bg-[#f0fbf8]"],
+html[data-wamercio-store-theme="true"] [class*="bg-[#f0fdf8]"],
+html[data-wamercio-store-theme="true"] [class*="bg-emerald-50"] {
   background-color: rgba(var(--store-accent-rgb), 0.09) !important;
 }
 
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#d4f5e9]"]:hover,
-html[data-colmapro-store-theme="true"] [class*="hover:bg-[#dff7ef]"]:hover,
-html[data-colmapro-store-theme="true"] [class*="hover:bg-emerald-100"]:hover {
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#d4f5e9]"]:hover,
+html[data-wamercio-store-theme="true"] [class*="hover:bg-[#dff7ef]"]:hover,
+html[data-wamercio-store-theme="true"] [class*="hover:bg-emerald-100"]:hover {
   background-color: rgba(var(--store-accent-rgb), 0.16) !important;
 }
 
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]"] { border-color: var(--store-accent) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/10"] { border-color: rgba(var(--store-accent-rgb), 0.10) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/15"] { border-color: rgba(var(--store-accent-rgb), 0.15) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/20"] { border-color: rgba(var(--store-accent-rgb), 0.20) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/30"] { border-color: rgba(var(--store-accent-rgb), 0.30) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/40"] { border-color: rgba(var(--store-accent-rgb), 0.40) !important; }
-html[data-colmapro-store-theme="true"] [class*="border-[#bce8d1]"],
-html[data-colmapro-store-theme="true"] [class*="border-emerald-100"],
-html[data-colmapro-store-theme="true"] [class*="border-emerald-200"] {
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]"] { border-color: var(--store-accent) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]/10"] { border-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]/15"] { border-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]/20"] { border-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]/30"] { border-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#00a884]/40"] { border-color: rgba(var(--store-accent-rgb), 0.40) !important; }
+html[data-wamercio-store-theme="true"] [class*="border-[#bce8d1]"],
+html[data-wamercio-store-theme="true"] [class*="border-emerald-100"],
+html[data-wamercio-store-theme="true"] [class*="border-emerald-200"] {
   border-color: rgba(var(--store-accent-rgb), 0.24) !important;
 }
 
-html[data-colmapro-store-theme="true"] [class*="focus:border-[#00a884]"]:focus {
+html[data-wamercio-store-theme="true"] [class*="focus:border-[#00a884]"]:focus {
   border-color: var(--store-accent) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="focus:ring-[#00a884]"]:focus {
+html[data-wamercio-store-theme="true"] [class*="focus:ring-[#00a884]"]:focus {
   --tw-ring-color: rgba(var(--store-accent-rgb), 0.24) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="shadow-[#00a884]"] {
+html[data-wamercio-store-theme="true"] [class*="shadow-[#00a884]"] {
   --tw-shadow-color: rgba(var(--store-accent-rgb), 0.25) !important;
   --tw-shadow: var(--tw-shadow-colored) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="ring-emerald"] {
+html[data-wamercio-store-theme="true"] [class*="ring-emerald"] {
   --tw-ring-color: rgba(var(--store-accent-rgb), 0.24) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="text-emerald-500"],
-html[data-colmapro-store-theme="true"] [class*="text-emerald-600"],
-html[data-colmapro-store-theme="true"] [class*="text-emerald-700"] {
+html[data-wamercio-store-theme="true"] [class*="text-emerald-500"],
+html[data-wamercio-store-theme="true"] [class*="text-emerald-600"],
+html[data-wamercio-store-theme="true"] [class*="text-emerald-700"] {
   color: var(--store-accent) !important;
 }
-html[data-colmapro-store-theme="true"] [class*="bg-emerald-400"],
-html[data-colmapro-store-theme="true"] [class*="bg-emerald-500"],
-html[data-colmapro-store-theme="true"] [class*="bg-emerald-600"] {
+html[data-wamercio-store-theme="true"] [class*="bg-emerald-400"],
+html[data-wamercio-store-theme="true"] [class*="bg-emerald-500"],
+html[data-wamercio-store-theme="true"] [class*="bg-emerald-600"] {
   background-color: var(--store-accent) !important;
 }

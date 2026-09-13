@@ -1,6 +1,6 @@
 # WAMERCIO
 
-WAMERCIO es una plataforma SaaS multi-tenant para colmados dominicanos. El código fuente está escrito y organizado en inglés, mientras que todos los textos de la interfaz dirigidos a clientes y al personal permanecen en español.
+WAMERCIO es una plataforma SaaS multi-tenant para negocios dominicanos. El código fuente está escrito y organizado en inglés, mientras que todos los textos de la interfaz dirigidos a clientes y al personal permanecen en español.
 
 ### Dominios de la plataforma y los negocios
 
@@ -16,9 +16,11 @@ WAMERCIO es una plataforma SaaS multi-tenant para colmados dominicanos. El códi
 * **Despliegue:** Docker Compose, PostgreSQL, PgBouncer, Redis y Nginx.
 * **Resolución de tenants:** el dominio de la plataforma SaaS es independiente del dominio raíz comodín de los tenants; los subdominios comodín o los dominios personalizados identifican el negocio activo.
 
-### Compatibilidad interna de esta primera fase
+### Identidad técnica WAMERCIO
 
-Esta conversión cambia la identidad pública y el despliegue, pero conserva deliberadamente identificadores internos heredados que no son visibles para el usuario —por ejemplo `colmapro_core`, `colmapro_global_customers`, el usuario PostgreSQL `colmapro`, el prefijo de bases `cp_`, claves Redis y nombres técnicos equivalentes— para no introducir migraciones de datos ni cambios de comportamiento. Se podrán renombrar en una fase técnica posterior si realmente aporta valor.
+La identidad de la aplicación está normalizada también en los componentes técnicos mantenidos por el proyecto: módulo Go, binario del backend, métricas, cookies, claves Redis, cachés PWA, recursos de marca, servicios auxiliares y valores predeterminados de PostgreSQL utilizan `WAMERCIO`/`wamercio`. El prefijo corto `cp_` de las bases tenant se conserva porque funciona como identificador técnico opaco y no expone ninguna marca pública.
+
+Si esta versión se instala sobre un volumen PostgreSQL creado por una versión anterior, ejecuta **una sola vez** `scripts/migrate-legacy-runtime-identifiers.sh` antes de aplicar el nuevo ENV y redesplegar. El script renombra de forma controlada el usuario y las dos bases centrales existentes sin tocar las bases tenant ni los datos comerciales. Requiere confirmación explícita mediante `WAMERCIO_MIGRATE_IDENTIFIERS_CONFIRM=YES`.
 
 ## Estructura del repositorio
 
@@ -38,9 +40,9 @@ Crea en Dokploy una aplicación de tipo Docker Compose que apunte a este reposit
 Como mínimo, reemplaza todas las contraseñas y secretos de ejemplo, configura `APP_DOMAIN` y `ROOT_DOMAIN`, y conserva las siguientes direcciones internas de los servicios:
 
 ```text
-CENTRAL_DATABASE_URL=postgres://colmapro:<password>@postgres:5432/colmapro_core?sslmode=disable
-GLOBAL_CUSTOMERS_DATABASE_URL=postgres://colmapro:<password>@postgres:5432/colmapro_global_customers?sslmode=disable
-TENANT_DATABASE_URL_TEMPLATE=postgres://colmapro:<password>@postgres:5432/{{database}}?sslmode=disable
+CENTRAL_DATABASE_URL=postgres://wamercio:<password>@postgres:5432/wamercio_core?sslmode=disable
+GLOBAL_CUSTOMERS_DATABASE_URL=postgres://wamercio:<password>@postgres:5432/wamercio_global_customers?sslmode=disable
+TENANT_DATABASE_URL_TEMPLATE=postgres://wamercio:<password>@postgres:5432/{{database}}?sslmode=disable
 REDIS_ADDR=redis:6379
 PGBOUNCER_ADDR=pgbouncer:6432
 ```

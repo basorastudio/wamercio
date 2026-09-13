@@ -98,7 +98,7 @@ const DeliveryDriverLayout = ({ children, onExit = undefined }: any) => {
         };
         updateDriverLocation(locationPayload)
           .then((response) => {
-            window.dispatchEvent(new CustomEvent('colmapro:driver-location', {
+            window.dispatchEvent(new CustomEvent('wamercio:driver-location', {
               detail: { ...locationPayload, updatedAt: response?.updated_at || new Date().toISOString() },
             }));
           })

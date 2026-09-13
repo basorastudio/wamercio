@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"colmapro/backend/internal/integrations/identidad"
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/integrations/identidad"
+	"wamercio/backend/internal/platform/tenancy"
 )
 
 const platformIdentitySettingKey = "identity"
@@ -43,7 +43,7 @@ const (
 var allowedPlatformIdentityContexts = map[string]struct{}{
 	"registro_propietario":  {},
 	"registro_usuario_saas": {},
-	"registro_colmado":      {},
+	"registro_negocio":      {},
 	"alta_empleado":         {},
 	"alta_repartidor":       {},
 	"alta_proveedor":        {},
@@ -472,7 +472,7 @@ func (s *Server) readPlatformIdentityConfig(ctx context.Context) (platformIdenti
 		fallback.BaseURL = "https://id.ltd.do"
 	}
 	if fallback.ClientID == "" {
-		fallback.ClientID = "colmapro"
+		fallback.ClientID = "wamercio"
 	}
 	if s.tenantManager == nil {
 		return normalizePlatformIdentityConfig(fallback)
@@ -503,7 +503,7 @@ func normalizePlatformIdentityConfig(config platformIdentityConfig) (platformIde
 	config.APIKey = strings.TrimSpace(config.APIKey)
 	config.ClientID = strings.TrimSpace(config.ClientID)
 	if config.ClientID == "" {
-		config.ClientID = "colmapro"
+		config.ClientID = "wamercio"
 	}
 	if config.TimeoutSeconds <= 0 {
 		config.TimeoutSeconds = 12
@@ -920,7 +920,7 @@ func (s *Server) verifyTenantBusinessIdentityForSave(ctx context.Context, input 
 	result, meta, verifyErr := s.verifyIdentity(ctx, config, platformIdentityVerificationInput{
 		SubjectType: "empresa",
 		Document:    input.RNC,
-		Context:     "registro_colmado",
+		Context:     "registro_negocio",
 	}, requestID)
 	if verifyErr != nil {
 		var apiErr *identidad.APIError

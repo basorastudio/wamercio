@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-postgres_user="${POSTGRES_USER:-colmapro}"
+postgres_user="${POSTGRES_USER:-wamercio}"
 postgres_password="${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be configured}"
 
 cat > /tmp/pgbouncer.ini <<EOF

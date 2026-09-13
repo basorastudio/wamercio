@@ -1,8 +1,8 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-const baseURL = __ENV.COLMAPRO_LOAD_BASE_URL || 'http://127.0.0.1';
-const sessionCookie = __ENV.COLMAPRO_LOAD_SESSION_COOKIE || '';
+const baseURL = __ENV.WAMERCIO_LOAD_BASE_URL || 'http://127.0.0.1';
+const sessionCookie = __ENV.WAMERCIO_LOAD_SESSION_COOKIE || '';
 
 export const options = {
   scenarios: {

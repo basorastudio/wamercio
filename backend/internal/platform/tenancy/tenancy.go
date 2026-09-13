@@ -15,8 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"colmapro/backend/internal/config"
-	"colmapro/backend/internal/platform/database"
+	"wamercio/backend/internal/config"
+	"wamercio/backend/internal/platform/database"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"

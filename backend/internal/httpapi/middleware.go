@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"colmapro/backend/internal/platform/tenancy"
+	"wamercio/backend/internal/platform/tenancy"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"

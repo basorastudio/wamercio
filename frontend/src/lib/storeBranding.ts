@@ -2,7 +2,7 @@ import { isPlatformRootHost } from './api';
 
 export const FALLBACK_STORE_ACCENT = '#00a884';
 
-const STORAGE_KEY = 'colmapro_store_branding';
+const STORAGE_KEY = 'wamercio_store_branding';
 
 export type StoreBranding = {
   name: string;

@@ -84,12 +84,12 @@ export default function CustomerDeliveryTracking({ orderId, driverName = 'Tu rep
     load();
     const timer = window.setInterval(() => load(true), 8_000);
     const refresh = () => load(true);
-    window.addEventListener('colmapro:delivery-tracking-updated', refresh);
-    window.addEventListener('colmapro:data-changed', refresh);
+    window.addEventListener('wamercio:delivery-tracking-updated', refresh);
+    window.addEventListener('wamercio:data-changed', refresh);
     return () => {
       window.clearInterval(timer);
-      window.removeEventListener('colmapro:delivery-tracking-updated', refresh);
-      window.removeEventListener('colmapro:data-changed', refresh);
+      window.removeEventListener('wamercio:delivery-tracking-updated', refresh);
+      window.removeEventListener('wamercio:data-changed', refresh);
     };
   }, [load]);
 

@@ -12,7 +12,7 @@ func TestVerifySendsPrivateHeadersAndDecodesEnvelope(t *testing.T) {
 		if got := r.Header.Get("X-API-Key"); got != "secret" {
 			t.Fatalf("X-API-Key = %q", got)
 		}
-		if got := r.Header.Get("X-Client-ID"); got != "colmapro" {
+		if got := r.Header.Get("X-Client-ID"); got != "wamercio" {
 			t.Fatalf("X-Client-ID = %q", got)
 		}
 		if got := r.Header.Get("X-Application-Domain"); got != "wamercio.com" {
@@ -29,7 +29,7 @@ func TestVerifySendsPrivateHeadersAndDecodesEnvelope(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(server.URL, "secret", "colmapro", "https://WAMERCIO.com:443/admin", server.Client())
+	client, err := New(server.URL, "secret", "wamercio", "https://WAMERCIO.com:443/admin", server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestVerifyReturnsStructuredAPIError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := New(server.URL, "bad", "colmapro", "wamercio.com", server.Client())
+	client, err := New(server.URL, "bad", "wamercio", "wamercio.com", server.Client())
 	if err != nil {
 		t.Fatal(err)
 	}

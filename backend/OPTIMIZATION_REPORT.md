@@ -59,7 +59,7 @@ The following source-level measurements are deterministic and reproducible from 
 
 - SSE has one writer per connection, bounded queues, global/tenant/client connection caps, event IDs, `Last-Event-ID` replay, heartbeat, write deadline and deterministic slow-client disconnection. SSE tenant resolution does not open a PostgreSQL pool because the stream executes no tenant SQL.
 - Redis distributes minimal tenant events among replicas; origin IDs prevent echo duplication. Redis failure degrades to local delivery rather than failing the business write.
-- Cache, rate-limit and realtime keys use a `colmapro:` namespace. Bootstrap cache values have TTL and explicit invalidation.
+- Cache, rate-limit and realtime keys use a `wamercio:` namespace. Bootstrap cache values have TTL and explicit invalidation.
 - Concurrent misses for the same tenant/store bootstrap are coalesced with `singleflight` to avoid cache stampedes.
 - Rate limits use an atomic Redis script across replicas and fall back to a strictly bounded local map if Redis is unavailable.
 

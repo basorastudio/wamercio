@@ -3,15 +3,15 @@ set -Eeuo pipefail
 
 BACKUP_DIR="${1:-}"
 TARGET_DATABASE="${2:-all}"
-PROJECT_DIR="${COLMAPRO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+PROJECT_DIR="${WAMERCIO_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 COMPOSE=(docker compose --project-directory "$PROJECT_DIR" -f "$PROJECT_DIR/docker-compose.yml")
 
 [[ -n "$BACKUP_DIR" ]] || { echo "Uso: $0 /ruta/respaldo [nombre_base|all]" >&2; exit 2; }
 BACKUP_DIR="$(readlink -f "$BACKUP_DIR")"
 "$PROJECT_DIR/scripts/backup/verify-backup.sh" "$BACKUP_DIR"
 
-if [[ "${COLMAPRO_RESTORE_CONFIRM:-}" != "RESTORE_COLMAPRO" ]]; then
-  echo "La restauración reemplaza datos. Define COLMAPRO_RESTORE_CONFIRM=RESTORE_COLMAPRO para continuar." >&2
+if [[ "${WAMERCIO_RESTORE_CONFIRM:-}" != "RESTORE_WAMERCIO" ]]; then
+  echo "La restauración reemplaza datos. Define WAMERCIO_RESTORE_CONFIRM=RESTORE_WAMERCIO para continuar." >&2
   exit 3
 fi
 
@@ -19,8 +19,8 @@ set -a
 # shellcheck disable=SC1091
 source "$PROJECT_DIR/.env"
 set +a
-POSTGRES_USER="${POSTGRES_USER:-colmapro}"
-RESTORE_GLOBALS="${COLMAPRO_RESTORE_GLOBALS:-false}"
+POSTGRES_USER="${POSTGRES_USER:-wamercio}"
+RESTORE_GLOBALS="${WAMERCIO_RESTORE_GLOBALS:-false}"
 
 "${COMPOSE[@]}" stop backend pgbouncer frontend >/dev/null
 restore_failed=0

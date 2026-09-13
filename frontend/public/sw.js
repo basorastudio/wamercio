@@ -1,6 +1,6 @@
-const SHELL_CACHE_NAME = 'colmapro-spa-pwa-shell-v47-dual-pin-recovery';
-const ASSET_CACHE_NAME = 'colmapro-spa-pwa-assets-v1';
-const CACHE_PREFIX = 'colmapro-spa-pwa-';
+const SHELL_CACHE_NAME = 'wamercio-spa-pwa-shell-v47-dual-pin-recovery';
+const ASSET_CACHE_NAME = 'wamercio-spa-pwa-assets-v1';
+const CACHE_PREFIX = 'wamercio-spa-pwa-';
 const STATIC_ASSETS = [
   '/offline.html',
   '/runtime-recovery.js',

@@ -1,9 +1,9 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
-const baseURL = __ENV.COLMAPRO_LOAD_BASE_URL || 'http://127.0.0.1';
-const phone = __ENV.COLMAPRO_LOAD_PHONE || '8090000000';
-const pin = __ENV.COLMAPRO_LOAD_PIN || '000000';
+const baseURL = __ENV.WAMERCIO_LOAD_BASE_URL || 'http://127.0.0.1';
+const phone = __ENV.WAMERCIO_LOAD_PHONE || '8090000000';
+const pin = __ENV.WAMERCIO_LOAD_PIN || '000000';
 
 export const options = {
   vus: 2,

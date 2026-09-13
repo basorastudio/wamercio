@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	"colmapro/backend/internal/integrations/identidad"
+	"wamercio/backend/internal/integrations/identidad"
 )
 
 func TestNormalizePlatformIdentityConfigDeviceLimitDefaults(t *testing.T) {
 	config, err := normalizePlatformIdentityConfig(platformIdentityConfig{
 		BaseURL:  "https://id.ltd.do",
-		ClientID: "colmapro",
+		ClientID: "wamercio",
 	})
 	if err != nil {
 		t.Fatalf("normalize config: %v", err)

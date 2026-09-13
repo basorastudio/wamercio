@@ -67,7 +67,7 @@ assert.match(authScreen, /Verificación limitada, inténtalo en/, 'El límite de
 assert.doesNotMatch(authScreen, /Este dispositivo alcanzó el límite/, 'El registro no debe mostrar detalles técnicos del límite por dispositivo');
 assert.match(authScreen, /getPlatformHashUrl\('\/terms'\)/, 'Los términos deben abrirse desde el dominio principal de WAMERCIO');
 assert.match(authScreen, /target="_blank"/, 'Los documentos legales deben abrirse en otra pestaña');
-assert.match(authScreen, /WAMERCIO · Sistema de Gestión de Colmados/, 'El pie del registro debe usar la identidad institucional actual');
+assert.match(authScreen, /WAMERCIO · Sistema de Gestión Comercial/, 'El pie del registro debe usar la identidad institucional actual');
 assert.match(superAdmin, /LegalConfigurationView/, 'El panel SaaS debe incluir una pestaña para administrar la información legal');
 assert.match(superAdmin, /ConfigurationSidebar/, 'La configuración SaaS debe usar una barra lateral secundaria en escritorio');
 assert.match(superAdmin, /\/superadmin\/settings\/notifications/, 'La configuración debe incluir la ruta de plantillas de notificaciones');
@@ -154,7 +154,7 @@ assert.match(paymentLabels, /Tarjeta en terminal/, 'La tarjeta debe presentarse 
 assert.match(paymentLabels, /Transferencia manual/, 'La transferencia debe presentarse como operación manual');
 assert.doesNotMatch(landing, /múltiples sucursales/i, 'La landing no debe anunciar multi-sucursal antes de implementarlo');
 
-assert.match(nginx, /colmapro_pwa_icon_fallback/, 'Nginx debe tener fallback válido para el icono PWA');
+assert.match(nginx, /wamercio_pwa_icon_fallback/, 'Nginx debe tener fallback válido para el icono PWA');
 assert.match(nginx, /location = \/api\/pwa\/icon\.png/, 'Nginx debe proteger el endpoint dinámico del icono PWA');
 
 console.log('Superficie de producción verificada correctamente.');

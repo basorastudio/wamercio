@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { api, isPlatformRootHost, isTenantStoreHost } from '@/lib/api';
 
-const PLATFORM_CACHE_PREFIX = 'colmapro-spa-pwa-';
+const PLATFORM_CACHE_PREFIX = 'wamercio-spa-pwa-';
 const PLATFORM_CACHE_RESET_VERSION = 'cta-recovery-refresh-v47';
 
 const setMetaThemeColor = (color: string) => {
@@ -36,11 +36,11 @@ const removePlatformServiceWorkerCache = async () => {
   // cache left behind by an earlier version of WAMERCIO.
   if (
     navigator.serviceWorker.controller
-    && window.sessionStorage.getItem('colmapro:platform-cache-reset') !== PLATFORM_CACHE_RESET_VERSION
+    && window.sessionStorage.getItem('wamercio:platform-cache-reset') !== PLATFORM_CACHE_RESET_VERSION
   ) {
-    window.sessionStorage.setItem('colmapro:platform-cache-reset', PLATFORM_CACHE_RESET_VERSION);
+    window.sessionStorage.setItem('wamercio:platform-cache-reset', PLATFORM_CACHE_RESET_VERSION);
     const nextUrl = new URL(window.location.href);
-    nextUrl.searchParams.set('__colmapro_refresh', String(Date.now()));
+    nextUrl.searchParams.set('__wamercio_refresh', String(Date.now()));
     window.location.replace(nextUrl.pathname + nextUrl.search + nextUrl.hash);
   }
 };
