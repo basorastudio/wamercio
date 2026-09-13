@@ -171,6 +171,10 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("dashboard")).Get("/admin/dashboard", s.adminDashboard)
 			a.With(s.requireAdminArea("owners")).Get("/admin/owners", s.adminOwners)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners", s.adminCreateOwner)
+			a.With(s.requireAdminArea("owners")).Post("/admin/owners/verify-identity", s.adminVerifyOwnerIdentity)
+			a.With(s.requireAdminArea("owners")).Get("/admin/owners/{id}", s.adminOwnerDetail)
+			a.With(s.requireAdminArea("owners")).Put("/admin/owners/{id}", s.adminUpdateOwner)
+			a.With(s.requireAdminArea("owners")).Post("/admin/owners/{id}/stores", s.adminCreateOwnerStore)
 			a.With(s.requireAdminArea("customers")).Get("/admin/global-customers", s.adminGlobalCustomers)
 			a.With(s.requireAdminArea("users")).Get("/admin/platform-users", s.adminPlatformUsers)
 			a.With(s.requireAdminArea("users")).Post("/admin/platform-users", s.adminCreatePlatformUser)
@@ -195,6 +199,7 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/pin", s.adminSetUserPIN)
 			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/access", s.adminSetUserAccess)
 			a.With(s.requireAdminArea("owners")).Get("/admin/stores", s.adminStores)
+			a.With(s.requireAdminArea("owners")).Put("/admin/stores/{id}", s.adminUpdateAdminStore)
 			a.With(s.requireAdminArea("owners")).Delete("/admin/stores/{id}", s.adminDeleteStore)
 			a.With(s.requireAdminArea("settings")).Get("/admin/templates", s.adminTemplates)
 			a.With(s.requireAdminArea("settings")).Post("/admin/templates", s.adminCreateTemplate)
@@ -603,15 +608,22 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	identity := s.platformSetting(r.Context(), "identity")
 	requireIdentity, _ := identity["require_owner_verification"].(bool)
 	identityEnabled, _ := identity["enabled"].(bool)
+	docType, document := normalizeOwnerDocument(in.IdentitySubjectType, in.IdentityDocument)
+	identityVerified := false
 	if requireIdentity {
 		if !identityEnabled {
 			jsonErr(w, http.StatusServiceUnavailable, "La verificación de identidad es obligatoria, pero la integración está deshabilitada")
 			return
 		}
-		if _, _, err := s.verifyIdentityDocument(r.Context(), in.IdentitySubjectType, in.IdentityDocument); err != nil {
+		if !validOwnerDocument(docType, document) {
+			jsonErr(w, http.StatusUnprocessableEntity, "La Cédula debe tener 11 dígitos y el RNC 9 u 11 dígitos")
+			return
+		}
+		if _, _, err := s.verifyIdentityDocument(r.Context(), docType, document); err != nil {
 			jsonErr(w, http.StatusUnprocessableEntity, "No pudimos verificar la identidad: "+err.Error())
 			return
 		}
+		identityVerified = true
 	}
 	var exists int
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1`, phone).Scan(&exists)
@@ -631,7 +643,11 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var id string
-	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active') RETURNING id`, name, phone, string(pinHash)).Scan(&id)
+	var verifiedAt any
+	if identityVerified {
+		verifiedAt = time.Now()
+	}
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,identity_verified_at) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active',nullif($4,''),nullif($5,''),$6) RETURNING id`, name, phone, string(pinHash), docType, document, verifiedAt).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el WhatsApp")
 		return
@@ -3557,7 +3573,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.last_name,''),coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>''),coalesce(u.document_type,''),coalesce(u.document_number,''),u.identity_verified_at IS NOT NULL FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -3565,12 +3581,13 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, status, planID, planName, planSlug string
+		var id, name, lastName, phone, status, planID, planName, planSlug, docType, document string
 		var created time.Time
 		var stores int
-		var pinConfigured bool
-		_ = rows.Scan(&id, &name, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured)
-		out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured})
+		var pinConfigured, identityVerified bool
+		_ = rows.Scan(&id, &name, &lastName, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured, &docType, &document, &identityVerified)
+		fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
+		out = append(out, map[string]any{"id": id, "name": name, "last_name": lastName, "full_name": fullName, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured, "document_type": docType, "document_number": document, "identity_verified": identityVerified})
 	}
 	jsonOut(w, 200, out)
 }
@@ -5637,21 +5654,55 @@ func (s *Server) adminTestPlatformIntegration(w http.ResponseWriter, r *http.Req
 
 func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name         string `json:"name"`
-		Phone        string `json:"phone"`
-		PIN          string `json:"pin"`
-		BusinessName string `json:"business_name"`
-		TemplateSlug string `json:"template_slug"`
+		Name             string `json:"name"`
+		LastName         string `json:"last_name"`
+		Phone            string `json:"phone"`
+		PIN              string `json:"pin"`
+		DocumentType     string `json:"document_type"`
+		DocumentNumber   string `json:"document_number"`
+		BirthDate        string `json:"birth_date"`
+		Gender           string `json:"gender"`
+		Status           string `json:"status"`
+		PlanID           string `json:"plan_id"`
+		BusinessName     string `json:"business_name"`
+		TemplateSlug     string `json:"template_slug"`
+		BusinessWhatsApp string `json:"business_whatsapp"`
+		BusinessStatus   string `json:"business_status"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
 		return
 	}
 	name := strings.TrimSpace(in.Name)
+	lastName := strings.TrimSpace(in.LastName)
 	phone := normalizePhone(in.Phone)
 	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
 	if name == "" || phone == "" || !pinOK {
 		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp y PIN de %d dígitos son obligatorios", pinLength))
+		return
+	}
+	status := normalizeOwnerStatus(in.Status)
+	docType, document := normalizeOwnerDocument(in.DocumentType, in.DocumentNumber)
+	if !validOwnerDocument(docType, document) {
+		jsonErr(w, 400, "La Cédula debe tener 11 dígitos y el RNC 9 u 11 dígitos")
+		return
+	}
+	identity := s.platformSetting(r.Context(), "identity")
+	requireIdentity, _ := identity["require_owner_verification"].(bool)
+	identityEnabled, _ := identity["enabled"].(bool)
+	var verifiedAt any
+	if requireIdentity && document == "" {
+		jsonErr(w, 422, "La verificación de Cédula o RNC es obligatoria para crear propietarios")
+		return
+	}
+	if document != "" && identityEnabled {
+		if _, _, err := s.verifyIdentityDocument(r.Context(), docType, document); err != nil {
+			jsonErr(w, 422, "No pudimos verificar la identidad: "+err.Error())
+			return
+		}
+		verifiedAt = time.Now()
+	} else if requireIdentity {
+		jsonErr(w, 503, "La verificación de identidad es obligatoria, pero la integración está deshabilitada")
 		return
 	}
 	var exists bool
@@ -5662,6 +5713,13 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	if exists {
 		jsonErr(w, 409, "Ya existe un propietario con ese WhatsApp")
 		return
+	}
+	if document != "" {
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND document_type=$1 AND document_number=$2)`, docType, document).Scan(&exists)
+		if exists {
+			jsonErr(w, 409, "Ya existe un propietario con esa Cédula o RNC")
+			return
+		}
 	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
 	if err != nil {
@@ -5675,24 +5733,38 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var ownerID string
-	if err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active') RETURNING id`, name, phone, string(hash)).Scan(&ownerID); err != nil {
+	if err = tx.QueryRow(r.Context(), `INSERT INTO users(name,last_name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,birth_date,gender,identity_verified_at) VALUES($1,$2,NULL,$3,NULL,$4,now(),'owner',$5,nullif($6,''),nullif($7,''),nullif($8,'')::date,nullif($9,''),$10) RETURNING id`, name, lastName, phone, string(hash), status, docType, document, strings.TrimSpace(in.BirthDate), normalizeOwnerGender(in.Gender), verifiedAt).Scan(&ownerID); err != nil {
 		jsonErr(w, 409, "No se pudo crear el propietario")
 		return
 	}
-	general := s.platformSetting(r.Context(), "general")
-	defaultPlan := "emprende"
-	if v, ok := general["default_plan"].(string); ok && strings.TrimSpace(v) != "" {
-		defaultPlan = strings.TrimSpace(v)
+	planID := strings.TrimSpace(in.PlanID)
+	if planID == "" {
+		general := s.platformSetting(r.Context(), "general")
+		defaultPlan := "emprende"
+		if v, ok := general["default_plan"].(string); ok && strings.TrimSpace(v) != "" {
+			defaultPlan = strings.TrimSpace(v)
+		}
+		_ = tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug=$1 AND is_active=true LIMIT 1`, defaultPlan).Scan(&planID)
+	} else {
+		var active bool
+		if tx.QueryRow(r.Context(), `SELECT is_active FROM plans WHERE id=$1`, planID).Scan(&active) != nil || !active {
+			jsonErr(w, 404, "Plan no disponible")
+			return
+		}
 	}
-	var planID string
-	if tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug=$1 AND is_active=true LIMIT 1`, defaultPlan).Scan(&planID) == nil {
-		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, ownerID, planID)
+	if planID != "" {
+		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO UPDATE SET plan_id=excluded.plan_id,status='active',starts_at=now(),ends_at=NULL`, ownerID, planID)
 	}
 	businessName := strings.TrimSpace(in.BusinessName)
 	var storeID string
 	if businessName != "" {
 		slug := s.safeStoreSlugFor(r.Context(), businessName)
-		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, ownerID, businessName, slug, phone).Scan(&storeID); err != nil {
+		businessWhatsApp := normalizePhone(in.BusinessWhatsApp)
+		if businessWhatsApp == "" {
+			businessWhatsApp = phone
+		}
+		businessActive := normalizeBusinessStatus(in.BusinessStatus) == "active"
+		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp,is_active) VALUES($1,$2,$3,NULL,$4,$5) RETURNING id`, ownerID, businessName, slug, businessWhatsApp, businessActive).Scan(&storeID); err != nil {
 			jsonErr(w, 409, "No se pudo crear el negocio; verifica el nombre o identificador")
 			return
 		}
@@ -5706,12 +5778,12 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := claims(r)
-	s.auditPlatform(r.Context(), c.UserID, "owner.created", "owner", ownerID, map[string]any{"business_id": storeID})
+	s.auditPlatform(r.Context(), c.UserID, "owner.created", "owner", ownerID, map[string]any{"business_id": storeID, "document_type": docType, "identity_verified": verifiedAt != nil})
 	jsonOut(w, 201, map[string]any{"id": ownerID, "store_id": storeID, "ok": true})
 }
 
 func (s *Server) adminOwners(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,count(st.id)::int,coalesce(string_agg(st.name,' · ' ORDER BY st.created_at),'') FROM users u LEFT JOIN stores st ON st.user_id=u.id WHERE u.role='owner' GROUP BY u.id ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.last_name,''),coalesce(u.phone,''),u.status,u.created_at,count(st.id)::int,coalesce(string_agg(st.name,' · ' ORDER BY st.created_at),''),coalesce(u.document_type,''),coalesce(u.document_number,''),u.identity_verified_at IS NOT NULL FROM users u LEFT JOIN stores st ON st.user_id=u.id WHERE u.role='owner' GROUP BY u.id ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los propietarios")
 		return
@@ -5719,11 +5791,13 @@ func (s *Server) adminOwners(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, status, stores string
+		var id, name, lastName, phone, status, stores, docType, document string
 		var created time.Time
 		var count int
-		if rows.Scan(&id, &name, &phone, &status, &created, &count, &stores) == nil {
-			out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "status": status, "created_at": created, "store_count": count, "stores": stores})
+		var identityVerified bool
+		if rows.Scan(&id, &name, &lastName, &phone, &status, &created, &count, &stores, &docType, &document, &identityVerified) == nil {
+			fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
+			out = append(out, map[string]any{"id": id, "name": name, "last_name": lastName, "full_name": fullName, "phone": phone, "status": status, "created_at": created, "store_count": count, "stores": stores, "document_type": docType, "document_number": document, "identity_verified": identityVerified})
 		}
 	}
 	jsonOut(w, 200, out)

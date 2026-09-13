@@ -1,3 +1,12 @@
+# WAMERCIO 2.3.1 — Propietarios y negocios en pestañas
+
+- Modal unificado Nuevo / Editar propietario con pestañas **Propietario** y **Negocio**.
+- Perfil de propietario ampliado con apellido, Cédula/RNC, fecha de nacimiento, género, estado y verificación de identidad.
+- Edición de PIN y plan desde el mismo flujo sin mezclar datos personales y comerciales.
+- Gestión de negocios asociados desde la pestaña Negocio: editar existente o crear uno nuevo.
+- WhatsApp comercial, tipo de negocio y estado por negocio.
+- Nuevas rutas administrativas y migración `000016_owner_profile_tabs`.
+
 # WAMERCIO 2.3.0 — Centro SaaS funcional
 
 - Centro SaaS con configuración real por sección.

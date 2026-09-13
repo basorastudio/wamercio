@@ -29,8 +29,8 @@ grep -q 'QRCodeSVG' apps/web/app/admin/settings/page.tsx || fail "WhatsApp no mu
 grep -q 'platform/templates' apps/web/app/admin/settings/page.tsx && fail "ruta incorrecta inesperada"
 [ -f apps/web/app/terminos/page.tsx ] || fail "falta página términos"
 [ -f apps/web/app/privacidad/page.tsx ] || fail "falta página privacidad"
-[ "$(cat VERSION)" = "2.3.0" ] || fail "VERSION no es 2.3.0"
-pass "Centro SaaS 2.3.0"
+case "$(cat VERSION)" in 2.3.*) ;; *) fail "VERSION no pertenece a la serie 2.3.x" ;; esac
+pass "Centro SaaS 2.3.x"
 grep -q '"route_mode":"path"' services/api/migrations/000015_platform_settings_functional.up.sql || fail "Dominios debe reflejar el routing real por ruta"
 grep -q 'wamercio.com/{slug}' apps/web/app/admin/settings/page.tsx || fail "Dominios debe mostrar el formato público real"
 if grep -q 'custom_domains_enabled' apps/web/app/admin/settings/page.tsx; then fail "UI no debe prometer dominios propios no implementados"; fi
