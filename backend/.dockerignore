@@ -1,7 +1,0 @@
-.git
-*.zip
-.env
-bin
-tmp
-*.log
-*.tmp

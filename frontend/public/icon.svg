@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="WAMERCIO">
-  <rect width="512" height="512" rx="112" fill="#00a884"/>
-  <path d="M104 218h304v196a34 34 0 0 1-34 34H138a34 34 0 0 1-34-34V218Z" fill="#ffffff"/>
-  <path d="M94 190 132 96h248l38 94c8 20-7 42-28 42H122c-21 0-36-22-28-42Z" fill="#eafaf1"/>
-  <path d="M150 96h56l-22 136h-72l38-136Zm78 0h56v136h-78l22-136Zm78 0h56l38 136h-72L306 96Z" fill="#00a884" opacity=".78"/>
-  <rect x="152" y="282" width="80" height="132" rx="16" fill="#0f1a28"/>
-  <rect x="262" y="278" width="98" height="68" rx="14" fill="#eafaf1" stroke="#00a884" stroke-width="10"/>
-  <circle cx="216" cy="350" r="8" fill="#ffffff"/>
-</svg>

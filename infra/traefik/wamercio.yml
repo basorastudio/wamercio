@@ -1,0 +1,28 @@
+http:
+  routers:
+    wamercio-http-file:
+      rule: "Host(`wamercio.com`) || Host(`www.wamercio.com`)"
+      entryPoints:
+        - web
+      service: wamercio-file-service
+      priority: 1000
+
+    wamercio-https-file:
+      rule: "Host(`wamercio.com`) || Host(`www.wamercio.com`)"
+      entryPoints:
+        - websecure
+      service: wamercio-file-service
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    wamercio-file-service:
+      loadBalancer:
+        passHostHeader: true
+        healthCheck:
+          path: /gateway-health
+          interval: 10s
+          timeout: 3s
+        servers:
+          - url: "http://wamercio-gateway:8080"

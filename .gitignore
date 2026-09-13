@@ -1,39 +1,8 @@
-# Environment and generated runtime configuration
 .env
-.env.auto
-*.local
-CREDENCIALES_ADMIN.txt
-CREDENCIALES_SUPERADMIN.txt
-
-# Logs and backups
-logs/
+.env.local
+node_modules
+.next
+coverage
 *.log
-*.bak
-*.backup
-*.old
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-
-# Frontend
-frontend/node_modules/
-frontend/.next/
-frontend/out/
-frontend/dist/
-*.tsbuildinfo
-
-# Backend
-backend/bin/
-backend/tmp/
-
-# Editors and operating systems
-.vscode/*
-!.vscode/extensions.json
-.idea/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+services/api/data

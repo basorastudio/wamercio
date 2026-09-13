@@ -1,2 +1,0 @@
-DROP INDEX IF EXISTS idx_platform_territory_sync_events_created_at;
-DROP TABLE IF EXISTS platform_territory_sync_events;

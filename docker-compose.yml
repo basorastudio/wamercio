@@ -1,209 +1,166 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: wamercio_postgres
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-wamercio_core}
-      POSTGRES_USER: ${POSTGRES_USER:-wamercio}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_secure_password}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       TZ: ${TZ:-America/Santo_Domingo}
-    command:
-      - "postgres"
-      - "-c"
-      - "config_file=/etc/postgresql/postgresql.auto.conf"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./deploy/postgres/postgresql.auto.conf:/etc/postgresql/postgresql.auto.conf:ro
-    shm_size: "512mb"
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - "pg_isready -U $${POSTGRES_USER:-wamercio} -d $${POSTGRES_DB:-wamercio_core} -h 127.0.0.1"
-      interval: 10s
-      timeout: 5s
-      retries: 18
-      start_period: 45s
-
-  pgbouncer:
-    build:
-      context: ./deploy/pgbouncer
-    container_name: wamercio_pgbouncer
-    restart: unless-stopped
-    env_file:
-      - .env
-    depends_on:
-      postgres:
-        condition: service_healthy
-    expose:
-      - "6432"
-    healthcheck:
-      test:
-        - "CMD-SHELL"
-        - "pg_isready -h 127.0.0.1 -p 6432 -U $${POSTGRES_USER:-wamercio} >/dev/null 2>&1"
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 15s
-
-  redis:
-    image: redis:7-alpine
-    container_name: wamercio_redis
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      TZ: ${TZ:-America/Santo_Domingo}
-    command: >
-      sh -c 'exec redis-server --appendonly yes --maxmemory "$${REDIS_MAXMEMORY:-256mb}" --maxmemory-policy "$${REDIS_MAXMEMORY_POLICY:-allkeys-lru}"'
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test:
-        - "CMD"
-        - "redis-cli"
-        - "ping"
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 10
 
-  backend:
-    build:
-      context: ./backend
-      args:
-        VERSION: ${APP_VERSION:-development}
-        COMMIT: ${APP_COMMIT:-unknown}
-        BUILD_TIME: ${APP_BUILD_TIME:-unknown}
+  redis:
+    image: redis:7-alpine
     restart: unless-stopped
-    init: true
-    stop_grace_period: 35s
-    cpus: "${BACKEND_CPUS:-2.0}"
-    mem_limit: ${BACKEND_MEMORY_LIMIT:-1536m}
-    pids_limit: 256
-    read_only: true
-    tmpfs:
-      - /tmp:size=64m,mode=1777
-    env_file:
-      - .env
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
+      PORT: 8080
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_NAME: ${ADMIN_NAME}
+      APP_URL: ${APP_URL}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      WHATSAPP_BRIDGE_URL: ${WHATSAPP_BRIDGE_URL}
+      UPLOAD_DIR: /app/data/uploads
       TZ: ${TZ:-America/Santo_Domingo}
-      APP_TIMEZONE: ${APP_TIMEZONE:-America/Santo_Domingo}
-      TERRITORY_DATA_DIR: ${TERRITORY_DATA_DIR:-/app/data}
-      GEO_RD_MAP_ENABLED: ${GEO_RD_MAP_ENABLED:-false}
-      GEO_RD_MAP_URL: ${GEO_RD_MAP_URL:-https://geo.ltd.do}
-      GEO_RD_MAP_API_KEY: ${GEO_RD_MAP_API_KEY:-}
-      GEO_RD_MAP_TIMEOUT: ${GEO_RD_MAP_TIMEOUT:-12s}
-      CATALOG_DATA_FILE: ${CATALOG_DATA_FILE:-/app/data/catalog.json}
-      CENTRAL_DATABASE_URL: ${CENTRAL_DATABASE_URL:?CENTRAL_DATABASE_URL must be configured}
-      GLOBAL_CUSTOMERS_DATABASE_URL: ${GLOBAL_CUSTOMERS_DATABASE_URL:?GLOBAL_CUSTOMERS_DATABASE_URL must be configured}
-      TENANT_DATABASE_URL_TEMPLATE: ${TENANT_DATABASE_URL_TEMPLATE:?TENANT_DATABASE_URL_TEMPLATE must be configured}
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      USE_PGBOUNCER: ${USE_PGBOUNCER:-true}
-      PGBOUNCER_ADDR: ${PGBOUNCER_ADDR:-pgbouncer:6432}
-      INTERNAL_ADDR: 127.0.0.1:6060
-      GOMEMLIMIT: ${BACKEND_GOMEMLIMIT:-1380MiB}
-      GOGC: ${BACKEND_GOGC:-100}
+    volumes:
+      - uploads_data:/app/data/uploads
     depends_on:
       postgres:
-        condition: service_healthy
-      pgbouncer:
         condition: service_healthy
       redis:
         condition: service_healthy
     expose:
       - "8080"
     healthcheck:
-      test:
-        - "CMD-SHELL"
-        - "wget -qO- http://127.0.0.1:8080/health/ready >/dev/null 2>&1 || exit 1"
-      interval: 10s
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 15s
       timeout: 5s
-      retries: 18
-      start_period: 60s
+      retries: 10
 
-  frontend:
+  whatsapp:
     build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        NEXT_PUBLIC_ADMIN_USERNAME: ${NEXT_PUBLIC_ADMIN_USERNAME:-}
-        NEXT_PUBLIC_PLATFORM_ADMIN_USERNAME: ${NEXT_PUBLIC_PLATFORM_ADMIN_USERNAME:-superadmin}
-        NEXT_PUBLIC_PLATFORM_DOMAIN: ${APP_DOMAIN:-}
-        NEXT_PUBLIC_PLATFORM_HOST_ALIASES: ${NEXT_PUBLIC_PLATFORM_HOST_ALIASES:-}
-        NEXT_PUBLIC_ROOT_DOMAIN: ${ROOT_DOMAIN:-}
-        NEXT_PUBLIC_APP_TIMEZONE: ${NEXT_PUBLIC_APP_TIMEZONE:-America/Santo_Domingo}
-        NEXT_PUBLIC_CATALOG_IMAGE_BASE_URL: ${NEXT_PUBLIC_CATALOG_IMAGE_BASE_URL:-https://catalogo.ltd.do}
-    container_name: wamercio_frontend
+      context: ./services/whatsapp-bridge
+      dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      PORT: 8090
+      DATABASE_URL: ${WHATSAPP_DATABASE_URL}
+      CORE_WEBHOOK_URL: ${CORE_WEBHOOK_URL}
+      INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
+      UPLOAD_DIR: /app/data/uploads
       TZ: ${TZ:-America/Santo_Domingo}
+    volumes:
+      - uploads_data:/app/data/uploads
     depends_on:
-      backend:
+      postgres:
+        condition: service_healthy
+      api:
         condition: service_healthy
     expose:
-      - "80"
+      - "8090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+    restart: unless-stopped
+    environment:
+      INTERNAL_API_URL: ${INTERNAL_API_URL}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL}
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+      TZ: ${TZ:-America/Santo_Domingo}
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  # Stable reverse-proxy endpoint between Dokploy Traefik and Next.js.
+  # Traefik never points directly to the recreated Next.js container.
+  gateway:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./infra/nginx/gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    expose:
+      - "8080"
     networks:
-      - default
-      - dokploy-network
-    labels:
-      - "traefik.enable=true"
-      - "traefik.docker.network=dokploy-network"
+      default:
+      dokploy-network:
+        aliases:
+          - wamercio-gateway
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/gateway-health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
-      # Plataforma: únicamente el dominio canónico y www pertenecen a WAMERCIO.
-      # El dominio del panel de Dokploy se reserva y nunca debe apuntar a este servicio.
-      - 'traefik.http.routers.wamercio-platform-web.rule=Host(`${APP_DOMAIN:-wamercio.com}`) || Host(`www.${APP_DOMAIN:-wamercio.com}`)'
-      - "traefik.http.routers.wamercio-platform-web.entrypoints=web"
-      - "traefik.http.routers.wamercio-platform-web.priority=1000"
-      - "traefik.http.routers.wamercio-platform-web.service=wamercio-tenants"
-
-      - 'traefik.http.routers.wamercio-platform-websecure.rule=Host(`${APP_DOMAIN:-wamercio.com}`) || Host(`www.${APP_DOMAIN:-wamercio.com}`)'
-      - "traefik.http.routers.wamercio-platform-websecure.entrypoints=websecure"
-      - "traefik.http.routers.wamercio-platform-websecure.tls=true"
-      - "traefik.http.routers.wamercio-platform-websecure.priority=1000"
-      - "traefik.http.routers.wamercio-platform-websecure.service=wamercio-tenants"
-
-      # El dominio raíz ltd.do no representa un tenant. Se enruta al frontend
-      # para que Nginx conserve la redirección histórica hacia wamercio.com.
-      - 'traefik.http.routers.wamercio-root-web.rule=Host(`${ROOT_DOMAIN:-ltd.do}`)'
-      - "traefik.http.routers.wamercio-root-web.entrypoints=web"
-      - "traefik.http.routers.wamercio-root-web.priority=900"
-      - "traefik.http.routers.wamercio-root-web.service=wamercio-tenants"
-
-      - 'traefik.http.routers.wamercio-root-websecure.rule=Host(`${ROOT_DOMAIN:-ltd.do}`)'
-      - "traefik.http.routers.wamercio-root-websecure.entrypoints=websecure"
-      - "traefik.http.routers.wamercio-root-websecure.tls=true"
-      - "traefik.http.routers.wamercio-root-websecure.priority=900"
-      - "traefik.http.routers.wamercio-root-websecure.service=wamercio-tenants"
-
-      # Tenants: cualquier subdominio directo de ltd.do excepto el dominio reservado
-      # para el panel de Dokploy. Los demás servicios exactos de Dokploy ganan por prioridad.
-      - 'traefik.http.routers.wamercio-tenants-web.rule=HostRegexp(`^[a-z0-9-]+[.]ltd[.]do$`) && !Host(`${DOKPLOY_PANEL_DOMAIN:-proyecto.ltd.do}`)'
-      - "traefik.http.routers.wamercio-tenants-web.entrypoints=web"
-      - "traefik.http.routers.wamercio-tenants-web.priority=10"
-      - "traefik.http.routers.wamercio-tenants-web.service=wamercio-tenants"
-
-      # HTTPS: Cloudflare en modo Completo/Full llega al origen por 443.
-      - 'traefik.http.routers.wamercio-tenants-websecure.rule=HostRegexp(`^[a-z0-9-]+[.]ltd[.]do$`) && !Host(`${DOKPLOY_PANEL_DOMAIN:-proyecto.ltd.do}`)'
-      - "traefik.http.routers.wamercio-tenants-websecure.entrypoints=websecure"
-      - "traefik.http.routers.wamercio-tenants-websecure.tls=true"
-      - "traefik.http.routers.wamercio-tenants-websecure.priority=10"
-      - "traefik.http.routers.wamercio-tenants-websecure.service=wamercio-tenants"
-
-      # Nginx del frontend escucha internamente en el puerto 80
-      - "traefik.http.services.wamercio-tenants.loadbalancer.server.port=80"
-      # Afinidad por navegador: evita mezclar HTML de una imagen con chunks
-      # inmutables de otra imagen durante actualizaciones progresivas.
-      - "traefik.http.services.wamercio-tenants.loadbalancer.sticky.cookie=true"
-      - "traefik.http.services.wamercio-tenants.loadbalancer.sticky.cookie.name=wamercio_frontend"
-      - "traefik.http.services.wamercio-tenants.loadbalancer.sticky.cookie.secure=true"
-      - "traefik.http.services.wamercio-tenants.loadbalancer.sticky.cookie.httponly=true"
-      - "traefik.http.services.wamercio-tenants.loadbalancer.sticky.cookie.samesite=lax"
+  # Install the dynamic Traefik config only after the stable gateway is healthy.
+  # This prevents a race during Compose recreations that can leave Traefik on 502.
+  traefik-config:
+    image: alpine:3.21
+    restart: "no"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    volumes:
+      - ./infra/traefik/wamercio.yml:/source/wamercio.yml:ro
+      - /etc/dokploy/traefik/dynamic:/target
+    command:
+      - /bin/sh
+      - -c
+      - >-
+        cp /source/wamercio.yml /target/wamercio.yml.tmp &&
+        chmod 0644 /target/wamercio.yml.tmp &&
+        mv /target/wamercio.yml.tmp /target/wamercio.yml &&
+        echo 'WAMERCIO Traefik dynamic configuration installed after gateway health check.'
 
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
 
 networks:
   dokploy-network:

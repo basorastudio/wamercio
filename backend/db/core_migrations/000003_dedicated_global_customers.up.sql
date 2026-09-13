@@ -1,1 +1,0 @@
-ALTER TABLE tenant_customer_links DROP CONSTRAINT IF EXISTS tenant_customer_links_global_customer_id_fkey;
