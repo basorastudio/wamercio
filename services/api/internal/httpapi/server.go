@@ -155,11 +155,13 @@ func (s *Server) Router() http.Handler {
 			a.Get("/admin/me", s.adminMe)
 			a.Get("/admin/dashboard", s.adminDashboard)
 			a.Get("/admin/users", s.adminUsers)
+			a.Delete("/admin/users/{id}", s.adminDeleteUser)
 			a.Patch("/admin/users/{id}/status", s.adminUserStatus)
 			a.Put("/admin/users/{id}/plan", s.adminAssignPlan)
 			a.Put("/admin/users/{id}/pin", s.adminSetUserPIN)
 			a.Put("/admin/users/{id}/access", s.adminSetUserAccess)
 			a.Get("/admin/stores", s.adminStores)
+			a.Delete("/admin/stores/{id}", s.adminDeleteStore)
 			a.Get("/admin/templates", s.adminTemplates)
 			a.Post("/admin/templates", s.adminCreateTemplate)
 			a.Put("/admin/templates/{id}", s.adminUpdateTemplate)
@@ -1879,15 +1881,19 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	prods := []map[string]any{}
-	pr, _ := s.db.Query(r.Context(), `SELECT id,store_id,coalesce(category_id::text,''),name,slug,coalesce(sku,''),coalesce(description,''),coalesce(image_url,''),price,coalesce(compare_price,0),coalesce(stock,0),track_stock,variants,extras,coalesce(tag,''),is_featured,sort_order,is_active,created_at,updated_at FROM products WHERE store_id=$1 AND is_active=true ORDER BY is_featured DESC,sort_order,name`, sid)
-	if pr != nil {
-		defer pr.Close()
-		for pr.Next() {
-			p, e := scanProduct(pr)
-			if e == nil {
-				prods = append(prods, p)
-			}
+	pr, err := s.db.Query(r.Context(), `SELECT id,store_id,coalesce(category_id::text,''),name,slug,coalesce(sku,''),coalesce(description,''),coalesce(image_url,''),price,coalesce(compare_price,0),coalesce(stock,0),track_stock,variants,extras,attributes,coalesce(tag,''),is_featured,sort_order,is_active,created_at,updated_at FROM products WHERE store_id=$1 AND is_active=true ORDER BY is_featured DESC,sort_order,name`, sid)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo cargar el catálogo público")
+		return
+	}
+	defer pr.Close()
+	for pr.Next() {
+		p, e := scanProduct(pr)
+		if e != nil {
+			jsonErr(w, 500, "No se pudo leer un producto del catálogo")
+			return
 		}
+		prods = append(prods, p)
 	}
 	zones := []map[string]any{}
 	zr, _ := s.db.Query(r.Context(), `SELECT id,name,charge,estimated_minutes FROM shipping_zones WHERE store_id=$1 AND is_active=true ORDER BY name`, sid)
@@ -3301,6 +3307,39 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, out)
 }
 
+func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo iniciar la eliminación")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var name string
+	if err := tx.QueryRow(r.Context(), `SELECT name FROM users WHERE id=$1 AND role<>'superadmin'`, id).Scan(&name); err != nil {
+		jsonErr(w, 404, "Comerciante no encontrado")
+		return
+	}
+	// Orders intentionally use ON DELETE RESTRICT for historical integrity. A hard
+	// delete requested by the superadmin must therefore remove the merchant's
+	// orders first; order_items cascade and transaction order references become NULL.
+	if _, err := tx.Exec(r.Context(), `DELETE FROM orders WHERE store_id IN (SELECT id FROM stores WHERE user_id=$1)`, id); err != nil {
+		jsonErr(w, 500, "No se pudieron eliminar los pedidos del comerciante")
+		return
+	}
+	cmd, err := tx.Exec(r.Context(), `DELETE FROM users WHERE id=$1 AND role<>'superadmin'`, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 500, "No se pudo eliminar el comerciante")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la eliminación")
+		return
+	}
+	jsonOut(w, 200, map[string]any{"ok": true, "deleted": true, "name": name})
+}
+
 func (s *Server) adminUserStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in struct {
@@ -3430,6 +3469,37 @@ func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
 	}
 	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminDeleteStore(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo iniciar la eliminación")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var name string
+	if err := tx.QueryRow(r.Context(), `SELECT name FROM stores WHERE id=$1`, id).Scan(&name); err != nil {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	// Orders use ON DELETE RESTRICT; remove them explicitly before the store.
+	if _, err := tx.Exec(r.Context(), `DELETE FROM orders WHERE store_id=$1`, id); err != nil {
+		jsonErr(w, 500, "No se pudieron eliminar los pedidos de la tienda")
+		return
+	}
+	cmd, err := tx.Exec(r.Context(), `DELETE FROM stores WHERE id=$1`, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 500, "No se pudo eliminar la tienda")
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la eliminación")
+		return
+	}
+	jsonOut(w, 200, map[string]any{"ok": true, "deleted": true, "name": name})
 }
 
 type adminPlanInput struct {

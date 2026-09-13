@@ -1,3 +1,11 @@
+# WAMERCIO 2.1.1 — Catálogo público y eliminación SuperAdmin
+
+- Corrige el catálogo público: la consulta de productos ahora incluye `attributes`, que `scanProduct` ya esperaba; el desfase hacía que todos los productos se descartaran silenciosamente y la tienda mostrara “No encontramos productos”.
+- El catálogo público devuelve un error explícito si una consulta o lectura de producto falla, evitando falsos catálogos vacíos.
+- SuperAdmin → Tiendas incorpora eliminación definitiva con modal de confirmación y limpieza de pedidos/datos relacionados.
+- SuperAdmin → Comerciantes incorpora eliminación definitiva con confirmación; elimina sus tiendas y datos relacionados sin permitir borrar cuentas `superadmin`.
+- Se mantienen intactos el Theme Engine 2.1, los temas visuales y el flujo normal de archivado de tiendas desde el panel del comerciante.
+
 # WAMERCIO 2.1.0 — Theme Engine
 
 - Separa plantillas funcionales de temas visuales.
