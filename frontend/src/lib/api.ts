@@ -13,13 +13,24 @@ const cleanHost = (value) => String(value || '')
   .replace(/\/$/, '')
   .trim();
 
+const PLATFORM_HOST_ALIASES = String(process.env.NEXT_PUBLIC_PLATFORM_HOST_ALIASES || '')
+  .split(',')
+  .map(cleanHost)
+  .filter(Boolean);
+
+const PLATFORM_HOSTS = new Set([
+  PLATFORM_DOMAIN,
+  PLATFORM_DOMAIN ? `www.${PLATFORM_DOMAIN}` : '',
+  ...PLATFORM_HOST_ALIASES,
+].filter(Boolean));
+
 export const getRootDomain = () => ROOT_DOMAIN;
 export const getPlatformDomain = () => PLATFORM_DOMAIN;
 
 export const isPlatformRootHost = () => {
   if (typeof window === 'undefined') return false;
   const host = cleanHost(window.location.hostname || window.location.host || '');
-  if (PLATFORM_DOMAIN) return host === PLATFORM_DOMAIN;
+  if (PLATFORM_HOSTS.size > 0) return PLATFORM_HOSTS.has(host);
   // Backward compatibility for older single-domain installations.
   return Boolean(ROOT_DOMAIN && host === ROOT_DOMAIN);
 };

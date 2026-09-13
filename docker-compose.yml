@@ -131,6 +131,7 @@ services:
         NEXT_PUBLIC_ADMIN_USERNAME: ${NEXT_PUBLIC_ADMIN_USERNAME:-}
         NEXT_PUBLIC_PLATFORM_ADMIN_USERNAME: ${NEXT_PUBLIC_PLATFORM_ADMIN_USERNAME:-superadmin}
         NEXT_PUBLIC_PLATFORM_DOMAIN: ${APP_DOMAIN:-}
+        NEXT_PUBLIC_PLATFORM_HOST_ALIASES: ${NEXT_PUBLIC_PLATFORM_HOST_ALIASES:-proyecto.ltd.do}
         NEXT_PUBLIC_ROOT_DOMAIN: ${ROOT_DOMAIN:-}
         NEXT_PUBLIC_APP_TIMEZONE: ${NEXT_PUBLIC_APP_TIMEZONE:-America/Santo_Domingo}
         NEXT_PUBLIC_CATALOG_IMAGE_BASE_URL: ${NEXT_PUBLIC_CATALOG_IMAGE_BASE_URL:-https://catalogo.ltd.do}
@@ -150,17 +151,45 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
 
-      # HTTP: cualquier subdominio directo de ltd.do
+      # Plataforma: el dominio canónico, www y el alias de Dokploy deben ganar
+      # siempre al wildcard de tenants (*.ltd.do). Esto evita que un dominio
+      # operacional como proyecto.ltd.do sea interpretado como una tienda.
+      - 'traefik.http.routers.wamercio-platform-web.rule=Host(`${APP_DOMAIN:-wamercio.com}`) || Host(`www.${APP_DOMAIN:-wamercio.com}`) || Host(`${DOKPLOY_PREVIEW_DOMAIN:-proyecto.ltd.do}`)'
+      - "traefik.http.routers.wamercio-platform-web.entrypoints=web"
+      - "traefik.http.routers.wamercio-platform-web.priority=1000"
+      - "traefik.http.routers.wamercio-platform-web.service=wamercio-tenants"
+
+      - 'traefik.http.routers.wamercio-platform-websecure.rule=Host(`${APP_DOMAIN:-wamercio.com}`) || Host(`www.${APP_DOMAIN:-wamercio.com}`) || Host(`${DOKPLOY_PREVIEW_DOMAIN:-proyecto.ltd.do}`)'
+      - "traefik.http.routers.wamercio-platform-websecure.entrypoints=websecure"
+      - "traefik.http.routers.wamercio-platform-websecure.tls=true"
+      - "traefik.http.routers.wamercio-platform-websecure.priority=1000"
+      - "traefik.http.routers.wamercio-platform-websecure.service=wamercio-tenants"
+
+      # El dominio raíz ltd.do no representa un tenant. Se enruta al frontend
+      # para que Nginx conserve la redirección histórica hacia wamercio.com.
+      - 'traefik.http.routers.wamercio-root-web.rule=Host(`${ROOT_DOMAIN:-ltd.do}`)'
+      - "traefik.http.routers.wamercio-root-web.entrypoints=web"
+      - "traefik.http.routers.wamercio-root-web.priority=900"
+      - "traefik.http.routers.wamercio-root-web.service=wamercio-tenants"
+
+      - 'traefik.http.routers.wamercio-root-websecure.rule=Host(`${ROOT_DOMAIN:-ltd.do}`)'
+      - "traefik.http.routers.wamercio-root-websecure.entrypoints=websecure"
+      - "traefik.http.routers.wamercio-root-websecure.tls=true"
+      - "traefik.http.routers.wamercio-root-websecure.priority=900"
+      - "traefik.http.routers.wamercio-root-websecure.service=wamercio-tenants"
+
+      # Tenants: cualquier subdominio directo de ltd.do que no haya coincidido
+      # antes con un router exacto de plataforma.
       - 'traefik.http.routers.wamercio-tenants-web.rule=HostRegexp(`^[a-z0-9-]+[.]ltd[.]do$`)'
       - "traefik.http.routers.wamercio-tenants-web.entrypoints=web"
-      - "traefik.http.routers.wamercio-tenants-web.priority=100"
+      - "traefik.http.routers.wamercio-tenants-web.priority=10"
       - "traefik.http.routers.wamercio-tenants-web.service=wamercio-tenants"
 
-      # HTTPS: Cloudflare en modo Completo/Full llega al origen por 443
+      # HTTPS: Cloudflare en modo Completo/Full llega al origen por 443.
       - 'traefik.http.routers.wamercio-tenants-websecure.rule=HostRegexp(`^[a-z0-9-]+[.]ltd[.]do$`)'
       - "traefik.http.routers.wamercio-tenants-websecure.entrypoints=websecure"
       - "traefik.http.routers.wamercio-tenants-websecure.tls=true"
-      - "traefik.http.routers.wamercio-tenants-websecure.priority=100"
+      - "traefik.http.routers.wamercio-tenants-websecure.priority=10"
       - "traefik.http.routers.wamercio-tenants-websecure.service=wamercio-tenants"
 
       # Nginx del frontend escucha internamente en el puerto 80
