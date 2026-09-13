@@ -1,3 +1,15 @@
+# WAMERCIO 2.1.2 — Storefront directo y experiencia de diseño
+
+- El catálogo público usa URL directa `/{slug}` (por ejemplo `wamercio.com/mi-mascota`); las URLs antiguas `/store/{slug}` redirigen automáticamente para no romper enlaces existentes.
+- Protege slugs reservados de la aplicación (`admin`, `stores`, `catalog`, etc.) al crear o renombrar tiendas.
+- Añade 46 imágenes demo locales para los productos preconstruidos y utiliza imágenes de productos como portada de categorías cuando no existe una propia.
+- Nueva migración `000013_demo_product_images`, compatible con tiendas ya creadas y sin dependencias de imágenes externas.
+- Mejora el storefront con cabecera/hero más terminados, señales operativas, encabezado de catálogo, conteo de opciones, destacados y pie comercial.
+- Renombra los temas visuales y sus descripciones con lenguaje comercial en español orientado a República Dominicana, manteniendo los IDs internos para compatibilidad.
+- Rediseña **Ajustes → Diseño y marca** con términos más claros, seis paletas listas, controles de colores explicados por uso, tipografías, encabezado, portada, categorías, tarjetas, fotos, botones, fondos y vista previa en vivo.
+- `Mis tiendas` se oculta automáticamente cuando el comerciante tiene exactamente una tienda; aparece de nuevo al registrar una segunda. Se conserva un acceso compacto **Agregar otra tienda** para no bloquear el crecimiento.
+- La vista previa visual usa productos demo ilustrados y el cache PWA sube a `wamercio-store-v2.1.2`.
+
 # WAMERCIO 2.1.1 — Catálogo público y eliminación SuperAdmin
 
 - Corrige el catálogo público: la consulta de productos ahora incluye `attributes`, que `scanProduct` ya esperaba; el desfase hacía que todos los productos se descartaran silenciosamente y la tienda mostrara “No encontramos productos”.

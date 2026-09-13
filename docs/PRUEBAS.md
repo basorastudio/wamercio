@@ -19,7 +19,7 @@
 
 ## Tiendas
 - [ ] Crear/editar/eliminar tienda
-- [ ] QR abre `/store/{slug}`
+- [ ] QR abre `/{slug}`
 - [ ] Configurar logo/banner/color
 - [ ] Configurar pedido mínimo
 - [ ] Activar/desactivar delivery/recogida

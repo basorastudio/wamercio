@@ -49,3 +49,17 @@ func TestSlugify(t *testing.T) {
 		}
 	}
 }
+
+func TestSafeStoreSlug(t *testing.T) {
+	tests := map[string]string{
+		"Mi Mascota": "mi-mascota",
+		"admin":      "admin-tienda",
+		"stores":     "stores-tienda",
+		"CATALOG":    "catalog-tienda",
+	}
+	for in, want := range tests {
+		if got := safeStoreSlug(in); got != want {
+			t.Fatalf("safeStoreSlug(%q)=%q, want %q", in, got, want)
+		}
+	}
+}

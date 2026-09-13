@@ -23,14 +23,13 @@ const commerce=[
 const catalog=[
   {href:'/catalog/products',label:'Catálogo',icon:Boxes},
 ]
-const storeTools=[
+const baseStoreTools=[
   {href:'/settings/store',label:'Ajustes',icon:SlidersHorizontal},
-  {href:'/stores',label:'Mis tiendas',icon:Store},
 ]
+const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
 const account=[
   {href:'/settings/profile',label:'Mi cuenta',icon:Settings},
 ]
-const all=[...commerce,...catalog,...storeTools,...account]
 const bottom=[commerce[0],commerce[1],commerce[2],catalog[0]]
 
 function NavLink({n,onClick,collapsed}:{n:any;onClick?:()=>void;collapsed?:boolean}){
@@ -47,13 +46,17 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const[drawer,setDrawer]=useState(false)
  const[more,setMore]=useState(false)
  const[me,setMe]=useState<any>(null)
+ const[storeCount,setStoreCount]=useState(0)
  const[collapsed,setCollapsed]=useState(false)
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
+ useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(x=>setStoreCount(x.length)).catch(()=>{});refresh();if(typeof window==='undefined')return;window.addEventListener('wamercio:stores-changed',refresh);return()=>window.removeEventListener('wamercio:stores-changed',refresh)},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
  useEffect(()=>{setMore(false);setDrawer(false)},[path])
  const toggleCollapsed=()=>setCollapsed(v=>{const next=!v;if(typeof window!=='undefined')localStorage.setItem(SIDEBAR_KEY,next?'1':'0');return next})
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
- const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[])
+ const storeTools=useMemo(()=>storeCount===1?baseStoreTools:[...baseStoreTools,storesNav],[storeCount])
+ const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[storeTools])
+ const all=useMemo(()=>[...commerce,...catalog,...storeTools,...account],[storeTools])
  return <div className="min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
   {drawer&&<button aria-label="Cerrar menú" onClick={()=>setDrawer(false)} className="fixed inset-0 z-40 bg-[#2e3154]/25 lg:hidden"/>}
   <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#eceef4] bg-white transition-[width,transform] duration-200 lg:translate-x-0 ${collapsed?'w-[88px]':'w-[258px]'} ${drawer?'translate-x-0':'-translate-x-full'}`}>
@@ -74,6 +77,7 @@ export default function StoreShell({children,title,subtitle,actions,context,full
       {!collapsed&&<div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-ink-900">{me?.name||'Cargando...'}</div><div className="truncate text-[11px] text-[#999eb4]">{me?.phone?`WhatsApp +${me.phone}`:'Cuenta de tienda'}</div></div>}
       <button onClick={logout} title="Cerrar sesión" className={`rounded-xl p-2 text-[#a6aabc] transition hover:bg-white hover:text-rose-600 ${collapsed?'mx-auto':'ml-auto'}`}><LogOut className="h-4 w-4"/></button>
     </div>
+    {storeCount===1&&!collapsed&&<Link href="/stores?new=1" className="mt-2 flex items-center justify-center gap-2 rounded-2xl border border-dashed border-brand-200 px-3 py-2 text-xs font-semibold text-brand-700 transition hover:bg-brand-50"><Store className="h-3.5 w-3.5"/>Agregar otra tienda</Link>}
    </div>
   </aside>
 

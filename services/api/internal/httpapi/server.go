@@ -471,7 +471,7 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	businessName := strings.TrimSpace(in.BusinessName)
 	if businessName != "" {
-		slug := slugify(businessName)
+		slug := safeStoreSlug(businessName)
 		var storeID string
 		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, id, businessName, slug, phone).Scan(&storeID); err != nil {
 			jsonErr(w, 409, "No se pudo crear el comercio")
@@ -639,6 +639,23 @@ func slugify(s string) string {
 	}
 	return s
 }
+
+var reservedStoreSlugs = map[string]bool{
+	"admin": true, "api": true, "catalog": true, "conversations": true, "coupons": true,
+	"customers": true, "dashboard": true, "delivery": true, "health": true, "login": true,
+	"media": true, "order": true, "orders": true, "plans": true, "register": true,
+	"settings": true, "store": true, "stores": true, "support": true, "transactions": true,
+	"favicon.ico": true, "icon.svg": true, "manifest.webmanifest": true, "sw.js": true,
+	"robots.txt": true, "sitemap.xml": true, "_next": true,
+}
+
+func safeStoreSlug(value string) string {
+	slug := slugify(value)
+	if reservedStoreSlugs[slug] {
+		return slug + "-tienda"
+	}
+	return slug
+}
 func ownedStoreFilter(role, userID string) (string, []any) {
 	if role == "superadmin" {
 		return "1=1", []any{}
@@ -735,9 +752,9 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if in.Slug == "" {
-		in.Slug = slugify(in.Name)
+		in.Slug = safeStoreSlug(in.Name)
 	} else {
-		in.Slug = slugify(in.Slug)
+		in.Slug = safeStoreSlug(in.Slug)
 	}
 	if in.PrimaryColor == "" {
 		in.PrimaryColor = "#36b385"
@@ -791,9 +808,9 @@ func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
 		active = *in.IsActive
 	}
 	if in.Slug == "" {
-		in.Slug = slugify(in.Name)
+		in.Slug = safeStoreSlug(in.Name)
 	} else {
-		in.Slug = slugify(in.Slug)
+		in.Slug = safeStoreSlug(in.Slug)
 	}
 	_, err := s.db.Exec(r.Context(), `UPDATE stores SET name=$1,slug=$2,description=$3,logo_url=$4,phone=NULL,whatsapp=$5,address=$6,primary_color=$7,is_active=$8,updated_at=now() WHERE id=$9`, in.Name, in.Slug, in.Description, in.LogoURL, in.Whatsapp, in.Address, in.PrimaryColor, active, id)
 	if err != nil {
@@ -3029,9 +3046,9 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if in.Slug == "" {
-		in.Slug = slugify(in.Name)
+		in.Slug = safeStoreSlug(in.Name)
 	} else {
-		in.Slug = slugify(in.Slug)
+		in.Slug = safeStoreSlug(in.Slug)
 	}
 	if in.Currency == "" {
 		in.Currency = "DOP"
@@ -4351,6 +4368,17 @@ func (s *Server) applyBusinessTemplate(ctx context.Context, tx pgx.Tx, storeID, 
 		FROM template_products tp LEFT JOIN categories c ON c.store_id=$1 AND c.slug=tp.category_slug
 		WHERE tp.template_id=$2 ORDER BY tp.sort_order
 		ON CONFLICT(store_id,slug) DO NOTHING`, storeID, templateID)
+	if err != nil {
+		return err
+	}
+	// Give demo categories a visual cover using the first product image. Merchants can replace it later.
+	_, err = tx.Exec(ctx, `UPDATE categories c SET image_url=(
+		SELECT p.image_url FROM products p
+		WHERE p.store_id=c.store_id AND p.category_id=c.id AND coalesce(p.image_url,'')<>''
+		ORDER BY p.is_featured DESC,p.sort_order,p.name LIMIT 1
+	)
+	WHERE c.store_id=$1 AND coalesce(c.image_url,'')=''
+	AND EXISTS(SELECT 1 FROM products p WHERE p.store_id=c.store_id AND p.category_id=c.id AND coalesce(p.image_url,'')<>'')`, storeID)
 	if err != nil {
 		return err
 	}
