@@ -1298,6 +1298,7 @@ const buildBusinessDisplayName = (typeName = "", businessName = "") => {
   const type = String(typeName || "").trim();
   const name = String(businessName || "").trim();
   if (!type) return name;
+  if (type.toLowerCase() === "otro tipo de negocio") return name;
   if (!name) return type;
   if (name.toLowerCase().startsWith(type.toLowerCase())) return name;
   return `${type} ${name}`.replace(/\s+/g, " ").trim();
@@ -1328,6 +1329,7 @@ const TenantForm = ({
   const [form, setForm] = useState(() => ({ ...emptyTenantForm }));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [businessTypeSearch, setBusinessTypeSearch] = useState("");
   const [businessIdentityCheck, setBusinessIdentityCheck] = useState({
     document: "",
     status: "idle",
@@ -1345,6 +1347,15 @@ const TenantForm = ({
     () => safeList(businessTypes).filter((item) => item.active !== false),
     [businessTypes],
   );
+  const filteredBusinessTypes = useMemo(() => {
+    const q = normalizeFilterText(businessTypeSearch);
+    if (!q) return activeBusinessTypes;
+    return activeBusinessTypes.filter((item) =>
+      [item.name, item.slug].some((value) =>
+        normalizeFilterText(value).includes(q),
+      ),
+    );
+  }, [activeBusinessTypes, businessTypeSearch]);
 
   const verifyBusinessRNC = async (values = form) => {
     const digits = onlyDigits(values.rnc);
@@ -1522,7 +1533,7 @@ const TenantForm = ({
     setError("");
     let submissionForm = { ...form };
     if (!submissionForm.business_type_id) {
-      setError("Selecciona el nombre/prefijo del negocio.");
+      setError("Selecciona el tipo de negocio.");
       return;
     }
     if (!String(submissionForm.business_name || "").trim()) {
@@ -1681,21 +1692,33 @@ const TenantForm = ({
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mt-4">
                 <label className="md:col-span-2 block">
                   <span className="block text-xs font-black text-gray-500 uppercase tracking-wide mb-2">
-                    Nombre del negocio *
+                    Tipo y nombre del negocio *
                   </span>
+                  <div className="relative mb-2">
+                    <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={businessTypeSearch}
+                      onChange={(event) => setBusinessTypeSearch(event.target.value)}
+                      placeholder="Buscar tipo de negocio..."
+                      className="w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 py-2.5 text-xs font-bold text-gray-800 outline-none focus:border-[#00a884] focus:ring-4 focus:ring-[#00a884]/10"
+                    />
+                  </div>
                   <div className="flex flex-col sm:flex-row gap-2 rounded-2xl border border-gray-200 bg-white p-1 focus-within:border-[#00a884] focus-within:ring-4 focus-within:ring-[#00a884]/10 transition-all">
                     <select
                       value={form.business_type_id}
-                      onChange={(e) => update("business_type_id", e.target.value)}
+                      onChange={(e) => { update("business_type_id", e.target.value); setBusinessTypeSearch(""); }}
                       required
-                      className="sm:w-56 rounded-xl border border-transparent bg-gray-50 sm:bg-transparent px-4 py-3 text-gray-900 font-black outline-none cursor-pointer"
+                      className="sm:w-64 rounded-xl border border-transparent bg-gray-50 sm:bg-transparent px-4 py-3 text-gray-900 font-black outline-none cursor-pointer"
                     >
                       <option value="">Tipo de negocio</option>
-                      {activeBusinessTypes.map((type) => (
+                      {filteredBusinessTypes.map((type) => (
                         <option key={type.id} value={type.id}>
                           {type.name}
                         </option>
                       ))}
+                      {businessTypeSearch && filteredBusinessTypes.length === 0 && (
+                        <option value="" disabled>No encontramos ese tipo</option>
+                      )}
                     </select>
                     <div className="hidden sm:block w-px bg-gray-200 my-2" />
                     <input
@@ -1703,11 +1726,11 @@ const TenantForm = ({
                       onChange={(e) => update("business_name", e.target.value)}
                       required
                       className="flex-1 rounded-xl border border-transparent bg-gray-50 sm:bg-transparent px-4 py-3 text-gray-900 font-bold outline-none"
-                      placeholder="Ej. La Esquina"
+                      placeholder="Nombre comercial, ej. La Esquina"
                     />
                   </div>
                   <p className="text-[11px] text-gray-400 mt-2">
-                    El tipo se usa como prefijo y WAMERCIO genera el nombre final automáticamente.
+                    Busca la actividad más cercana. Si no aparece, selecciona “Otro tipo de negocio”.
                   </p>
                 </label>
 
@@ -5529,7 +5552,7 @@ const CatalogProductModal = ({
                   {[
                     "Unidad",
                     "Libra",
-                    "Funda",
+                    "Pedidos por WhatsApp",
                     "Botella",
                     "Paquete",
                     "Caja",
@@ -6864,11 +6887,11 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   access_button_url: "#/admin",
   demo_button_text: "Demo gratis",
   demo_button_url: "#contacto",
-  badge_text: "SaaS hecho en República Dominicana 🇩🇴",
+  badge_text: "Comercio conversacional hecho en República Dominicana 🇩🇴",
   hero_title: "Digitaliza tu negocio",
   hero_highlight: "sin complicaciones.",
   hero_description:
-    "La plataforma todo en uno para comercios y negocios. Controla inventario, fiado, entregas a domicilio y vende en línea desde cualquier dispositivo.",
+    "La plataforma para negocios dominicanos que venden y atienden por WhatsApp. Organiza catálogo, pedidos, clientes, inventario, cobros y entregas desde un solo lugar.",
   primary_button_text: "Solicitar demo gratis",
   primary_button_url: "#contacto",
   secondary_button_text: "Ver video",
@@ -6876,7 +6899,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   hero_image_url:
     "https://images.unsplash.com/photo-1556742044-3c52d6e88c62?q=80&w=1200&auto=format&fit=crop",
   hero_stat_label: "Nuevos pedidos",
-  hero_stat_value: "Funda lista",
+  hero_stat_value: "Pedido listo",
   trust_items: ["PWA Instalable", "RD$", "Control de fiado"],
   problems_title: "Tu negocio no necesita más desorden.",
   problems_highlight: "Necesita más control.",
@@ -6935,7 +6958,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     },
     {
       icon: "shoppingbag",
-      title: "Funda de compra",
+      title: "Carrito de compra",
       text: "Experiencia intuitiva para armar pedidos y enviarlos por WhatsApp.",
     },
     {
@@ -6975,7 +6998,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
   rd_tags: [
     "RD$",
     "Cédula",
-    "Funda",
+    "Pedidos por WhatsApp",
     "Fiado",
     "Entrega por barrio",
     "Provincias y municipios",
@@ -6994,20 +7017,20 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     "Territorio dominicano completo (Provincias, Municipios)",
     "Sectores, barrios y zonas de entrega predefinidas",
   ],
-  audience_title: "Una plataforma para distintos tipos de comercio.",
+  audience_title: "Comercio conversacional para distintos tipos de negocio.",
   business_types: [
-    "Negocios",
+    "Tiendas",
     "Supermercados",
-    "Minimarkets",
-    "Provisiones",
-    "Surtidoras",
-    "Bodegas",
-    "Pulperías",
-    "Negocios con entrega local",
-    "Negocios con ventas fiadas",
-    "Comercios con cajeros",
-    "Comercios con repartidores",
-    "Propietarios con varios negocios",
+    "Ferreterías",
+    "Farmacias",
+    "Restaurantes",
+    "Boutiques",
+    "Salones y barberías",
+    "Tecnología y celulares",
+    "Repuestos y talleres",
+    "Distribuidoras",
+    "Servicios profesionales",
+    "Otros negocios",
   ],
   roles_title: "Cada persona trabaja desde su propio panel.",
   roles: [
@@ -7029,7 +7052,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     {
       icon: "smartphone",
       title: "Cliente",
-      text: "Consulta productos, arma su funda, hace pedidos, revisa sus compras y puede ver su fiado.",
+      text: "Consulta productos, arma su pedido, revisa sus compras y puede ver su fiado.",
     },
     {
       icon: "settings",
@@ -7053,7 +7076,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     },
     {
       title: "Recibe pedidos",
-      text: "Los clientes agregan productos a la funda y envían pedidos organizados.",
+      text: "Los clientes agregan productos y envían pedidos organizados.",
     },
     {
       title: "Despacha y entrega",
@@ -7115,7 +7138,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     {
       name: "Empresarial",
       price: "Cotizar",
-      description: "Para dueños con múltiples sucursales.",
+      description: "Para propietarios que administran varios negocios independientes.",
       features: [
         "Multi-negocio",
         "Usuarios ilimitados",
@@ -7134,7 +7157,7 @@ const buildDefaultLandingConfig = (domain = "ltd.do") => ({
     {
       question: "¿WAMERCIO sirve para diferentes tipos de negocio?",
       answer:
-        "Sí. WAMERCIO está diseñado para tiendas, supermercados, minimarkets, provisiones, surtidoras, bodegas, pulperías y otros comercios.",
+        "Sí. WAMERCIO está pensado para comercios y servicios que venden o atienden por WhatsApp: tiendas, supermercados, ferreterías, farmacias, restaurantes, boutiques, salones, tecnología, repuestos, distribuidoras y muchos otros.",
     },
     {
       question: "¿Mis clientes tienen que descargar una aplicación?",
@@ -10197,94 +10220,122 @@ const BusinessTypeForm = ({ item = null, onCancel, onSaved }: any) => {
   );
 };
 
-const BusinessTypesView = ({ types, onNew, onEdit, onDelete }: any) => (
-  <section className="space-y-4">
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-2xl">
-          🏠
-        </div>
-        <div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-            Catálogo
-          </p>
-          <h2 className="text-lg font-black text-gray-900">Tipos de negocio</h2>
-          <p className="text-xs text-gray-400 mt-1">
-            El tipo se usa como prefijo al crear un negocio y mejora la
-            clasificación del SaaS.
-          </p>
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={onNew}
-        className="h-11 px-4 rounded-xl bg-[#00a884] text-white hover:bg-[#008f72] flex items-center justify-center gap-2 text-xs font-black shadow-md shadow-[#00a884]/20"
-      >
-        <FiPlus />
-        Nuevo tipo
-      </button>
-    </div>
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-sm font-black text-gray-900">Tipos registrados</h3>
-        <span className="text-xs text-gray-400 font-bold">
-          {types.length} tipo(s)
-        </span>
-      </div>
-      {types.length > 0 ? (
-        types.map((type) => (
-          <div
-            key={type.id || type.slug}
-            className="px-5 py-4 border-b border-gray-50 last:border-b-0 flex items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-lg shrink-0">
-                {type.emoji || "🏪"}
-              </div>
-              <div className="min-w-0">
-                <h4 className="text-sm font-black text-gray-900 truncate">
-                  {type.name}
-                </h4>
-                <p className="text-xs text-gray-400 truncate">
-                  {type.domain_suffix || ".ltd.do"} · {type.tenants_count || 0}{" "}
-                  negocios
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge
-                value={type.active === false ? "disabled" : "active"}
-                labels={{ active: "Activo", disabled: "Inactivo" }}
-              />
-              <IconButton
-                onClick={() => onEdit?.(type)}
-                title="Editar tipo"
-                className="bg-blue-50 text-blue-600 hover:bg-blue-100"
-              >
-                <FiEdit3 />
-              </IconButton>
-              <IconButton
-                onClick={() => onDelete?.(type)}
-                title="Eliminar tipo"
-                disabled={(type.tenants_count || 0) > 0}
-                className="bg-red-50 text-red-500 hover:bg-red-100"
-              >
-                <FiTrash2 />
-              </IconButton>
-            </div>
+const BusinessTypesView = ({ types, onNew, onEdit, onDelete }: any) => {
+  const [typeSearch, setTypeSearch] = useState("");
+  const filteredTypes = useMemo(() => {
+    const q = normalizeFilterText(typeSearch);
+    if (!q) return types;
+    return safeList(types).filter((type) =>
+      [type.name, type.slug, type.domain_suffix].some((value) =>
+        normalizeFilterText(value).includes(q),
+      ),
+    );
+  }, [typeSearch, types]);
+
+  return (
+    <section className="space-y-4">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-2xl">
+            🏪
           </div>
-        ))
-      ) : (
-        <EmptyState
-          icon={FiHome}
-          title="Sin tipos de negocio"
-          text="Crea tipos como Tienda, Supermercado, Minimarket, Provisiones o Surtidora."
-          compact
-        />
-      )}
-    </div>
-  </section>
-);
+          <div>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              Catálogo
+            </p>
+            <h2 className="text-lg font-black text-gray-900">Tipos de negocio</h2>
+            <p className="text-xs text-gray-400 mt-1">
+              Clasifica el negocio de forma simple. Si no aparece su actividad,
+              usa “Otro tipo de negocio” o crea un tipo personalizado.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onNew}
+          className="h-11 px-4 rounded-xl bg-[#00a884] text-white hover:bg-[#008f72] flex items-center justify-center gap-2 text-xs font-black shadow-md shadow-[#00a884]/20"
+        >
+          <FiPlus />
+          Nuevo tipo
+        </button>
+      </div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-black text-gray-900">Tipos registrados</h3>
+            <span className="text-xs text-gray-400 font-bold">
+              {typeSearch ? `${filteredTypes.length} de ${types.length}` : `${types.length} tipo(s)`}
+            </span>
+          </div>
+          <label className="relative w-full sm:w-72">
+            <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={typeSearch}
+              onChange={(event) => setTypeSearch(event.target.value)}
+              placeholder="Buscar tipo de negocio..."
+              className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 py-2.5 text-xs font-bold text-gray-800 outline-none focus:border-[#00a884] focus:ring-4 focus:ring-[#00a884]/10"
+            />
+          </label>
+        </div>
+        {filteredTypes.length > 0 ? (
+          filteredTypes.map((type) => (
+            <div
+              key={type.id || type.slug}
+              className="px-5 py-4 border-b border-gray-50 last:border-b-0 flex items-center justify-between gap-4"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-lg shrink-0">
+                  {type.emoji || "🏪"}
+                </div>
+                <div className="min-w-0">
+                  <h4 className="text-sm font-black text-gray-900 truncate">
+                    {type.name}
+                  </h4>
+                  <p className="text-xs text-gray-400 truncate">
+                    {type.domain_suffix || ".ltd.do"} · {type.tenants_count || 0}{" "}
+                    negocios
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge
+                  value={type.active === false ? "disabled" : "active"}
+                  labels={{ active: "Activo", disabled: "Inactivo" }}
+                />
+                <IconButton
+                  onClick={() => onEdit?.(type)}
+                  title="Editar tipo"
+                  className="bg-blue-50 text-blue-600 hover:bg-blue-100"
+                >
+                  <FiEdit3 />
+                </IconButton>
+                <IconButton
+                  onClick={() => onDelete?.(type)}
+                  title="Eliminar tipo"
+                  disabled={(type.tenants_count || 0) > 0}
+                  className="bg-red-50 text-red-500 hover:bg-red-100"
+                >
+                  <FiTrash2 />
+                </IconButton>
+              </div>
+            </div>
+          ))
+        ) : (
+          <EmptyState
+            icon={FiHome}
+            title={typeSearch ? "No encontramos ese tipo" : "Sin tipos de negocio"}
+            text={
+              typeSearch
+                ? "Prueba otra búsqueda o crea un tipo personalizado."
+                : "WAMERCIO incluye tipos frecuentes y siempre permite crear uno personalizado."
+            }
+            compact
+          />
+        )}
+      </div>
+    </section>
+  );
+};
 
 const defaultGeoRDMapForm = {
   enabled: false,

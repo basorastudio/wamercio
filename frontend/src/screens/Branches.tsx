@@ -40,6 +40,7 @@ const {
   FiRefreshCw,
   FiCopy,
   FiLogOut,
+  FiSearch,
   FiSmartphone,
   FiCheckCircle,
   FiGrid,
@@ -212,6 +213,7 @@ const buildBusinessDisplayName = (typeName = '', businessName = '') => {
   const type = String(typeName || '').trim();
   const name = String(businessName || '').trim();
   if (!type) return name;
+  if (type.toLowerCase() === "otro tipo de negocio") return name;
   if (!name) return type;
   if (name.toLowerCase().startsWith(type.toLowerCase())) return name;
   return `${type} ${name}`.replace(/\s+/g, ' ').trim();
@@ -1498,10 +1500,18 @@ const OwnerTenantModal = ({ onClose }: any) => {
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [businessTypeSearch, setBusinessTypeSearch] = useState('');
   const rootDomain = useMemo(inferRootDomain, []);
 
   const activePlans = useMemo(() => safeList(plans).filter((plan) => plan.active !== false), [plans]);
   const activeBusinessTypes = useMemo(() => safeList(businessTypes).filter((item) => item.active !== false), [businessTypes]);
+  const filteredBusinessTypes = useMemo(() => {
+    const q = normalizeSlug(businessTypeSearch);
+    if (!q) return activeBusinessTypes;
+    return activeBusinessTypes.filter((item) =>
+      normalizeSlug(`${item.name || ''} ${item.slug || ''}`).includes(q),
+    );
+  }, [activeBusinessTypes, businessTypeSearch]);
   const generatedSlug = useMemo(() => buildAutoTenantSlug(form), [form.business_type_name, form.business_name, form.name, form.province, form.municipality, form.neighborhood]);
   const generatedDomain = useMemo(() => buildAutoTenantDomain(form, rootDomain), [generatedSlug, rootDomain]);
 
@@ -1567,7 +1577,7 @@ const OwnerTenantModal = ({ onClose }: any) => {
     event.preventDefault();
     setError('');
     if (!form.business_type_id) {
-      setError('Selecciona el nombre/prefijo del negocio.');
+      setError('Selecciona el tipo de negocio.');
       return;
     }
     if (!String(form.business_name || '').trim()) {
@@ -1658,16 +1668,26 @@ const OwnerTenantModal = ({ onClose }: any) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <label className="md:col-span-2 block">
-                <span className="block text-xs font-black text-gray-500 uppercase tracking-wide mb-2">Nombre del negocio *</span>
+                <span className="block text-xs font-black text-gray-500 uppercase tracking-wide mb-2">Tipo y nombre del negocio *</span>
+                <div className="relative mb-2">
+                  <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={businessTypeSearch}
+                    onChange={(event) => setBusinessTypeSearch(event.target.value)}
+                    placeholder="Buscar tipo de negocio..."
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 py-2.5 text-xs font-bold text-gray-800 outline-none focus:border-[#00a884] focus:ring-4 focus:ring-[#00a884]/10"
+                  />
+                </div>
                 <div className="flex flex-col sm:flex-row gap-2 rounded-2xl border border-gray-200 bg-gray-50 p-1 focus-within:border-[#00a884] focus-within:ring-4 focus-within:ring-[#00a884]/10 transition-all">
                   <select
                     value={form.business_type_id}
-                    onChange={(e) => update('business_type_id', e.target.value)}
+                    onChange={(e) => { update('business_type_id', e.target.value); setBusinessTypeSearch(''); }}
                     required
-                    className="sm:w-56 rounded-xl border border-transparent bg-white sm:bg-transparent px-4 py-3 text-gray-900 font-black outline-none cursor-pointer"
+                    className="sm:w-64 rounded-xl border border-transparent bg-white sm:bg-transparent px-4 py-3 text-gray-900 font-black outline-none cursor-pointer"
                   >
-                    <option value="">Nombre</option>
-                    {activeBusinessTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                    <option value="">Tipo de negocio</option>
+                    {filteredBusinessTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}
+                    {businessTypeSearch && filteredBusinessTypes.length === 0 && <option value="" disabled>No encontramos ese tipo</option>}
                   </select>
                   <div className="hidden sm:block w-px bg-gray-200 my-2" />
                   <input
@@ -1675,10 +1695,10 @@ const OwnerTenantModal = ({ onClose }: any) => {
                     onChange={(e) => update('business_name', e.target.value)}
                     required
                     className="flex-1 rounded-xl border border-transparent bg-white sm:bg-transparent px-4 py-3 text-gray-900 font-bold outline-none"
-                    placeholder="Ej. La Esquina"
+                    placeholder="Nombre comercial, ej. La Esquina"
                   />
                 </div>
-                <p className="text-[11px] text-gray-400 mt-2">El nombre seleccionado queda como prefijo fijo y se agrega un espacio automático antes del nombre escrito.</p>
+                <p className="text-[11px] text-gray-400 mt-2">Busca la actividad más cercana. Si no aparece, selecciona “Otro tipo de negocio”.</p>
               </label>
 
               <label className="block">
