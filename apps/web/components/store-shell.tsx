@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
-  ChevronLeft,ChevronRight
+  ChevronLeft,ChevronRight,ExternalLink
 } from 'lucide-react'
 
 const SIDEBAR_KEY='wamercio_sidebar_collapsed'
@@ -46,15 +46,17 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const[drawer,setDrawer]=useState(false)
  const[more,setMore]=useState(false)
  const[me,setMe]=useState<any>(null)
- const[storeCount,setStoreCount]=useState(0)
+ const[stores,setStores]=useState<any[]|null>(null)
  const[collapsed,setCollapsed]=useState(false)
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
- useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(x=>setStoreCount(x.length)).catch(()=>{});refresh();if(typeof window==='undefined')return;window.addEventListener('wamercio:stores-changed',refresh);return()=>window.removeEventListener('wamercio:stores-changed',refresh)},[])
+ useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(setStores).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;window.addEventListener('wamercio:stores-changed',refresh);return()=>window.removeEventListener('wamercio:stores-changed',refresh)},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
  useEffect(()=>{setMore(false);setDrawer(false)},[path])
  const toggleCollapsed=()=>setCollapsed(v=>{const next=!v;if(typeof window!=='undefined')localStorage.setItem(SIDEBAR_KEY,next?'1':'0');return next})
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
- const storeTools=useMemo(()=>storeCount===1?baseStoreTools:[...baseStoreTools,storesNav],[storeCount])
+ const storeCount=stores?.length??null
+ const primaryStore=useMemo(()=>stores?.find((store:any)=>store.is_active!==false)??stores?.[0]??null,[stores])
+ const storeTools=useMemo(()=>storeCount!==null&&storeCount>1?[...baseStoreTools,storesNav]:baseStoreTools,[storeCount])
  const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[storeTools])
  const all=useMemo(()=>[...commerce,...catalog,...storeTools,...account],[storeTools])
  return <div className="min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
@@ -86,7 +88,7 @@ export default function StoreShell({children,title,subtitle,actions,context,full
     <div className="flex min-h-[66px] flex-wrap items-center gap-3 px-3 py-2 sm:px-5 md:flex-nowrap md:py-0 lg:px-6 xl:px-7">
       <button className="rounded-xl p-2 text-[#777c96] hover:bg-[#f5f6f9] lg:hidden" onClick={()=>setDrawer(true)}><Menu className="h-5 w-5"/></button>
       <button className="hidden rounded-xl p-2 text-[#777c96] hover:bg-[#f5f6f9] lg:inline-flex" onClick={toggleCollapsed} title={collapsed?'Expandir menú':'Contraer menú'}>{collapsed?<ChevronRight className="h-5 w-5"/>:<ChevronLeft className="h-5 w-5"/>}</button>
-      <div className="min-w-0 flex-1"><h1 className="truncate text-lg font-semibold tracking-tight text-ink-900 sm:text-xl">{title}</h1>{subtitle&&<p className="hidden truncate text-xs text-[#9a9fb5] sm:block">{subtitle}</p>}</div>{context&&<div className="order-3 w-full md:order-none md:min-w-[210px] md:max-w-[300px] md:flex-1">{context}</div>}<div className="flex shrink-0 items-center gap-2">{actions}</div>
+      <div className="min-w-0 flex-1"><h1 className="truncate text-lg font-semibold tracking-tight text-ink-900 sm:text-xl">{title}</h1>{subtitle&&<p className="hidden truncate text-xs text-[#9a9fb5] sm:block">{subtitle}</p>}</div>{context&&<div className="order-3 w-full md:order-none md:min-w-[210px] md:max-w-[300px] md:flex-1">{context}</div>}<div className="flex shrink-0 items-center gap-2">{primaryStore&&<a href={storeCount===1?`/${primaryStore.slug}`:'/stores'} target={storeCount===1?'_blank':undefined} rel={storeCount===1?'noreferrer':undefined} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 sm:px-3.5 sm:text-sm" title={storeCount===1?'Abrir tienda pública':'Elegir tienda'}><Store className="h-4 w-4"/><span>Ver tienda</span>{storeCount===1&&<ExternalLink className="hidden h-3.5 w-3.5 opacity-70 sm:block"/>}</a>}{actions}</div>
     </div>
    </header>
    <main className={`mx-auto w-full max-w-[1700px] ${fullHeight?'h-[calc(100dvh-188px)] overflow-hidden p-3 sm:p-4 md:h-[calc(100dvh-132px)] lg:h-[calc(100dvh-66px)] lg:p-4 xl:p-4':'p-3 sm:p-5 lg:p-6 xl:p-7'}`}>{children}</main>

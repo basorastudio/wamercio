@@ -1,3 +1,12 @@
+# WAMERCIO 2.1.3 — Navegación limpia y checkout lateral
+
+- Evita el parpadeo de **Mis tiendas** al refrescar: el menú ya no asume múltiples tiendas mientras se resuelve la sesión; solo aparece cuando realmente existen dos o más.
+- Añade **Ver tienda** en la barra superior del panel. Con una sola tienda abre directamente el catálogo público en una pestaña nueva; con varias lleva al selector de tiendas.
+- El botón **Completar pedido** ya no abre un modal central. El checkout continúa dentro del mismo carrito lateral, con botón de regreso, formulario, resumen y confirmación en un único flujo.
+- Al abrir carrito o detalle de producto se bloquea el scroll de fondo para evitar desplazamientos simultáneos.
+- Oculta visualmente las barras de desplazamiento redundantes en toda la interfaz sin desactivar el scroll por rueda, touch, trackpad o teclado.
+- Actualiza el cache PWA a `wamercio-store-v2.1.3`.
+
 # WAMERCIO 2.1.2 — Storefront directo y experiencia de diseño
 
 - El catálogo público usa URL directa `/{slug}` (por ejemplo `wamercio.com/mi-mascota`); las URLs antiguas `/store/{slug}` redirigen automáticamente para no romper enlaces existentes.
