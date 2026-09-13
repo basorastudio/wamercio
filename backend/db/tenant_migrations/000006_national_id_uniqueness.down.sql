@@ -1,0 +1,4 @@
+DROP INDEX IF EXISTS idx_admin_profiles_national_id_digits_unique_not_blank;
+DROP INDEX IF EXISTS idx_admin_profiles_national_id_unique_not_blank;
+DROP INDEX IF EXISTS idx_system_users_national_id_digits_unique_not_blank;
+DROP INDEX IF EXISTS idx_customers_national_id_digits_unique_not_blank;

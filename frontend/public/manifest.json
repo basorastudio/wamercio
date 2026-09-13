@@ -1,0 +1,87 @@
+{
+  "name": "WAMERCIO",
+  "short_name": "WAMERCIO",
+  "description": "Sistema de gestión para negocios: catálogo, punto de venta, inventario, fiados, usuarios, pedidos y entregas.",
+  "start_url": "/#/",
+  "display": "standalone",
+  "background_color": "#f8f9fa",
+  "theme_color": "#00a884",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "scope": "/",
+  "lang": "es-DO",
+  "dir": "ltr",
+  "categories": [
+    "business",
+    "productivity",
+    "shopping"
+  ],
+  "id": "/#/",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "prefer_related_applications": false,
+  "handle_links": "preferred",
+  "shortcuts": [
+    {
+      "name": "Catálogo",
+      "short_name": "Catálogo",
+      "description": "Abrir el catálogo de productos",
+      "url": "/#/",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Mi Funda",
+      "short_name": "Funda",
+      "description": "Ver productos agregados",
+      "url": "/#/cart",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Panel administrativo",
+      "short_name": "Admin",
+      "description": "Abrir el panel administrativo",
+      "url": "/#/admin",
+      "icons": [
+        {
+          "src": "/icons/icon-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

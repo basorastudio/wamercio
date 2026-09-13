@@ -1,0 +1,258 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .app-viewport {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    position: relative;
+    overscroll-behavior: none;
+    isolation: isolate;
+  }
+  .modal-viewport {
+    max-height: calc(100dvh - 2rem);
+  }
+  .app-scroll-area {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .app-fixed-edge {
+    flex-shrink: 0;
+    z-index: 30;
+  }
+  .catalog-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(15, 23, 42, 0.35) rgba(148, 163, 184, 0.16);
+    -webkit-overflow-scrolling: touch;
+  }
+  .catalog-scrollbar::-webkit-scrollbar {
+    width: 12px;
+  }
+  .catalog-scrollbar::-webkit-scrollbar-track {
+    background: rgba(148, 163, 184, 0.14);
+    border-radius: 999px;
+  }
+  .catalog-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(15, 23, 42, 0.32);
+    border: 3px solid rgba(248, 250, 252, 0.95);
+    border-radius: 999px;
+  }
+  .catalog-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(15, 23, 42, 0.48);
+  }
+  .landing-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 168, 132, 0.58) rgba(15, 23, 42, 0.10);
+    -webkit-overflow-scrolling: touch;
+  }
+  .landing-scrollbar::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  .landing-scrollbar::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.08);
+    border-radius: 999px;
+  }
+  .landing-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 168, 132, 0.52);
+    border: 3px solid rgba(248, 250, 252, 0.96);
+    border-radius: 999px;
+  }
+  .landing-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 143, 114, 0.72);
+  }
+
+}
+
+/* Transiciones globales suaves */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f8fafc;
+  overflow: hidden;
+}
+
+#root, body > div {
+  height: 100dvh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* Evitar scroll horizontal global */
+html, body {
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  max-width: 100vw;
+}
+
+/* Inputs y selects nativos */
+input, select, textarea, button {
+  font-family: inherit;
+}
+
+/* Quitar outline azul en móvil */
+input:focus, button:focus, select:focus, textarea:focus {
+  outline: none;
+}
+
+/* Animaciones de página */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.page-enter {
+  animation: fadeInUp 0.25s ease-out;
+}
+
+/* Print */
+@media print {
+  body { background: white; overflow: auto; }
+  #root { height: auto; overflow: visible; }
+  .print\:hidden { display: none !important; }
+}
+/* Dynamic business theme -----------------------------------------------------
+   When an administrator defines an accent color in Settings, the storefront
+   and business panel replace the default green accents with the business color.
+   This applies only when an active business exists, so the SuperAdmin panel and
+   the central WAMERCIO landing page remain unaffected. */
+:root {
+  --store-accent: #00a884;
+  --store-accent-rgb: 0, 168, 132;
+  --store-accent-dark: #008f72;
+}
+
+.store-accent-text { color: var(--store-accent) !important; }
+.store-accent-bg { background-color: var(--store-accent) !important; }
+.store-accent-bg-soft { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+.store-accent-border { border-color: rgba(var(--store-accent-rgb), 0.28) !important; }
+.store-accent-ring:focus { --tw-ring-color: rgba(var(--store-accent-rgb), 0.26) !important; border-color: var(--store-accent) !important; }
+
+html[data-colmapro-store-theme="true"] [class*="text-[#00a884]"],
+html[data-colmapro-store-theme="true"] [class*="text-[#008f72]"],
+html[data-colmapro-store-theme="true"] [class*="text-[#007a62]"] {
+  color: var(--store-accent) !important;
+}
+
+html[data-colmapro-store-theme="true"] [class*="hover:text-[#00a884]"]:hover,
+html[data-colmapro-store-theme="true"] [class*="hover:text-[#008f72]"]:hover,
+html[data-colmapro-store-theme="true"] [class*="hover:text-[#007a62]"]:hover {
+  color: var(--store-accent) !important;
+}
+
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]"] {
+  background-color: var(--store-accent) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/5"] { background-color: rgba(var(--store-accent-rgb), 0.05) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/8"] { background-color: rgba(var(--store-accent-rgb), 0.08) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/10"] { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/15"] { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/20"] { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/30"] { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/35"] { background-color: rgba(var(--store-accent-rgb), 0.35) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/40"] { background-color: rgba(var(--store-accent-rgb), 0.40) !important; }
+html[data-colmapro-store-theme="true"] [class*="bg-[#00a884]/45"] { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
+
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]"]:hover {
+  background-color: var(--store-accent) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/10"]:hover { background-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/15"]:hover { background-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/20"]:hover { background-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/30"]:hover { background-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#00a884]/45"]:hover { background-color: rgba(var(--store-accent-rgb), 0.45) !important; }
+
+html[data-colmapro-store-theme="true"] [class*="bg-[#eafaf1]"],
+html[data-colmapro-store-theme="true"] [class*="bg-[#f0fbf8]"],
+html[data-colmapro-store-theme="true"] [class*="bg-[#f0fdf8]"],
+html[data-colmapro-store-theme="true"] [class*="bg-emerald-50"] {
+  background-color: rgba(var(--store-accent-rgb), 0.09) !important;
+}
+
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#d4f5e9]"]:hover,
+html[data-colmapro-store-theme="true"] [class*="hover:bg-[#dff7ef]"]:hover,
+html[data-colmapro-store-theme="true"] [class*="hover:bg-emerald-100"]:hover {
+  background-color: rgba(var(--store-accent-rgb), 0.16) !important;
+}
+
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]"] { border-color: var(--store-accent) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/10"] { border-color: rgba(var(--store-accent-rgb), 0.10) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/15"] { border-color: rgba(var(--store-accent-rgb), 0.15) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/20"] { border-color: rgba(var(--store-accent-rgb), 0.20) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/30"] { border-color: rgba(var(--store-accent-rgb), 0.30) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#00a884]/40"] { border-color: rgba(var(--store-accent-rgb), 0.40) !important; }
+html[data-colmapro-store-theme="true"] [class*="border-[#bce8d1]"],
+html[data-colmapro-store-theme="true"] [class*="border-emerald-100"],
+html[data-colmapro-store-theme="true"] [class*="border-emerald-200"] {
+  border-color: rgba(var(--store-accent-rgb), 0.24) !important;
+}
+
+html[data-colmapro-store-theme="true"] [class*="focus:border-[#00a884]"]:focus {
+  border-color: var(--store-accent) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="focus:ring-[#00a884]"]:focus {
+  --tw-ring-color: rgba(var(--store-accent-rgb), 0.24) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="shadow-[#00a884]"] {
+  --tw-shadow-color: rgba(var(--store-accent-rgb), 0.25) !important;
+  --tw-shadow: var(--tw-shadow-colored) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="ring-emerald"] {
+  --tw-ring-color: rgba(var(--store-accent-rgb), 0.24) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="text-emerald-500"],
+html[data-colmapro-store-theme="true"] [class*="text-emerald-600"],
+html[data-colmapro-store-theme="true"] [class*="text-emerald-700"] {
+  color: var(--store-accent) !important;
+}
+html[data-colmapro-store-theme="true"] [class*="bg-emerald-400"],
+html[data-colmapro-store-theme="true"] [class*="bg-emerald-500"],
+html[data-colmapro-store-theme="true"] [class*="bg-emerald-600"] {
+  background-color: var(--store-accent) !important;
+}

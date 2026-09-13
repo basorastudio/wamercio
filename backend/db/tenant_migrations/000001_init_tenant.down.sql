@@ -1,0 +1,7 @@
+DROP TABLE IF EXISTS cash_history;
+DROP TABLE IF EXISTS bank_accounts;
+DROP TABLE IF EXISTS store_credits;
+DROP TABLE IF EXISTS sales;
+DROP TABLE IF EXISTS customers;
+DROP TABLE IF EXISTS products;
+DROP TABLE IF EXISTS stores;

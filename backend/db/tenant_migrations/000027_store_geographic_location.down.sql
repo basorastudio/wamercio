@@ -1,0 +1,9 @@
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_location_source_check;
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_location_accuracy_check;
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_longitude_check;
+ALTER TABLE stores DROP CONSTRAINT IF EXISTS stores_latitude_check;
+ALTER TABLE stores DROP COLUMN IF EXISTS location_updated_at;
+ALTER TABLE stores DROP COLUMN IF EXISTS location_source;
+ALTER TABLE stores DROP COLUMN IF EXISTS location_accuracy;
+ALTER TABLE stores DROP COLUMN IF EXISTS longitude;
+ALTER TABLE stores DROP COLUMN IF EXISTS latitude;

@@ -1,0 +1,71 @@
+{
+  "services": [
+    [
+      "Sessions",
+      "SessionsService"
+    ],
+    [
+      "Messages",
+      "MessagesService"
+    ],
+    [
+      "Groups",
+      "GroupsService"
+    ],
+    [
+      "Contacts",
+      "ContactsService"
+    ],
+    [
+      "Media",
+      "MediaService"
+    ],
+    [
+      "Calls",
+      "CallsService"
+    ],
+    [
+      "Webhooks",
+      "WebhooksService"
+    ],
+    [
+      "Presence",
+      "PresenceService"
+    ],
+    [
+      "ChatState",
+      "ChatStateService"
+    ],
+    [
+      "Privacy",
+      "PrivacyService"
+    ],
+    [
+      "Blocking",
+      "BlockingService"
+    ],
+    [
+      "MEX",
+      "MEXService"
+    ],
+    [
+      "Newsletter",
+      "NewsletterService"
+    ],
+    [
+      "Operations",
+      "OperationsService"
+    ],
+    [
+      "NATS",
+      "NATSService"
+    ],
+    [
+      "Status",
+      "StatusService"
+    ]
+  ],
+  "operation_count": 103,
+  "schema_count": 142,
+  "api_version": "0.1.0"
+}

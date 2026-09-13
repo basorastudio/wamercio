@@ -1,0 +1,17 @@
+[Unit]
+Description=WAMERCIO PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=COLMAPRO_PROJECT_DIR=/opt/colmapro
+Environment=COLMAPRO_BACKUP_ROOT=/opt/colmapro_backups
+ExecStart=/opt/colmapro/scripts/backup/create-backup.sh
+ExecStartPost=/opt/colmapro/scripts/backup/verify-backup.sh /opt/colmapro_backups/latest
+ExecStartPost=/opt/colmapro/scripts/backup/retention.sh
+User=root
+Group=root
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
