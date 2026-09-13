@@ -1,3 +1,10 @@
+# WAMERCIO 2.2.1 — Corrección de compilación del API
+
+- Corrige un bloque de validación redundante insertado accidentalmente en `requestSubscription`, que referenciaba `id` antes de declararlo y detenía el build del API en Dokploy con `undefined: id`.
+- La validación redundante se elimina porque `requireStoreAuth` ya exige una sesión de propietario antes de acceder a solicitudes de suscripción.
+- Añade `scripts/verify-api-compile-guards.sh` y lo integra en la verificación de la versión para impedir que esta regresión reaparezca.
+- Actualiza versión y caché PWA a `2.2.1` sin cambios de esquema ni nuevas variables de entorno.
+
 # WAMERCIO 2.2.0 — Administración SaaS y operación comercial convergentes
 
 - Reestructura Superadmin con Página comercial, Propietarios, Planes/Suscripciones, Clientes globales, Usuarios SaaS y Centro SaaS manteniendo la UI de WAMERCIO.

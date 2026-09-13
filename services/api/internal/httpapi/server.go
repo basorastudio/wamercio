@@ -3334,11 +3334,6 @@ func (s *Server) requestSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	var currentPlan string
 	_ = s.db.QueryRow(r.Context(), `SELECT plan_id FROM subscriptions WHERE user_id=$1`, c.UserID).Scan(&currentPlan)
-	var ownerExists bool
-	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='owner')`, id).Scan(&ownerExists); err != nil || !ownerExists {
-		jsonErr(w, 404, "Propietario no encontrado")
-		return
-	}
 	var active bool
 	if s.db.QueryRow(r.Context(), `SELECT is_active FROM plans WHERE id=$1`, in.PlanID).Scan(&active) != nil || !active {
 		jsonErr(w, 404, "Plan no disponible")
