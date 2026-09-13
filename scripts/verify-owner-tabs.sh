@@ -19,7 +19,9 @@ grep -q 'Put("/admin/stores/{id}"' services/api/internal/httpapi/server.go || fa
 grep -q "Propietario" apps/web/app/admin/owners/page.tsx || fail 'owner tab label missing'
 grep -q "Negocio" apps/web/app/admin/owners/page.tsx || fail 'business tab label missing'
 grep -q 'Fecha de nacimiento' apps/web/app/admin/owners/page.tsx || fail 'birth date field missing'
-grep -q 'Cédula / RNC' apps/web/app/admin/owners/page.tsx || fail 'document field missing'
+grep -q 'Cédula' apps/web/app/admin/owners/page.tsx || fail 'cedula field missing'
+grep -q 'RNC del negocio' apps/web/app/admin/owners/page.tsx || fail 'business RNC field missing'
+! grep -q 'Cédula / RNC' apps/web/app/admin/owners/page.tsx || fail 'owner/business documents must be separated'
 grep -q 'Negocios asociados' apps/web/app/admin/owners/page.tsx || fail 'associated businesses UI missing'
 grep -q '/admin/owners/verify-identity' apps/web/app/admin/owners/page.tsx || fail 'identity verification integration missing'
 

@@ -172,6 +172,10 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("owners")).Get("/admin/owners", s.adminOwners)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners", s.adminCreateOwner)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners/verify-identity", s.adminVerifyOwnerIdentity)
+			a.With(s.requireAdminArea("owners")).Post("/admin/owners/validate-whatsapp", s.adminValidateOwnerWhatsApp)
+			a.With(s.requireAdminArea("owners")).Get("/admin/territories/provinces", s.adminTerritoryProvinces)
+			a.With(s.requireAdminArea("owners")).Get("/admin/territories/cities", s.adminTerritoryCities)
+			a.With(s.requireAdminArea("owners")).Get("/admin/territories/neighborhoods", s.adminTerritoryNeighborhoods)
 			a.With(s.requireAdminArea("owners")).Get("/admin/owners/{id}", s.adminOwnerDetail)
 			a.With(s.requireAdminArea("owners")).Put("/admin/owners/{id}", s.adminUpdateOwner)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners/{id}/stores", s.adminCreateOwnerStore)
@@ -5654,20 +5658,30 @@ func (s *Server) adminTestPlatformIntegration(w http.ResponseWriter, r *http.Req
 
 func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Name             string `json:"name"`
-		LastName         string `json:"last_name"`
-		Phone            string `json:"phone"`
-		PIN              string `json:"pin"`
-		DocumentType     string `json:"document_type"`
-		DocumentNumber   string `json:"document_number"`
-		BirthDate        string `json:"birth_date"`
-		Gender           string `json:"gender"`
-		Status           string `json:"status"`
-		PlanID           string `json:"plan_id"`
-		BusinessName     string `json:"business_name"`
-		TemplateSlug     string `json:"template_slug"`
-		BusinessWhatsApp string `json:"business_whatsapp"`
-		BusinessStatus   string `json:"business_status"`
+		Name                   string `json:"name"`
+		LastName               string `json:"last_name"`
+		Phone                  string `json:"phone"`
+		PIN                    string `json:"pin"`
+		DocumentNumber         string `json:"document_number"`
+		BirthDate              string `json:"birth_date"`
+		Gender                 string `json:"gender"`
+		Status                 string `json:"status"`
+		PlanID                 string `json:"plan_id"`
+		BusinessName           string `json:"business_name"`
+		TemplateSlug           string `json:"template_slug"`
+		BusinessWhatsApp       string `json:"business_whatsapp"`
+		BusinessStatus         string `json:"business_status"`
+		BusinessRNC            string `json:"business_rnc"`
+		BusinessLegalName      string `json:"business_legal_name"`
+		BusinessCommercialName string `json:"business_commercial_name"`
+		ProvinceCode           string `json:"province_code"`
+		Province               string `json:"province"`
+		CityID                 string `json:"city_id"`
+		Municipality           string `json:"municipality"`
+		NeighborhoodID         string `json:"neighborhood_id"`
+		Neighborhood           string `json:"neighborhood"`
+		Street                 string `json:"street"`
+		StreetNumber           string `json:"street_number"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
@@ -5681,10 +5695,14 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp y PIN de %d dígitos son obligatorios", pinLength))
 		return
 	}
+	if _, err := s.validateOwnerWhatsAppForSave(r.Context(), phone); err != nil {
+		jsonErr(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
 	status := normalizeOwnerStatus(in.Status)
-	docType, document := normalizeOwnerDocument(in.DocumentType, in.DocumentNumber)
-	if !validOwnerDocument(docType, document) {
-		jsonErr(w, 400, "La Cédula debe tener 11 dígitos y el RNC 9 u 11 dígitos")
+	document := digitsOnly(in.DocumentNumber)
+	if len(document) != 11 {
+		jsonErr(w, 400, "La Cédula es obligatoria y debe tener exactamente 11 dígitos")
 		return
 	}
 	identity := s.platformSetting(r.Context(), "identity")
@@ -5692,17 +5710,17 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	identityEnabled, _ := identity["enabled"].(bool)
 	var verifiedAt any
 	if requireIdentity && document == "" {
-		jsonErr(w, 422, "La verificación de Cédula o RNC es obligatoria para crear propietarios")
+		jsonErr(w, 422, "La Cédula es obligatoria para crear propietarios")
 		return
 	}
 	if document != "" && identityEnabled {
-		if _, _, err := s.verifyIdentityDocument(r.Context(), docType, document); err != nil {
-			jsonErr(w, 422, "No pudimos verificar la identidad: "+err.Error())
+		if _, _, err := s.verifyIdentityDocument(r.Context(), "persona", document); err != nil {
+			jsonErr(w, 422, "No pudimos verificar la Cédula: "+err.Error())
 			return
 		}
 		verifiedAt = time.Now()
 	} else if requireIdentity {
-		jsonErr(w, 503, "La verificación de identidad es obligatoria, pero la integración está deshabilitada")
+		jsonErr(w, 503, "La verificación de Cédula es obligatoria, pero la integración está deshabilitada")
 		return
 	}
 	var exists bool
@@ -5715,12 +5733,31 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if document != "" {
-		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND document_type=$1 AND document_number=$2)`, docType, document).Scan(&exists)
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND document_type='persona' AND document_number=$1)`, document).Scan(&exists)
 		if exists {
-			jsonErr(w, 409, "Ya existe un propietario con esa Cédula o RNC")
+			jsonErr(w, 409, "Ya existe un propietario con esa Cédula")
 			return
 		}
 	}
+
+	businessName := strings.TrimSpace(in.BusinessName)
+	business := adminBusinessInput{
+		Name: businessName, TemplateSlug: in.TemplateSlug, WhatsApp: in.BusinessWhatsApp, Status: in.BusinessStatus,
+		RNC: in.BusinessRNC, LegalName: in.BusinessLegalName, CommercialName: in.BusinessCommercialName,
+		ProvinceCode: in.ProvinceCode, Province: in.Province, CityID: in.CityID, Municipality: in.Municipality,
+		NeighborhoodID: in.NeighborhoodID, Neighborhood: in.Neighborhood, Street: in.Street, StreetNumber: in.StreetNumber,
+	}
+	var businessRNC, businessLegalName, businessCommercialName string
+	var businessRNCVerifiedAt any
+	if businessName != "" {
+		var err error
+		businessRNC, businessLegalName, businessCommercialName, businessRNCVerifiedAt, err = s.prepareBusinessIdentity(r.Context(), business, "", false)
+		if err != nil {
+			jsonErr(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+	}
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo proteger el PIN")
@@ -5733,7 +5770,7 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var ownerID string
-	if err = tx.QueryRow(r.Context(), `INSERT INTO users(name,last_name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,birth_date,gender,identity_verified_at) VALUES($1,$2,NULL,$3,NULL,$4,now(),'owner',$5,nullif($6,''),nullif($7,''),nullif($8,'')::date,nullif($9,''),$10) RETURNING id`, name, lastName, phone, string(hash), status, docType, document, strings.TrimSpace(in.BirthDate), normalizeOwnerGender(in.Gender), verifiedAt).Scan(&ownerID); err != nil {
+	if err = tx.QueryRow(r.Context(), `INSERT INTO users(name,last_name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,birth_date,gender,identity_verified_at,whatsapp_verified_at) VALUES($1,$2,NULL,$3,NULL,$4,now(),'owner',$5,CASE WHEN nullif($6,'') IS NULL THEN NULL ELSE 'persona' END,nullif($6,''),nullif($7,'')::date,nullif($8,''),$9,now()) RETURNING id`, name, lastName, phone, string(hash), status, document, strings.TrimSpace(in.BirthDate), normalizeOwnerGender(in.Gender), verifiedAt).Scan(&ownerID); err != nil {
 		jsonErr(w, 409, "No se pudo crear el propietario")
 		return
 	}
@@ -5755,7 +5792,6 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 	if planID != "" {
 		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO UPDATE SET plan_id=excluded.plan_id,status='active',starts_at=now(),ends_at=NULL`, ownerID, planID)
 	}
-	businessName := strings.TrimSpace(in.BusinessName)
 	var storeID string
 	if businessName != "" {
 		slug := s.safeStoreSlugFor(r.Context(), businessName)
@@ -5764,8 +5800,9 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 			businessWhatsApp = phone
 		}
 		businessActive := normalizeBusinessStatus(in.BusinessStatus) == "active"
-		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp,is_active) VALUES($1,$2,$3,NULL,$4,$5) RETURNING id`, ownerID, businessName, slug, businessWhatsApp, businessActive).Scan(&storeID); err != nil {
-			jsonErr(w, 409, "No se pudo crear el negocio; verifica el nombre o identificador")
+		address := businessAddress(business)
+		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp,is_active,address,rnc,legal_name,commercial_name,rnc_verified_at,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number) VALUES($1,$2,$3,NULL,$4,$5,nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),$10,nullif($11,''),nullif($12,''),nullif($13,''),nullif($14,''),nullif($15,''),nullif($16,''),nullif($17,''),nullif($18,'')) RETURNING id`, ownerID, businessName, slug, businessWhatsApp, businessActive, address, businessRNC, businessLegalName, businessCommercialName, businessRNCVerifiedAt, strings.TrimSpace(in.ProvinceCode), strings.TrimSpace(in.Province), strings.TrimSpace(in.CityID), strings.TrimSpace(in.Municipality), strings.TrimSpace(in.NeighborhoodID), strings.TrimSpace(in.Neighborhood), strings.TrimSpace(in.Street), strings.TrimSpace(in.StreetNumber)).Scan(&storeID); err != nil {
+			jsonErr(w, 409, "No se pudo crear el negocio; verifica el nombre o RNC")
 			return
 		}
 		if err = s.applyBusinessTemplate(r.Context(), tx, storeID, in.TemplateSlug); err != nil {
@@ -5778,7 +5815,7 @@ func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := claims(r)
-	s.auditPlatform(r.Context(), c.UserID, "owner.created", "owner", ownerID, map[string]any{"business_id": storeID, "document_type": docType, "identity_verified": verifiedAt != nil})
+	s.auditPlatform(r.Context(), c.UserID, "owner.created", "owner", ownerID, map[string]any{"business_id": storeID, "document_type": "persona", "identity_verified": verifiedAt != nil, "whatsapp_verified": true, "rnc_verified": businessRNCVerifiedAt != nil})
 	jsonOut(w, 201, map[string]any{"id": ownerID, "store_id": storeID, "ok": true})
 }
 

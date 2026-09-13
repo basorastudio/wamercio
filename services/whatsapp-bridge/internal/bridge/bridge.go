@@ -177,6 +177,8 @@ func (m *Manager) handleSession(w http.ResponseWriter, r *http.Request) {
 		m.connect(w, r, sessionKey)
 	case r.Method == "POST" && action == "disconnect":
 		m.disconnect(w, r, sessionKey)
+	case r.Method == "POST" && action == "check":
+		m.checkNumber(w, r, sessionKey)
 	case r.Method == "POST" && action == "messages":
 		m.send(w, r, sessionKey)
 	case r.Method == "POST" && action == "media":
@@ -392,6 +394,50 @@ func phoneJID(phone string) types.JID {
 	p := nonDigits.ReplaceAllString(phone, "")
 	return types.NewJID(p, types.DefaultUserServer)
 }
+func (m *Manager) checkNumber(w http.ResponseWriter, r *http.Request, sessionKey string) {
+	var in struct {
+		Phone string `json:"phone"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in) != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phone es obligatorio"})
+		return
+	}
+	digits := nonDigits.ReplaceAllString(in.Phone, "")
+	if len(digits) < 8 || len(digits) > 15 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Número de WhatsApp inválido"})
+		return
+	}
+	s, err := m.sessionForSend(sessionKey)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	results, err := s.Client.IsOnWhatsApp(ctx, []string{"+" + digits})
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "No se pudo validar el número en WhatsApp: " + err.Error()})
+		return
+	}
+	registered := false
+	jid := ""
+	query := "+" + digits
+	if len(results) > 0 {
+		registered = results[0].IsIn
+		query = results[0].Query
+		if !results[0].JID.IsEmpty() {
+			jid = results[0].JID.String()
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":         true,
+		"registered": registered,
+		"phone":      "+" + digits,
+		"query":      query,
+		"jid":        jid,
+	})
+}
+
 func (m *Manager) sessionForSend(sessionKey string) (*Session, error) {
 	m.mu.RLock()
 	s := m.sessions[sessionKey]

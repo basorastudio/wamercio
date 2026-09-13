@@ -1,3 +1,13 @@
+# WAMERCIO 2.3.2
+
+- WhatsApp SaaS reactivo: el QR desaparece automáticamente al vincular la sesión principal.
+- Validación real de WhatsApp de propietarios mediante la sesión `support` de whatsmeow.
+- Cédula exclusiva del propietario, con formato dominicano, verificación y autocompletado de identidad.
+- RNC trasladado al negocio, opcional, con verificación y autocompletado fiscal.
+- Tipo de negocio + nombre fusionados, vista previa del nombre final y ruta pública.
+- Ubicación comercial estructurada con soporte para GEO RD MAP y captura manual de respaldo.
+- Persistencia de estado de validación de WhatsApp, identidad fiscal y dirección comercial.
+
 # WAMERCIO 2.3.1 — Propietarios y negocios en pestañas
 
 - Modal unificado Nuevo / Editar propietario con pestañas **Propietario** y **Negocio**.

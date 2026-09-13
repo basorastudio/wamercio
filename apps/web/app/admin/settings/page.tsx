@@ -48,6 +48,13 @@ export default function SaaSSettings(){
  const loadWa=async()=>{try{setWa(await api('/admin/whatsapp/status'))}catch(e:any){setErr(e.message)}}
  useEffect(()=>{void load()},[])
  useEffect(()=>{setNotice('');setTestResult(null);if(active==='databases')void loadDb();if(active==='whatsapp')void loadWa()},[active])
+ useEffect(()=>{
+  if(active!=='whatsapp')return
+  if(wa.connected||wa.status==='connected')return
+  if(!['starting','qr','connecting'].includes(String(wa.status||'')))return
+  const timer=window.setInterval(()=>void loadWa(),1000)
+  return()=>window.clearInterval(timer)
+ },[active,wa.connected,wa.status])
  const update=(section:string,key:string,value:any)=>setData((v:any)=>({...v,[section]:{...(v?.[section]||{}),[key]:value}}))
  const saveSection=async()=>{if(!editable.has(active))return;setSaving(true);setErr('');setNotice('');try{const out=await api<any>(`/admin/platform/settings/${active}`,{method:'PUT',body:JSON.stringify(data[active]||{})});setData((v:any)=>({...v,[active]:out}));setNotice(`${current?.[1]||'Configuración'} guardado correctamente.`)}catch(e:any){setErr(e.message)}finally{setSaving(false)}}
  const test=async(kind:string,payload?:any)=>{setTesting(kind);setTestResult(null);setErr('');try{if(data?.[kind]){const saved=await api<any>(`/admin/platform/settings/${kind}`,{method:'PUT',body:JSON.stringify(data[kind])});setData((v:any)=>({...v,[kind]:saved}))}setTestResult(await api(`/admin/platform/test/${kind}`,{method:'POST',body:payload?JSON.stringify(payload):undefined}))}catch(e:any){setTestResult({ok:false,message:e.message})}finally{setTesting('')}}
