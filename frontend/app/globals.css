@@ -118,10 +118,17 @@ body {
   overflow: hidden;
 }
 
-#root, body > div {
-  height: 100dvh;
+/* Only the WAMERCIO application root owns the viewport.
+   Do not target `body > div`: Next.js may inject auxiliary direct children
+   (route announcers, recovery/runtime containers, etc.) and forcing those
+   nodes to 100dvh creates a blank viewport above the application. */
+#wamercio-app-root {
   width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   overflow: hidden;
+  position: relative;
 }
 
 /* Evitar scroll horizontal global */
@@ -154,7 +161,7 @@ input:focus, button:focus, select:focus, textarea:focus {
 /* Print */
 @media print {
   body { background: white; overflow: auto; }
-  #root { height: auto; overflow: visible; }
+  #wamercio-app-root { height: auto; overflow: visible; }
   .print\:hidden { display: none !important; }
 }
 /* Dynamic business theme -----------------------------------------------------

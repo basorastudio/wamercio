@@ -8,7 +8,7 @@
     "build": "next build",
     "lint": "next lint",
     "typecheck": "tsc --noEmit --pretty false",
-    "test:source": "node scripts/verify-production-surface.mjs"
+    "test:source": "node scripts/verify-production-surface.mjs && node scripts/verify-app-viewport-root.mjs"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.5.0",

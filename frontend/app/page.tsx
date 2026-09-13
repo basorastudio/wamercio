@@ -4,9 +4,11 @@ import DynamicPWA from '@/components/DynamicPWA';
 
 export default function Page() {
   return (
-    <AppProviders>
-      <DynamicPWA />
-      <AppRoot />
-    </AppProviders>
+    <div id="wamercio-app-root">
+      <AppProviders>
+        <DynamicPWA />
+        <AppRoot />
+      </AppProviders>
+    </div>
   );
 }
