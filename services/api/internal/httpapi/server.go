@@ -68,6 +68,8 @@ func (s *Server) Router() http.Handler {
 		api.Get("/meta/country", s.metaCountry)
 		// Merchant/store access is intentionally independent from SaaS administration.
 		api.Post("/auth/store/lookup", s.storeLookup)
+		api.Post("/auth/store/validate-whatsapp", s.publicValidateRegistrationWhatsApp)
+		api.Post("/auth/store/verify-identity", s.publicVerifyRegistrationIdentity)
 		api.Post("/auth/store/login", s.storeLogin)
 		api.Post("/auth/store/register", s.register)
 		api.Post("/auth/store/logout", s.storeLogout)
@@ -79,6 +81,9 @@ func (s *Server) Router() http.Handler {
 
 		api.Get("/plans", s.listPlans)
 		api.Get("/public/platform", s.publicPlatformSettings)
+		api.Get("/public/territories/provinces", s.publicTerritoryProvinces)
+		api.Get("/public/territories/cities", s.publicTerritoryCities)
+		api.Get("/public/territories/neighborhoods", s.publicTerritoryNeighborhoods)
 		api.Get("/public/legal", s.publicLegalSettings)
 		api.Get("/templates", s.listBusinessTemplates)
 		api.Get("/templates/{slug}", s.getBusinessTemplate)
@@ -590,51 +595,106 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 	}
 	var in struct {
 		Name                string `json:"name"`
+		LastName            string `json:"last_name"`
 		Phone               string `json:"phone"`
 		PIN                 string `json:"pin"`
+		Cedula              string `json:"cedula"`
+		BirthDate           string `json:"birth_date"`
+		Gender              string `json:"gender"`
 		BusinessName        string `json:"business_name"`
 		TemplateSlug        string `json:"template_slug"`
-		IdentitySubjectType string `json:"identity_subject_type"`
-		IdentityDocument    string `json:"identity_document"`
+		ProvinceCode        string `json:"province_code"`
+		Province            string `json:"province"`
+		CityID              string `json:"city_id"`
+		Municipality        string `json:"municipality"`
+		NeighborhoodID      string `json:"neighborhood_id"`
+		Neighborhood        string `json:"neighborhood"`
+		Street              string `json:"street"`
+		StreetNumber        string `json:"street_number"`
+		IdentitySubjectType string `json:"identity_subject_type"` // compatibilidad 2.3.0-2.3.2
+		IdentityDocument    string `json:"identity_document"`     // compatibilidad 2.3.0-2.3.2
 	}
-	name := strings.TrimSpace(in.Name)
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
 		return
 	}
-	name = strings.TrimSpace(in.Name)
+
+	name := strings.TrimSpace(in.Name)
+	lastName := strings.TrimSpace(in.LastName)
 	phone := normalizePhone(in.Phone)
+	businessName := strings.TrimSpace(in.BusinessName)
+	cedula := digitsOnly(in.Cedula)
+	if cedula == "" && strings.EqualFold(strings.TrimSpace(in.IdentitySubjectType), "persona") {
+		cedula = digitsOnly(in.IdentityDocument)
+	}
 	pinOK, pinLength := s.validPINFor(r.Context(), "owner", in.PIN)
-	if name == "" || phone == "" || !pinOK {
-		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp y un PIN de %d dígitos son obligatorios", pinLength))
+	if name == "" || phone == "" || businessName == "" || !pinOK {
+		jsonErr(w, 400, fmt.Sprintf("Nombre, WhatsApp, negocio y un PIN de %d dígitos son obligatorios", pinLength))
 		return
 	}
+	if len(cedula) != 11 {
+		jsonErr(w, http.StatusUnprocessableEntity, "La Cédula es obligatoria y debe tener exactamente 11 dígitos")
+		return
+	}
+
+	// Un nuevo propietario solo puede registrarse con un número realmente
+	// disponible en WhatsApp. La comprobación usa la sesión SaaS principal.
+	if _, err := s.validateOwnerWhatsAppForSave(r.Context(), phone); err != nil {
+		jsonErr(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+
 	identity := s.platformSetting(r.Context(), "identity")
 	requireIdentity, _ := identity["require_owner_verification"].(bool)
 	identityEnabled, _ := identity["enabled"].(bool)
-	docType, document := normalizeOwnerDocument(in.IdentitySubjectType, in.IdentityDocument)
 	identityVerified := false
-	if requireIdentity {
-		if !identityEnabled {
-			jsonErr(w, http.StatusServiceUnavailable, "La verificación de identidad es obligatoria, pero la integración está deshabilitada")
+	if requireIdentity && !identityEnabled {
+		jsonErr(w, http.StatusServiceUnavailable, "La verificación de Cédula es obligatoria, pero la integración está deshabilitada")
+		return
+	}
+	if identityEnabled {
+		envelope, _, err := s.verifyIdentityDocument(r.Context(), "persona", cedula)
+		if err != nil {
+			jsonErr(w, http.StatusUnprocessableEntity, "No pudimos verificar la Cédula: "+err.Error())
 			return
 		}
-		if !validOwnerDocument(docType, document) {
-			jsonErr(w, http.StatusUnprocessableEntity, "La Cédula debe tener 11 dígitos y el RNC 9 u 11 dígitos")
-			return
+		profile := identityProfile("persona", envelope)
+		if v := strings.TrimSpace(str(profile["name"])); v != "" {
+			name = v
 		}
-		if _, _, err := s.verifyIdentityDocument(r.Context(), docType, document); err != nil {
-			jsonErr(w, http.StatusUnprocessableEntity, "No pudimos verificar la identidad: "+err.Error())
-			return
+		if v := strings.TrimSpace(str(profile["last_name"])); v != "" {
+			lastName = v
+		}
+		if v := strings.TrimSpace(str(profile["birth_date"])); v != "" {
+			in.BirthDate = v
+		}
+		if v := normalizeOwnerGender(str(profile["gender"])); v != "" {
+			in.Gender = v
 		}
 		identityVerified = true
 	}
-	var exists int
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1`, phone).Scan(&exists)
-	if exists > 0 {
+
+	birthDate := strings.TrimSpace(in.BirthDate)
+	if birthDate != "" {
+		if _, err := time.Parse("2006-01-02", birthDate); err != nil {
+			jsonErr(w, http.StatusBadRequest, "La fecha de nacimiento no es válida")
+			return
+		}
+	}
+	gender := normalizeOwnerGender(in.Gender)
+
+	var exists bool
+	_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1)`, phone).Scan(&exists)
+	if exists {
 		jsonErr(w, 409, "Ya existe una cuenta con ese número de WhatsApp")
 		return
 	}
+	_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND document_type='persona' AND document_number=$1)`, cedula).Scan(&exists)
+	if exists {
+		jsonErr(w, 409, "Ya existe una cuenta con esa Cédula")
+		return
+	}
+
 	pinHash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo proteger el PIN")
@@ -646,48 +706,64 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback(r.Context())
-	var id string
-	var verifiedAt any
+
+	var ownerID string
+	var identityVerifiedAt any
 	if identityVerified {
-		verifiedAt = time.Now()
+		identityVerifiedAt = time.Now()
 	}
-	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,identity_verified_at) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active',nullif($4,''),nullif($5,''),$6) RETURNING id`, name, phone, string(pinHash), docType, document, verifiedAt).Scan(&id)
+	whatsappVerifiedAt := time.Now()
+	err = tx.QueryRow(r.Context(), `INSERT INTO users(name,last_name,email,phone,password_hash,pin_hash,pin_changed_at,role,status,document_type,document_number,birth_date,gender,identity_verified_at,whatsapp_verified_at) VALUES($1,$2,NULL,$3,NULL,$4,now(),'owner','active','persona',$5,nullif($6,'')::date,nullif($7,''),$8,$9) RETURNING id`, name, lastName, phone, string(pinHash), cedula, birthDate, gender, identityVerifiedAt, whatsappVerifiedAt).Scan(&ownerID)
 	if err != nil {
-		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el WhatsApp")
+		jsonErr(w, 409, "No se pudo crear la cuenta; verifica el WhatsApp y la Cédula")
 		return
 	}
+
 	var planID string
 	defaultPlan := "emprende"
 	if v, ok := general["default_plan"].(string); ok && strings.TrimSpace(v) != "" {
 		defaultPlan = strings.TrimSpace(v)
 	}
 	if err = tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug=$1 AND is_active=true LIMIT 1`, defaultPlan).Scan(&planID); err == nil {
-		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, id, planID)
+		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, ownerID, planID)
 	}
-	businessName := strings.TrimSpace(in.BusinessName)
-	if businessName != "" {
-		slug := s.safeStoreSlugFor(r.Context(), businessName)
-		var storeID string
-		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, id, businessName, slug, phone).Scan(&storeID); err != nil {
-			jsonErr(w, 409, "No se pudo crear el comercio")
-			return
-		}
-		if err = s.applyBusinessTemplate(r.Context(), tx, storeID, in.TemplateSlug); err != nil {
-			jsonErr(w, 500, "No se pudo preparar la plantilla del negocio")
-			return
-		}
+
+	templateSlug := strings.TrimSpace(in.TemplateSlug)
+	if templateSlug == "" {
+		templateSlug = "otro-negocio"
+	}
+	slug := s.safeStoreSlugFor(r.Context(), businessName)
+	addressInput := adminBusinessInput{
+		ProvinceCode:   strings.TrimSpace(in.ProvinceCode),
+		Province:       strings.TrimSpace(in.Province),
+		CityID:         strings.TrimSpace(in.CityID),
+		Municipality:   strings.TrimSpace(in.Municipality),
+		NeighborhoodID: strings.TrimSpace(in.NeighborhoodID),
+		Neighborhood:   strings.TrimSpace(in.Neighborhood),
+		Street:         strings.TrimSpace(in.Street),
+		StreetNumber:   strings.TrimSpace(in.StreetNumber),
+	}
+	address := businessAddress(addressInput)
+	var storeID string
+	if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp,address,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number) VALUES($1,$2,$3,NULL,$4,nullif($5,''),nullif($6,''),nullif($7,''),nullif($8,''),nullif($9,''),nullif($10,''),nullif($11,''),nullif($12,''),nullif($13,'')) RETURNING id`, ownerID, businessName, slug, phone, address, addressInput.ProvinceCode, addressInput.Province, addressInput.CityID, addressInput.Municipality, addressInput.NeighborhoodID, addressInput.Neighborhood, addressInput.Street, addressInput.StreetNumber).Scan(&storeID); err != nil {
+		jsonErr(w, 409, "No se pudo crear el comercio")
+		return
+	}
+	if err = s.applyBusinessTemplate(r.Context(), tx, storeID, templateSlug); err != nil {
+		jsonErr(w, 500, "No se pudo preparar la plantilla del negocio")
+		return
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		jsonErr(w, 500, "No se pudo confirmar la cuenta")
 		return
 	}
-	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "owner")
+	tok, err := authpkg.Sign(s.cfg.JWTSecret, ownerID, "owner")
 	if err != nil {
 		jsonErr(w, 500, "Cuenta creada, pero no se pudo iniciar sesión")
 		return
 	}
 	s.setSessionCookie(w, "wamercio_store_token", tok, 30*24*3600)
-	jsonOut(w, 201, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": phone, "role": "owner"}})
+	jsonOut(w, 201, map[string]any{"user": map[string]any{"id": ownerID, "name": name, "last_name": lastName, "phone": phone, "role": "owner"}, "store": map[string]any{"id": storeID, "slug": slug, "name": businessName}})
 }
 
 func (s *Server) storeLogout(w http.ResponseWriter, r *http.Request) {
@@ -5096,6 +5172,8 @@ func (s *Server) publicPlatformSettings(w http.ResponseWriter, r *http.Request) 
 	identity := s.platformSetting(r.Context(), "identity")
 	identityEnabled, _ := identity["enabled"].(bool)
 	requireOwnerVerification, _ := identity["require_owner_verification"].(bool)
+	territory := s.platformSetting(r.Context(), "territory")
+	territoryEnabled, _ := territory["enabled"].(bool)
 	jsonOut(w, 200, map[string]any{
 		"landing": s.platformSetting(r.Context(), "landing"),
 		"general": s.platformSetting(r.Context(), "general"),
@@ -5107,6 +5185,9 @@ func (s *Server) publicPlatformSettings(w http.ResponseWriter, r *http.Request) 
 		"identity": map[string]any{
 			"enabled":                    identityEnabled,
 			"require_owner_verification": requireOwnerVerification,
+		},
+		"territory": map[string]any{
+			"enabled": territoryEnabled,
 		},
 	})
 }

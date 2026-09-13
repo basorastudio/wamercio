@@ -1,3 +1,16 @@
+# WAMERCIO 2.3.3
+
+## Registro público enriquecido
+
+- Valida el WhatsApp de nuevos propietarios con la sesión SaaS principal de whatsmeow antes de continuar.
+- Coloca WhatsApp y Cédula en paralelo dentro de “Personaliza tu comercio”.
+- Formatea la Cédula dominicana y, cuando Identidad Dominicana está activa, la verifica y autocompleta nombre, apellido, fecha de nacimiento y género.
+- Separa definitivamente la identidad personal del propietario del RNC empresarial.
+- Permite cambiar el tipo de negocio desde el registro y combina tipo + nombre para generar el nombre público final.
+- Agrega Provincia, Municipio/Distrito, Barrio, Calle y Número al alta inicial; usa GEO RD MAP cuando está disponible y entrada manual como respaldo.
+- Persiste Cédula, perfil personal, verificación de WhatsApp y ubicación inicial del negocio desde el backend, no solo desde la interfaz.
+- Añade endpoints públicos limitados para validar WhatsApp, verificar Cédula y consultar el catálogo territorial sin exponer secretos de las integraciones.
+
 # WAMERCIO 2.3.2
 
 - WhatsApp SaaS reactivo: el QR desaparece automáticamente al vincular la sesión principal.

@@ -41,7 +41,7 @@ grep -q 'order_on_the_way' services/api/internal/httpapi/server.go || fail "falt
 grep -q '{seguimiento}' services/api/migrations/000015_platform_settings_functional.up.sql || fail "plantilla de nuevo pedido debe conservar seguimiento"
 grep -q 'verifyIdentityDocument' services/api/internal/httpapi/server.go || fail "Identidad requerida debe reutilizar verificación real"
 grep -q 'require_owner_verification' apps/web/components/access-modal.tsx || fail "Registro debe leer política de verificación de propietarios"
-grep -q 'identity_document' apps/web/components/access-modal.tsx || fail "Registro debe solicitar documento cuando la política lo exige"
+grep -q 'cedula' apps/web/components/access-modal.tsx || fail "Registro debe solicitar Cédula al propietario"
 grep -q '"identity"' services/api/internal/httpapi/server.go || fail "configuración pública debe exponer política de identidad"
 grep -q 'puede_registrarse' services/api/internal/httpapi/server.go || fail "la verificación de identidad debe respetar puede_registrarse"
 grep -q 'encontrada' services/api/internal/httpapi/server.go || fail "la verificación de identidad debe exigir documento encontrado"
