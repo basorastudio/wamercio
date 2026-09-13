@@ -1,3 +1,16 @@
+# WAMERCIO 2.2.0 — Administración SaaS y operación comercial convergentes
+
+- Reestructura Superadmin con Página comercial, Propietarios, Planes/Suscripciones, Clientes globales, Usuarios SaaS y Centro SaaS manteniendo la UI de WAMERCIO.
+- Añade configuración centralizada de territorio, tipos/plantillas, dominios, arquitectura de datos, bancos, WhatsApp, notificaciones, acceso, identidad, legal, backups y auditoría.
+- Incorpora identidad global de clientes por WhatsApp sin duplicar los perfiles comerciales de cada negocio.
+- Añade usuarios SaaS internos con áreas permitidas y separación estricta de propietarios.
+- Añade Punto de Venta, Usuarios del negocio, Centro de Entregas y Métodos de pago manuales.
+- Integra un catálogo bancario central dominicano consumido por los negocios.
+- Conecta la Página comercial con la landing pública, soporte para `{domain}` y modo mantenimiento sin detener tiendas ni paneles.
+- Registra auditoría de cambios centrales, usuarios SaaS, bancos, planes y estados de propietarios.
+- Simplifica Configuración del negocio para evitar duplicar Entregas y Métodos de pago como opciones paralelas.
+- Añade migración `000014_saas_operations_convergence` compatible con la arquitectura PostgreSQL central actual.
+
 # WAMERCIO 2.1.3 — Navegación limpia y checkout lateral
 
 - Evita el parpadeo de **Mis tiendas** al refrescar: el menú ya no asume múltiples tiendas mientras se resuelve la sesión; solo aparece cuando realmente existen dos o más.

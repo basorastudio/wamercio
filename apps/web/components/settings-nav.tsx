@@ -1,12 +1,11 @@
 'use client'
 import Link from 'next/link'
-import {Clock3,Link2,Palette,ShoppingBag,Store,Truck} from 'lucide-react'
+import {Clock3,Link2,Palette,ShoppingBag,Store} from 'lucide-react'
 
 const items=[
   {id:'general',label:'Mi negocio',href:'/settings/store?tab=general',icon:Store},
   {id:'design',label:'Diseño y marca',href:'/settings/store?tab=design',icon:Palette},
-  {id:'sales',label:'Ventas y cobro',href:'/settings/store?tab=sales',icon:ShoppingBag},
-  {id:'delivery',label:'Zonas de entrega',href:'/delivery',icon:Truck},
+  {id:'sales',label:'Ventas y entrega',href:'/settings/store?tab=sales',icon:ShoppingBag},
   {id:'hours',label:'Horarios',href:'/settings/store?tab=hours',icon:Clock3},
   {id:'connection',label:'Conexión',href:'/settings/whatsapp',icon:Link2},
 ] as const

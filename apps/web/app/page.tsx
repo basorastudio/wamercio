@@ -23,11 +23,17 @@ const features=[
 export default function Landing(){
   const[accessOpen,setAccessOpen]=useState(false)
   const[plans,setPlans]=useState<Plan[]>([])
+  const[platform,setPlatform]=useState<any>(null)
   useEffect(()=>{
     api<Plan[]>('/plans').then(setPlans).catch(()=>{})
+    api('/public/platform').then(setPlatform).catch(()=>{})
     if(typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('access')==='1')setAccessOpen(true)
   },[])
   const open=()=>setAccessOpen(true)
+  const landing=platform?.landing||{}
+  const domain=typeof window!=='undefined'?window.location.hostname:'wamercio.com'
+  const text=(value:any,fallback:string)=>String(value||fallback).replaceAll('{domain}',domain)
+  if(landing.maintenance_mode)return <main className="grid min-h-dvh place-items-center bg-[#f7f9fc] p-6 text-ink-900"><div className="w-full max-w-2xl rounded-[32px] bg-[#182235] p-8 text-white shadow-2xl sm:p-12"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-500 font-bold">W</span><div><div className="text-xl font-semibold">{text(landing.brand_name,'WAMERCIO')}</div><div className="text-xs uppercase tracking-[.14em] text-white/55">{text(landing.brand_subtitle,'Comercio conversacional')}</div></div></div><div className="mt-8 inline-flex rounded-full bg-brand-500/20 px-3 py-1 text-[10px] font-bold uppercase tracking-[.14em] text-brand-200">Mantenimiento programado</div><h1 className="mt-5 text-3xl font-semibold sm:text-4xl">{text(landing.maintenance_title,'Estamos realizando mejoras en la página principal')}</h1><p className="mt-4 text-sm leading-7 text-white/70">{text(landing.maintenance_text,'La página principal estará temporalmente en mantenimiento. Los negocios activos continúan operando desde sus subdominios.')}</p><button onClick={open} className="mt-7 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold">Entrar al panel de administración</button><AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/></div></main>
   return <main className="min-h-dvh overflow-x-hidden bg-white text-ink-900">
     <AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/>
 
@@ -35,7 +41,7 @@ export default function Landing(){
       <header className="relative z-20 mx-auto flex h-16 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 place-items-center rounded-full border-2 border-white text-sm font-black">W</span>
-          <div><div className="text-base font-semibold leading-none">wamercio</div><div className="mt-1 text-[8px] font-medium uppercase tracking-[.18em] text-white/70">Comercio por WhatsApp</div></div>
+          <div><div className="text-base font-semibold leading-none">{text(landing.brand_name,'wamercio')}</div><div className="mt-1 text-[8px] font-medium uppercase tracking-[.18em] text-white/70">{text(landing.brand_subtitle,'Comercio por WhatsApp')}</div></div>
         </Link>
         <nav className="ml-auto hidden items-center gap-7 text-[11px] font-medium text-white/90 lg:flex">
           <a href="#funciones" className="hover:text-white">Funciones</a>
@@ -49,13 +55,13 @@ export default function Landing(){
 
       <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 pb-28 pt-14 sm:px-6 sm:pb-36 lg:grid-cols-[1fr_1.05fr] lg:px-8 lg:pt-20">
         <div className="relative z-10 max-w-xl">
-          <div className="inline-flex items-center gap-2 rounded-full bg-[#32394f] px-3 py-1.5 text-[10px] font-medium shadow"><span className="rounded bg-rose-500 px-1.5 py-0.5 text-[8px] font-bold">NUEVO</span> Tu comercio puede vender desde WhatsApp</div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#32394f] px-3 py-1.5 text-[10px] font-medium shadow"><span className="rounded bg-rose-500 px-1.5 py-0.5 text-[8px] font-bold">NUEVO</span> {text(landing.hero_badge,'Tu comercio puede vender desde WhatsApp')}</div>
           <p className="mt-6 text-lg font-light text-white/80">Simple y amigable</p>
-          <h1 className="mt-1 text-3xl font-semibold leading-tight sm:text-4xl lg:text-[44px]">Tu comercio y tus pedidos<br/><span className="font-light">más fáciles con WhatsApp.</span></h1>
-          <p className="mt-5 max-w-lg text-sm leading-6 text-white/80">Crea tu tienda digital, comparte tu catálogo, recibe pedidos y administra clientes desde WAMERCIO. Sin complicaciones y pensado para vender desde el celular.</p>
+          <h1 className="mt-1 text-3xl font-semibold leading-tight sm:text-4xl lg:text-[44px]">{text(landing.hero_title,'Tu comercio y tus pedidos más fáciles con WhatsApp.')}</h1>
+          <p className="mt-5 max-w-lg text-sm leading-6 text-white/80">{text(landing.hero_subtitle,'Crea tu tienda digital, comparte tu catálogo, recibe pedidos y administra clientes desde WAMERCIO. Sin complicaciones y pensado para vender desde el celular.')}</p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <button onClick={open} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-900 shadow-lg">Empezar ahora <ArrowRight className="h-3.5 w-3.5"/></button>
-            <a href="#demo" className="inline-flex items-center gap-2 rounded-full border border-white bg-transparent px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-white"><Play className="h-3.5 w-3.5"/> Ver demo</a>
+            <button onClick={open} className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-ink-900 shadow-lg">{text(landing.access_label,'Empezar ahora')} <ArrowRight className="h-3.5 w-3.5"/></button>
+            <a href="#demo" className="inline-flex items-center gap-2 rounded-full border border-white bg-transparent px-5 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-white"><Play className="h-3.5 w-3.5"/> {text(landing.demo_label,'Ver demo')}</a>
           </div>
         </div>
 

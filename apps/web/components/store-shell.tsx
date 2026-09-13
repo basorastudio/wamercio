@@ -4,7 +4,7 @@ import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
 import {
-  LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,
+  LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
   ChevronLeft,ChevronRight,ExternalLink
 } from 'lucide-react'
@@ -16,6 +16,7 @@ function WhatsAppIcon({className=''}:{className?:string}){
 }
 const commerce=[
   {href:'/dashboard',label:'Inicio',icon:LayoutDashboard},
+  {href:'/pos',label:'Punto de Venta',icon:ShoppingCart},
   {href:'/orders',label:'Pedidos',icon:ShoppingBag},
   {href:'/conversations',label:'WhatsApp',icon:WhatsAppIcon},
   {href:'/customers',label:'Clientes',icon:UsersRound},
@@ -24,13 +25,16 @@ const catalog=[
   {href:'/catalog/products',label:'Catálogo',icon:Boxes},
 ]
 const baseStoreTools=[
-  {href:'/settings/store',label:'Ajustes',icon:SlidersHorizontal},
+  {href:'/staff',label:'Usuarios',icon:UserCog},
+  {href:'/delivery',label:'Entregas',icon:Truck},
+  {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},
+  {href:'/settings/store',label:'Configuración',icon:SlidersHorizontal},
 ]
 const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
 const account=[
   {href:'/settings/profile',label:'Mi cuenta',icon:Settings},
 ]
-const bottom=[commerce[0],commerce[1],commerce[2],catalog[0]]
+const bottom=[commerce[0],commerce[2],commerce[3],catalog[0]]
 
 function NavLink({n,onClick,collapsed}:{n:any;onClick?:()=>void;collapsed?:boolean}){
   const path=usePathname()

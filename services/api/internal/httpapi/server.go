@@ -71,6 +71,7 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/login", s.adminLogin)
 
 		api.Get("/plans", s.listPlans)
+		api.Get("/public/platform", s.publicPlatformSettings)
 		api.Get("/templates", s.listBusinessTemplates)
 		api.Get("/templates/{slug}", s.getBusinessTemplate)
 		api.Get("/public/stores/{slug}", s.publicStore)
@@ -119,8 +120,14 @@ func (s *Server) Router() http.Handler {
 			p.Patch("/orders/{id}/status", s.updateOrderStatus)
 			p.Patch("/orders/{id}/payment", s.updateOrderPayment)
 			p.Get("/customers", s.listCustomers)
+			p.Get("/banks", s.listActiveBanks)
 			p.Get("/customers/{id}", s.getCustomer)
 			p.Put("/customers/{id}", s.updateCustomer)
+			p.Get("/staff", s.listStoreStaff)
+			p.Post("/staff", s.createStoreStaff)
+			p.Put("/staff/{id}", s.updateStoreStaff)
+			p.Delete("/staff/{id}", s.deleteStoreStaff)
+			p.Post("/pos/sales", s.createPOSSale)
 			p.Get("/subscription", s.subscription)
 			p.Get("/subscription/requests", s.mySubscriptionRequests)
 			p.Post("/subscription/requests", s.requestSubscription)
@@ -153,26 +160,43 @@ func (s *Server) Router() http.Handler {
 		api.Group(func(a chi.Router) {
 			a.Use(s.requireAdminAuth)
 			a.Get("/admin/me", s.adminMe)
-			a.Get("/admin/dashboard", s.adminDashboard)
-			a.Get("/admin/users", s.adminUsers)
-			a.Delete("/admin/users/{id}", s.adminDeleteUser)
-			a.Patch("/admin/users/{id}/status", s.adminUserStatus)
-			a.Put("/admin/users/{id}/plan", s.adminAssignPlan)
-			a.Put("/admin/users/{id}/pin", s.adminSetUserPIN)
-			a.Put("/admin/users/{id}/access", s.adminSetUserAccess)
-			a.Get("/admin/stores", s.adminStores)
-			a.Delete("/admin/stores/{id}", s.adminDeleteStore)
-			a.Get("/admin/templates", s.adminTemplates)
-			a.Post("/admin/templates", s.adminCreateTemplate)
-			a.Put("/admin/templates/{id}", s.adminUpdateTemplate)
-			a.Post("/admin/templates/{id}/duplicate", s.adminDuplicateTemplate)
-			a.Get("/admin/templates/{id}/content", s.adminTemplateContent)
-			a.Put("/admin/templates/{id}/content", s.adminUpdateTemplateContent)
-			a.Get("/admin/plans", s.adminPlans)
-			a.Post("/admin/plans", s.adminCreatePlan)
-			a.Put("/admin/plans/{id}", s.adminUpdatePlan)
-			a.Get("/admin/subscription-requests", s.adminSubscriptionRequests)
-			a.Patch("/admin/subscription-requests/{id}", s.adminReviewSubscriptionRequest)
+			a.With(s.requireAdminArea("dashboard")).Get("/admin/dashboard", s.adminDashboard)
+			a.With(s.requireAdminArea("owners")).Get("/admin/owners", s.adminOwners)
+			a.With(s.requireAdminArea("owners")).Post("/admin/owners", s.adminCreateOwner)
+			a.With(s.requireAdminArea("customers")).Get("/admin/global-customers", s.adminGlobalCustomers)
+			a.With(s.requireAdminArea("users")).Get("/admin/platform-users", s.adminPlatformUsers)
+			a.With(s.requireAdminArea("users")).Post("/admin/platform-users", s.adminCreatePlatformUser)
+			a.With(s.requireAdminArea("users")).Patch("/admin/platform-users/{id}/status", s.adminPlatformUserStatus)
+			a.With(s.requireAdminArea("users")).Delete("/admin/platform-users/{id}", s.adminDeletePlatformUser)
+			a.With(s.requireAdminArea("landing")).Get("/admin/platform/landing", s.adminLandingSettings)
+			a.With(s.requireAdminArea("landing")).Put("/admin/platform/landing", s.adminUpdateLandingSettings)
+			a.With(s.requireAdminArea("settings")).Get("/admin/platform/settings", s.adminPlatformSettings)
+			a.With(s.requireAdminArea("settings")).Put("/admin/platform/settings", s.adminUpdatePlatformSettings)
+			a.With(s.requireAdminArea("settings")).Get("/admin/platform/banks", s.adminBanks)
+			a.With(s.requireAdminArea("settings")).Post("/admin/platform/banks", s.adminCreateBank)
+			a.With(s.requireAdminArea("settings")).Put("/admin/platform/banks/{id}", s.adminUpdateBank)
+			a.With(s.requireAdminArea("settings")).Delete("/admin/platform/banks/{id}", s.adminDeleteBank)
+			a.With(s.requireAdminArea("settings")).Get("/admin/platform/audit", s.adminAuditLog)
+			a.With(s.requireAdminArea("owners")).Get("/admin/users", s.adminUsers)
+			a.With(s.requireAdminArea("owners")).Delete("/admin/users/{id}", s.adminDeleteUser)
+			a.With(s.requireAdminArea("owners")).Patch("/admin/users/{id}/status", s.adminUserStatus)
+			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/plan", s.adminAssignPlan)
+			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/pin", s.adminSetUserPIN)
+			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/access", s.adminSetUserAccess)
+			a.With(s.requireAdminArea("owners")).Get("/admin/stores", s.adminStores)
+			a.With(s.requireAdminArea("owners")).Delete("/admin/stores/{id}", s.adminDeleteStore)
+			a.With(s.requireAdminArea("settings")).Get("/admin/templates", s.adminTemplates)
+			a.With(s.requireAdminArea("settings")).Post("/admin/templates", s.adminCreateTemplate)
+			a.With(s.requireAdminArea("settings")).Put("/admin/templates/{id}", s.adminUpdateTemplate)
+			a.With(s.requireAdminArea("settings")).Post("/admin/templates/{id}/duplicate", s.adminDuplicateTemplate)
+			a.With(s.requireAdminArea("settings")).Get("/admin/templates/{id}/content", s.adminTemplateContent)
+			a.With(s.requireAdminArea("settings")).Put("/admin/templates/{id}/content", s.adminUpdateTemplateContent)
+			a.With(s.requireAdminArea("plans")).Get("/admin/plans", s.adminPlans)
+			a.With(s.requireAdminArea("plans")).Post("/admin/plans", s.adminCreatePlan)
+			a.With(s.requireAdminArea("plans")).Put("/admin/plans/{id}", s.adminUpdatePlan)
+			a.With(s.requireAdminArea("plans")).Get("/admin/subscriptions", s.adminSubscriptions)
+			a.With(s.requireAdminArea("plans")).Get("/admin/subscription-requests", s.adminSubscriptionRequests)
+			a.With(s.requireAdminArea("plans")).Patch("/admin/subscription-requests/{id}", s.adminReviewSubscriptionRequest)
 			a.Get("/admin/transactions", s.adminTransactions)
 			a.Get("/admin/tickets", s.adminTickets)
 			a.Get("/admin/tickets/{id}", s.adminTicket)
@@ -302,12 +326,35 @@ func (s *Server) requireStoreAuth(next http.Handler) http.Handler {
 func (s *Server) requireAdminAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		c, err := s.claimsFromCookie(r, "wamercio_admin_token")
-		if err != nil || c.Role != "superadmin" {
-			jsonErr(w, 401, "Sesión de SuperAdmin requerida")
+		if err != nil || c.Role == "owner" || c.Role == "" {
+			jsonErr(w, 401, "Sesión SaaS requerida")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
 	})
+}
+
+func (s *Server) requireAdminArea(area string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			c := claims(r)
+			if c == nil {
+				jsonErr(w, 401, "Sesión SaaS requerida")
+				return
+			}
+			if c.Role == "superadmin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			var allowed bool
+			_ = s.db.QueryRow(r.Context(), `SELECT admin_access ? $1 FROM users WHERE id=$2 AND role<>'owner' AND status='active'`, area, c.UserID).Scan(&allowed)
+			if !allowed {
+				jsonErr(w, http.StatusForbidden, "No tienes acceso a esta área")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 func (s *Server) setSessionCookie(w http.ResponseWriter, name, token string, maxAge int) {
@@ -406,24 +453,29 @@ func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusTooManyRequests, "Demasiados intentos. Espera unos minutos")
 		return
 	}
-	var id, name, email, hash, status string
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(email,''),password_hash,status FROM users WHERE role='superadmin' AND lower(email)=lower($1)`, strings.TrimSpace(in.Email)).Scan(&id, &name, &email, &hash, &status)
+	var id, name, email, hash, status, role string
+	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(email,''),password_hash,status,role FROM users WHERE role<>'owner' AND lower(email)=lower($1)`, strings.TrimSpace(in.Email)).Scan(&id, &name, &email, &hash, &status, &role)
 	if err != nil || status != "active" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(in.Password)) != nil {
 		jsonErr(w, 401, "Credenciales administrativas inválidas")
 		return
 	}
 	s.resetAttempts(r.Context(), adminAttemptKey)
-	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, "superadmin")
+	tok, err := authpkg.Sign(s.cfg.JWTSecret, id, role)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear la sesión")
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, id)
 	s.setSessionCookie(w, "wamercio_admin_token", tok, 12*3600)
-	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "email": email, "role": "superadmin"}})
+	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "email": email, "role": role}})
 }
 
 func (s *Server) register(w http.ResponseWriter, r *http.Request) {
+	general := s.platformSetting(r.Context(), "general")
+	if enabled, ok := general["public_registration"].(bool); ok && !enabled {
+		jsonErr(w, http.StatusForbidden, "El registro público de negocios está temporalmente deshabilitado")
+		return
+	}
 	var in struct {
 		Name         string `json:"name"`
 		Phone        string `json:"phone"`
@@ -466,7 +518,11 @@ func (s *Server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var planID string
-	if err = tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug='emprende' AND is_active=true LIMIT 1`).Scan(&planID); err == nil {
+	defaultPlan := "emprende"
+	if v, ok := general["default_plan"].(string); ok && strings.TrimSpace(v) != "" {
+		defaultPlan = strings.TrimSpace(v)
+	}
+	if err = tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug=$1 AND is_active=true LIMIT 1`, defaultPlan).Scan(&planID); err == nil {
 		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, id, planID)
 	}
 	businessName := strings.TrimSpace(in.BusinessName)
@@ -509,12 +565,15 @@ func (s *Server) adminMe(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var name, email, role string
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(email,''),role,created_at FROM users WHERE id=$1 AND role='superadmin'`, c.UserID).Scan(&name, &email, &role, &created)
+	var accessRaw []byte
+	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(email,''),role,created_at,admin_access FROM users WHERE id=$1 AND role<>'owner'`, c.UserID).Scan(&name, &email, &role, &created, &accessRaw)
 	if err != nil {
 		jsonErr(w, 404, "Administrador no encontrado")
 		return
 	}
-	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "email": email, "role": role, "created_at": created})
+	var access any = []any{}
+	_ = json.Unmarshal(accessRaw, &access)
+	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "email": email, "role": role, "access": access, "created_at": created})
 }
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
@@ -643,7 +702,7 @@ func slugify(s string) string {
 var reservedStoreSlugs = map[string]bool{
 	"admin": true, "api": true, "catalog": true, "conversations": true, "coupons": true,
 	"customers": true, "dashboard": true, "delivery": true, "health": true, "login": true,
-	"media": true, "order": true, "orders": true, "plans": true, "register": true,
+	"media": true, "order": true, "orders": true, "plans": true, "register": true, "pos": true, "staff": true, "payment-methods": true,
 	"settings": true, "store": true, "stores": true, "support": true, "transactions": true,
 	"favicon.ico": true, "icon.svg": true, "manifest.webmanifest": true, "sw.js": true,
 	"robots.txt": true, "sitemap.xml": true, "_next": true,
@@ -3275,6 +3334,11 @@ func (s *Server) requestSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	var currentPlan string
 	_ = s.db.QueryRow(r.Context(), `SELECT plan_id FROM subscriptions WHERE user_id=$1`, c.UserID).Scan(&currentPlan)
+	var ownerExists bool
+	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND role='owner')`, id).Scan(&ownerExists); err != nil || !ownerExists {
+		jsonErr(w, 404, "Propietario no encontrado")
+		return
+	}
 	var active bool
 	if s.db.QueryRow(r.Context(), `SELECT is_active FROM plans WHERE id=$1`, in.PlanID).Scan(&active) != nil || !active {
 		jsonErr(w, 404, "Plan no disponible")
@@ -3296,7 +3360,7 @@ func (s *Server) requestSubscription(w http.ResponseWriter, r *http.Request) {
 func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	var users, stores, products, orders, pending, openTickets int
 	var revenue float64
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role<>'superadmin'`).Scan(&users)
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner'`).Scan(&users)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM stores`).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM products`).Scan(&products)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*),coalesce(sum(total) FILTER (WHERE status<>'canceled'),0) FROM orders`).Scan(&orders, &revenue)
@@ -3306,7 +3370,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role<>'superadmin' ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -3334,7 +3398,7 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback(r.Context())
 
 	var name string
-	if err := tx.QueryRow(r.Context(), `SELECT name FROM users WHERE id=$1 AND role<>'superadmin'`, id).Scan(&name); err != nil {
+	if err := tx.QueryRow(r.Context(), `SELECT name FROM users WHERE id=$1 AND role='owner'`, id).Scan(&name); err != nil {
 		jsonErr(w, 404, "Comerciante no encontrado")
 		return
 	}
@@ -3345,7 +3409,7 @@ func (s *Server) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudieron eliminar los pedidos del comerciante")
 		return
 	}
-	cmd, err := tx.Exec(r.Context(), `DELETE FROM users WHERE id=$1 AND role<>'superadmin'`, id)
+	cmd, err := tx.Exec(r.Context(), `DELETE FROM users WHERE id=$1 AND role='owner'`, id)
 	if err != nil || cmd.RowsAffected() == 0 {
 		jsonErr(w, 500, "No se pudo eliminar el comerciante")
 		return
@@ -3370,11 +3434,13 @@ func (s *Server) adminUserStatus(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Estado no permitido")
 		return
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE users SET status=$1,updated_at=now() WHERE id=$2 AND role<>'superadmin'`, in.Status, id)
-	if err != nil {
-		jsonErr(w, 500, "No se pudo actualizar el usuario")
+	cmd, err := s.db.Exec(r.Context(), `UPDATE users SET status=$1,updated_at=now() WHERE id=$2 AND role='owner'`, in.Status, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Propietario no encontrado")
 		return
 	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "owner.status.updated", "owner", id, map[string]any{"status": in.Status})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -3466,11 +3532,13 @@ func (s *Server) adminAssignPlan(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo asignar el plan")
 		return
 	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "owner.plan.updated", "owner", id, map[string]any{"plan_id": in.PlanID})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
 func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.name,coalesce(u.phone,''),(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT st.id,st.name,st.slug,st.is_active,st.created_at,u.id,u.name,coalesce(u.phone,''),(SELECT count(*) FROM products p WHERE p.store_id=st.id),(SELECT count(*) FROM orders o WHERE o.store_id=st.id) FROM stores st JOIN users u ON u.id=st.user_id ORDER BY st.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las tiendas")
 		return
@@ -3478,12 +3546,12 @@ func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, slug, owner, ownerPhone string
+		var id, name, slug, ownerID, owner, ownerPhone string
 		var active bool
 		var created time.Time
 		var products, orders int
-		_ = rows.Scan(&id, &name, &slug, &active, &created, &owner, &ownerPhone, &products, &orders)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
+		_ = rows.Scan(&id, &name, &slug, &active, &created, &ownerID, &owner, &ownerPhone, &products, &orders)
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner_id": ownerID, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
 	}
 	jsonOut(w, 200, out)
 }
@@ -3603,6 +3671,27 @@ func (s *Server) adminUpdatePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminSubscriptions(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT sub.id,u.id,u.name,coalesce(u.phone,''),p.id,p.name,p.price,sub.status,sub.starts_at,sub.ends_at,(SELECT count(*) FROM stores st WHERE st.user_id=u.id)::int FROM subscriptions sub JOIN users u ON u.id=sub.user_id JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY sub.starts_at DESC`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar las suscripciones")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, userID, name, phone, planID, planName, status string
+		var price float64
+		var starts time.Time
+		var ends *time.Time
+		var stores int
+		if rows.Scan(&id, &userID, &name, &phone, &planID, &planName, &price, &status, &starts, &ends, &stores) == nil {
+			out = append(out, map[string]any{"id": id, "user_id": userID, "user_name": name, "user_phone": phone, "plan_id": planID, "plan_name": planName, "price": price, "status": status, "starts_at": starts, "ends_at": ends, "stores": stores})
+		}
+	}
+	jsonOut(w, 200, out)
 }
 
 func (s *Server) adminSubscriptionRequests(w http.ResponseWriter, r *http.Request) {
@@ -4760,4 +4849,597 @@ func (s *Server) adminDuplicateTemplate(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	jsonOut(w, 201, map[string]any{"id": newID, "slug": newSlug, "name": name + " (copia)"})
+}
+
+// --- WAMERCIO 2.2 central SaaS operations ------------------------------------
+
+func (s *Server) auditPlatform(ctx context.Context, actorID, action, entityType, entityID string, metadata any) {
+	body := []byte(`{}`)
+	if metadata != nil {
+		if raw, err := json.Marshal(metadata); err == nil {
+			body = raw
+		}
+	}
+	_, _ = s.db.Exec(ctx, `INSERT INTO platform_audit_log(actor_id,action,entity_type,entity_id,metadata) VALUES(nullif($1,'')::uuid,$2,$3,$4,$5::jsonb)`, actorID, action, entityType, entityID, string(body))
+}
+
+func (s *Server) platformSetting(ctx context.Context, key string) map[string]any {
+	var raw []byte
+	if err := s.db.QueryRow(ctx, `SELECT value FROM platform_settings WHERE key=$1`, key).Scan(&raw); err != nil {
+		return map[string]any{}
+	}
+	var out map[string]any
+	if json.Unmarshal(raw, &out) != nil || out == nil {
+		return map[string]any{}
+	}
+	return out
+}
+
+func (s *Server) publicPlatformSettings(w http.ResponseWriter, r *http.Request) {
+	jsonOut(w, 200, map[string]any{
+		"landing": s.platformSetting(r.Context(), "landing"),
+		"general": s.platformSetting(r.Context(), "general"),
+	})
+}
+
+func (s *Server) adminLandingSettings(w http.ResponseWriter, r *http.Request) {
+	jsonOut(w, 200, s.platformSetting(r.Context(), "landing"))
+}
+
+func (s *Server) adminUpdateLandingSettings(w http.ResponseWriter, r *http.Request) {
+	var in map[string]any
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Configuración inválida")
+		return
+	}
+	body, _ := json.Marshal(in)
+	c := claims(r)
+	_, err := s.db.Exec(r.Context(), `INSERT INTO platform_settings(key,value,updated_by,updated_at) VALUES('landing',$1::jsonb,$2,now()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=now()`, string(body), c.UserID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar la página comercial")
+		return
+	}
+	s.auditPlatform(r.Context(), c.UserID, "platform.landing.updated", "platform_setting", "landing", nil)
+	jsonOut(w, 200, in)
+}
+
+func (s *Server) adminPlatformSettings(w http.ResponseWriter, r *http.Request) {
+	keys := []string{"general", "territory", "business_types", "domains", "database", "whatsapp", "notifications", "access", "identity", "legal", "backups"}
+	out := map[string]any{}
+	for _, key := range keys {
+		out[key] = s.platformSetting(r.Context(), key)
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminUpdatePlatformSettings(w http.ResponseWriter, r *http.Request) {
+	var in map[string]map[string]any
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Configuración inválida")
+		return
+	}
+	c := claims(r)
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo iniciar la actualización")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	for _, key := range []string{"general", "territory", "business_types", "domains", "database", "whatsapp", "notifications", "access", "identity", "legal", "backups"} {
+		value, ok := in[key]
+		if !ok {
+			continue
+		}
+		body, _ := json.Marshal(value)
+		if _, err = tx.Exec(r.Context(), `INSERT INTO platform_settings(key,value,updated_by,updated_at) VALUES($1,$2::jsonb,$3,now()) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_by=excluded.updated_by,updated_at=now()`, key, string(body), c.UserID); err != nil {
+			jsonErr(w, 500, "No se pudo guardar la configuración")
+			return
+		}
+	}
+	_, _ = tx.Exec(r.Context(), `INSERT INTO platform_audit_log(actor_id,action,entity_type,entity_id) VALUES($1,'platform.settings.updated','platform_setting','central')`, c.UserID)
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la configuración")
+		return
+	}
+	jsonOut(w, 200, in)
+}
+
+func (s *Server) adminCreateOwner(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name         string `json:"name"`
+		Phone        string `json:"phone"`
+		PIN          string `json:"pin"`
+		BusinessName string `json:"business_name"`
+		TemplateSlug string `json:"template_slug"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	phone := normalizePhone(in.Phone)
+	if name == "" || phone == "" || !validPIN(in.PIN) {
+		jsonErr(w, 400, "Nombre, WhatsApp y PIN de 4 dígitos son obligatorios")
+		return
+	}
+	var exists bool
+	if err := s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE role='owner' AND regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1)`, phone).Scan(&exists); err != nil {
+		jsonErr(w, 500, "No se pudo verificar el propietario")
+		return
+	}
+	if exists {
+		jsonErr(w, 409, "Ya existe un propietario con ese WhatsApp")
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger el PIN")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo crear el propietario")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var ownerID string
+	if err = tx.QueryRow(r.Context(), `INSERT INTO users(name,email,phone,password_hash,pin_hash,pin_changed_at,role,status) VALUES($1,NULL,$2,NULL,$3,now(),'owner','active') RETURNING id`, name, phone, string(hash)).Scan(&ownerID); err != nil {
+		jsonErr(w, 409, "No se pudo crear el propietario")
+		return
+	}
+	general := s.platformSetting(r.Context(), "general")
+	defaultPlan := "emprende"
+	if v, ok := general["default_plan"].(string); ok && strings.TrimSpace(v) != "" {
+		defaultPlan = strings.TrimSpace(v)
+	}
+	var planID string
+	if tx.QueryRow(r.Context(), `SELECT id FROM plans WHERE slug=$1 AND is_active=true LIMIT 1`, defaultPlan).Scan(&planID) == nil {
+		_, _ = tx.Exec(r.Context(), `INSERT INTO subscriptions(user_id,plan_id,status) VALUES($1,$2,'active') ON CONFLICT(user_id) DO NOTHING`, ownerID, planID)
+	}
+	businessName := strings.TrimSpace(in.BusinessName)
+	var storeID string
+	if businessName != "" {
+		slug := safeStoreSlug(businessName)
+		if err = tx.QueryRow(r.Context(), `INSERT INTO stores(user_id,name,slug,phone,whatsapp) VALUES($1,$2,$3,NULL,$4) RETURNING id`, ownerID, businessName, slug, phone).Scan(&storeID); err != nil {
+			jsonErr(w, 409, "No se pudo crear el negocio; verifica el nombre o identificador")
+			return
+		}
+		if err = s.applyBusinessTemplate(r.Context(), tx, storeID, in.TemplateSlug); err != nil {
+			jsonErr(w, 500, "No se pudo preparar el negocio")
+			return
+		}
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar el propietario")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "owner.created", "owner", ownerID, map[string]any{"business_id": storeID})
+	jsonOut(w, 201, map[string]any{"id": ownerID, "store_id": storeID, "ok": true})
+}
+
+func (s *Server) adminOwners(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.phone,''),u.status,u.created_at,count(st.id)::int,coalesce(string_agg(st.name,' · ' ORDER BY st.created_at),'') FROM users u LEFT JOIN stores st ON st.user_id=u.id WHERE u.role='owner' GROUP BY u.id ORDER BY u.created_at DESC`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los propietarios")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, name, phone, status, stores string
+		var created time.Time
+		var count int
+		if rows.Scan(&id, &name, &phone, &status, &created, &count, &stores) == nil {
+			out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "status": status, "created_at": created, "store_count": count, "stores": stores})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT g.phone,g.name,count(DISTINCT c.store_id)::int stores,count(c.id)::int records,coalesce(sum(c.order_count),0)::int orders,coalesce(sum(c.total_spent),0),max(c.last_order_at),g.updated_at FROM global_customers g LEFT JOIN customers c ON c.global_customer_id=g.id GROUP BY g.id,g.phone,g.name,g.updated_at ORDER BY g.updated_at DESC`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los clientes globales")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var phone, name string
+		var stores, records, orders int
+		var spent float64
+		var last, updated *time.Time
+		if rows.Scan(&phone, &name, &stores, &records, &orders, &spent, &last, &updated) == nil {
+			out = append(out, map[string]any{"phone": phone, "name": name, "businesses": stores, "records": records, "orders": orders, "total_spent": spent, "last_order_at": last, "updated_at": updated})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminPlatformUsers(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(email,''),role,status,admin_access,created_at FROM users WHERE role<>'owner' ORDER BY CASE WHEN role='superadmin' THEN 0 ELSE 1 END,created_at`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los usuarios SaaS")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, name, email, role, status string
+		var access []byte
+		var created time.Time
+		if rows.Scan(&id, &name, &email, &role, &status, &access, &created) == nil {
+			var a any = []any{}
+			_ = json.Unmarshal(access, &a)
+			out = append(out, map[string]any{"id": id, "name": name, "email": email, "role": role, "status": status, "access": a, "created_at": created})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminCreatePlatformUser(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name     string   `json:"name"`
+		Email    string   `json:"email"`
+		Password string   `json:"password"`
+		Role     string   `json:"role"`
+		Access   []string `json:"access"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" || strings.TrimSpace(in.Email) == "" || len(in.Password) < 8 {
+		jsonErr(w, 400, "Nombre, correo y contraseña de al menos 8 caracteres son obligatorios")
+		return
+	}
+	allowed := map[string]bool{"platform_admin": true, "operations": true, "support": true, "auditor": true}
+	if !allowed[in.Role] {
+		in.Role = "platform_admin"
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo proteger la contraseña")
+		return
+	}
+	access, _ := json.Marshal(in.Access)
+	var id string
+	err = s.db.QueryRow(r.Context(), `INSERT INTO users(name,email,password_hash,role,status,admin_access) VALUES($1,$2,$3,$4,'active',$5) RETURNING id`, strings.TrimSpace(in.Name), strings.ToLower(strings.TrimSpace(in.Email)), string(hash), in.Role, access).Scan(&id)
+	if err != nil {
+		jsonErr(w, 409, "No se pudo crear el usuario SaaS; verifica el correo")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "platform_user.created", "platform_user", id, map[string]any{"role": in.Role, "access": in.Access})
+	jsonOut(w, 201, map[string]any{"id": id, "ok": true})
+}
+
+func (s *Server) adminPlatformUserStatus(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Status string `json:"status"`
+	}
+	if decode(r, &in) != nil || (in.Status != "active" && in.Status != "inactive") {
+		jsonErr(w, 400, "Estado inválido")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	cmd, err := s.db.Exec(r.Context(), `UPDATE users SET status=$1,updated_at=now() WHERE id=$2 AND role<>'owner'`, in.Status, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Usuario SaaS no encontrado")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "platform_user.status.updated", "platform_user", id, map[string]any{"status": in.Status})
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+func (s *Server) adminDeletePlatformUser(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	if id == c.UserID {
+		jsonErr(w, 400, "No puedes eliminar tu propia cuenta")
+		return
+	}
+	cmd, err := s.db.Exec(r.Context(), `DELETE FROM users WHERE id=$1 AND role<>'owner' AND role<>'superadmin'`, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Usuario SaaS no encontrado o protegido")
+		return
+	}
+	s.auditPlatform(r.Context(), c.UserID, "platform_user.deleted", "platform_user", id, nil)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) adminBanks(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(short_name,''),is_active,sort_order FROM platform_banks ORDER BY sort_order,name`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los bancos")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, n, sn string
+		var active bool
+		var sort int
+		if rows.Scan(&id, &n, &sn, &active, &sort) == nil {
+			out = append(out, map[string]any{"id": id, "name": n, "short_name": sn, "is_active": active, "sort_order": sort})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) adminCreateBank(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name      string `json:"name"`
+		ShortName string `json:"short_name"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "Nombre obligatorio")
+		return
+	}
+	var id string
+	if s.db.QueryRow(r.Context(), `INSERT INTO platform_banks(name,short_name) VALUES($1,$2) RETURNING id`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName)).Scan(&id) != nil {
+		jsonErr(w, 409, "No se pudo crear el banco")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "bank.created", "bank", id, map[string]any{"name": strings.TrimSpace(in.Name)})
+	jsonOut(w, 201, map[string]any{"id": id, "ok": true})
+}
+func (s *Server) adminUpdateBank(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Name      string `json:"name"`
+		ShortName string `json:"short_name"`
+		IsActive  bool   `json:"is_active"`
+		SortOrder int    `json:"sort_order"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	id := chi.URLParam(r, "id")
+	cmd, err := s.db.Exec(r.Context(), `UPDATE platform_banks SET name=$1,short_name=$2,is_active=$3,sort_order=$4 WHERE id=$5`, strings.TrimSpace(in.Name), strings.TrimSpace(in.ShortName), in.IsActive, in.SortOrder, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Banco no encontrado")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "bank.updated", "bank", id, map[string]any{"name": strings.TrimSpace(in.Name), "active": in.IsActive})
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+func (s *Server) adminDeleteBank(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	cmd, err := s.db.Exec(r.Context(), `DELETE FROM platform_banks WHERE id=$1`, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, 404, "Banco no encontrado")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "bank.deleted", "bank", id, nil)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) listStoreStaff(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	sid := strings.TrimSpace(r.URL.Query().Get("store_id"))
+	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(phone,''),role,panel,status,created_at FROM store_staff WHERE store_id=$1 ORDER BY created_at`, sid)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los usuarios")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, n, p, role, panel, status string
+		var created time.Time
+		if rows.Scan(&id, &n, &p, &role, &panel, &status, &created) == nil {
+			out = append(out, map[string]any{"id": id, "name": n, "phone": p, "role": role, "panel": panel, "status": status, "created_at": created})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+func (s *Server) createStoreStaff(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	var in struct {
+		StoreID string `json:"store_id"`
+		Name    string `json:"name"`
+		Phone   string `json:"phone"`
+		Role    string `json:"role"`
+		Panel   string `json:"panel"`
+		PIN     string `json:"pin"`
+	}
+	if decode(r, &in) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) || strings.TrimSpace(in.Name) == "" {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	var hash any = nil
+	if in.PIN != "" {
+		if !validPIN(in.PIN) {
+			jsonErr(w, 400, "El PIN debe tener 4 dígitos")
+			return
+		}
+		h, _ := bcrypt.GenerateFromPassword([]byte(in.PIN), bcrypt.DefaultCost)
+		hash = string(h)
+	}
+	if in.Role == "" {
+		in.Role = "operator"
+	}
+	if in.Panel == "" {
+		in.Panel = "operations"
+	}
+	var id string
+	if s.db.QueryRow(r.Context(), `INSERT INTO store_staff(store_id,name,phone,role,panel,pin_hash) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, in.StoreID, strings.TrimSpace(in.Name), normalizePhone(in.Phone), in.Role, in.Panel, hash).Scan(&id) != nil {
+		jsonErr(w, 500, "No se pudo crear el usuario")
+		return
+	}
+	jsonOut(w, 201, map[string]any{"id": id, "ok": true})
+}
+func (s *Server) updateStoreStaff(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	var sid string
+	if s.db.QueryRow(r.Context(), `SELECT store_id FROM store_staff WHERE id=$1`, id).Scan(&sid) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
+		jsonErr(w, 404, "Usuario no encontrado")
+		return
+	}
+	var in struct {
+		Name   string `json:"name"`
+		Phone  string `json:"phone"`
+		Role   string `json:"role"`
+		Panel  string `json:"panel"`
+		Status string `json:"status"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
+		return
+	}
+	if in.Status == "" {
+		in.Status = "active"
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE store_staff SET name=$1,phone=$2,role=$3,panel=$4,status=$5,updated_at=now() WHERE id=$6`, strings.TrimSpace(in.Name), normalizePhone(in.Phone), in.Role, in.Panel, in.Status, id)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo guardar el usuario")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+func (s *Server) deleteStoreStaff(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	var sid string
+	if s.db.QueryRow(r.Context(), `SELECT store_id FROM store_staff WHERE id=$1`, id).Scan(&sid) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
+		jsonErr(w, 404, "Usuario no encontrado")
+		return
+	}
+	_, _ = s.db.Exec(r.Context(), `DELETE FROM store_staff WHERE id=$1`, id)
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	var in struct {
+		StoreID       string `json:"store_id"`
+		CustomerName  string `json:"customer_name"`
+		CustomerPhone string `json:"customer_phone"`
+		PaymentMethod string `json:"payment_method"`
+		Items         []struct {
+			ProductID string  `json:"product_id"`
+			Quantity  float64 `json:"quantity"`
+		} `json:"items"`
+	}
+	if decode(r, &in) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) || len(in.Items) == 0 {
+		jsonErr(w, 400, "Venta inválida")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo iniciar la venta")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	name := strings.TrimSpace(in.CustomerName)
+	if name == "" {
+		name = "Cliente mostrador"
+	}
+	phone := normalizePhone(in.CustomerPhone)
+	var subtotal float64
+	type line struct {
+		id, name   string
+		price, qty float64
+	}
+	lines := []line{}
+	for _, item := range in.Items {
+		if item.Quantity <= 0 {
+			continue
+		}
+		var n string
+		var price float64
+		var stock *float64
+		var track bool
+		err = tx.QueryRow(r.Context(), `SELECT name,price,stock,track_stock FROM products WHERE id=$1 AND store_id=$2 AND is_active=true`, item.ProductID, in.StoreID).Scan(&n, &price, &stock, &track)
+		if err != nil {
+			jsonErr(w, 400, "Producto inválido")
+			return
+		}
+		if track && stock != nil && *stock < item.Quantity {
+			jsonErr(w, 400, "Stock insuficiente para "+n)
+			return
+		}
+		lines = append(lines, line{item.ProductID, n, price, item.Quantity})
+		subtotal += price * item.Quantity
+	}
+	if len(lines) == 0 {
+		jsonErr(w, 400, "Agrega productos a la venta")
+		return
+	}
+	var customerID any = nil
+	if phone != "" {
+		var cid string
+		_ = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,status) VALUES($1,$2,$3,'active') ON CONFLICT(store_id,phone) DO UPDATE SET name=excluded.name,updated_at=now() RETURNING id`, in.StoreID, name, phone).Scan(&cid)
+		if cid != "" {
+			customerID = cid
+		}
+	}
+	method := in.PaymentMethod
+	if method == "" {
+		method = "cash"
+	}
+	var orderID string
+	var num int64
+	if err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,subtotal,discount,shipping,total,payment_method,payment_status,status,source,delivery_type) VALUES($1,$2,$3,$4,$5,0,0,$5,$6,'paid','completed','pos','pickup') RETURNING id,order_number`, in.StoreID, customerID, name, phone, subtotal, method).Scan(&orderID, &num); err != nil {
+		jsonErr(w, 500, "No se pudo registrar la venta")
+		return
+	}
+	for _, ln := range lines {
+		_, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6)`, orderID, ln.id, ln.name, ln.price, ln.qty, ln.price*ln.qty)
+		if err != nil {
+			jsonErr(w, 500, "No se pudo guardar el detalle")
+			return
+		}
+		_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=CASE WHEN track_stock AND stock IS NOT NULL THEN greatest(stock-$1,0) ELSE stock END,updated_at=now() WHERE id=$2`, ln.qty, ln.id)
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo confirmar la venta")
+		return
+	}
+	s.publishStoreEvent(r.Context(), in.StoreID, "order.created", map[string]any{"id": orderID, "number": num, "source": "pos"})
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "total": subtotal, "status": "completed"})
+}
+
+func (s *Server) adminAuditLog(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT a.id,a.action,coalesce(a.entity_type,''),coalesce(a.entity_id,''),a.metadata,a.created_at,coalesce(u.name,'Sistema') FROM platform_audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 200`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo cargar la auditoría")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id int64
+		var action, typ, entity, actor string
+		var meta []byte
+		var created time.Time
+		if rows.Scan(&id, &action, &typ, &entity, &meta, &created, &actor) == nil {
+			var m any = map[string]any{}
+			_ = json.Unmarshal(meta, &m)
+			out = append(out, map[string]any{"id": id, "action": action, "entity_type": typ, "entity_id": entity, "metadata": m, "created_at": created, "actor": actor})
+		}
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) listActiveBanks(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(short_name,'') FROM platform_banks WHERE is_active=true ORDER BY sort_order,name`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo cargar el catálogo bancario")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, name, short string
+		if rows.Scan(&id, &name, &short) == nil {
+			out = append(out, map[string]any{"id": id, "name": name, "short_name": short})
+		}
+	}
+	jsonOut(w, 200, out)
 }
