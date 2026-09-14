@@ -8,7 +8,7 @@ import CustomerAccessModal from '@/components/customer-access-modal'
 import {resolvedTheme,themeCSSVars,type StoreThemeConfig} from '@/lib/store-themes'
 import {ArrowLeft,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,WalletCards,X} from 'lucide-react'
 import StorefrontMobileNav from '@/components/storefront-mobile-nav'
-import {cartKey,formatCartQuantity,mergeCartItem,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
+import {cartKey,formatCartQuantity,initialProductQuantity,mergeCartItem,normalizeStoredCart,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
 
 type CartItem=StorefrontCartLine
 const payLabel:any={cash_on_delivery:'Pago al recibir',cash:'Efectivo',bank_transfer:'Transferencia bancaria'}
@@ -56,7 +56,7 @@ export default function Storefront(){
   const applyCustomer=(c:any)=>{setCustomer(c);const primary=Array.isArray(c?.addresses)?(c.addresses.find((a:any)=>a.is_primary)||c.addresses[0]):null;if(primary)setForm(v=>({...v,address_id:primary.id}))}
   const loadCustomer=()=>api<any>('/customer/me').then(applyCustomer).catch(()=>setCustomer(null))
   useEffect(()=>{void loadCustomer()},[])
-  useEffect(()=>{try{const v=localStorage.getItem(`wamercio-cart-${window.location.hostname}`);if(v)setCart(JSON.parse(v))}catch{}},[])
+  useEffect(()=>{try{const v=localStorage.getItem(`wamercio-cart-${window.location.hostname}`);if(v)setCart(normalizeStoredCart(JSON.parse(v)))}catch{}},[])
   useEffect(()=>{if(typeof window!=='undefined')localStorage.setItem(`wamercio-cart-${window.location.hostname}`,JSON.stringify(cart))},[cart])
   useEffect(()=>{
     if(typeof document==='undefined'||typeof window==='undefined')return
@@ -90,7 +90,7 @@ export default function Storefront(){
     setVariant(current?.variant_name?(p.variants||[]).find(v=>v.name===current.variant_name)||p.variants?.[0]||null:p.variants?.[0]||null)
     setExtras(current?.extras||[])
     setPurchaseMode(current?.sale_mode==='amount'?'amount':'weight')
-    setQty(current?.quantity||weighted.minimum||1)
+    setQty(initialProductQuantity(p,current))
     setAmountValue(Number(current?.requested_amount||0))
   }
   const closeProduct=()=>{const reopen=returnToCart;setPick(null);setEditingKey('');setReturnToCart(false);if(reopen)setCartOpen(true)}
@@ -289,10 +289,13 @@ export default function Storefront(){
 
     {pick&&<div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
       <button className="absolute inset-0 bg-slate-950/50" onClick={closeProduct}/>
-      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] sm:max-w-xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:t.shape.radius}}>
-        <button onClick={closeProduct} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow"><X className="h-4 w-4"/></button>
-        {pick.image_url&&<img src={pick.image_url} alt={pick.name} className={`w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'}`}/>} 
-        <div className="p-5">
+      <div data-testid="storefront-product-modal" className="relative max-h-[92vh] w-full overflow-hidden rounded-t-[28px] sm:max-w-4xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:t.shape.radius}}>
+        <button onClick={closeProduct} className="absolute right-4 top-4 z-20 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow"><X className="h-4 w-4"/></button>
+        <div className="scroll-clean max-h-[92vh] overflow-y-auto sm:grid sm:max-h-[84vh] sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:overflow-hidden">
+          <div data-testid="storefront-product-media" className="relative min-h-0 overflow-hidden" style={{background:t.colors.background}}>
+            {pick.image_url?<img src={pick.image_url} alt={pick.name} className={`w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'} sm:h-full sm:aspect-auto`}/>:<div className="grid aspect-[4/3] w-full place-items-center sm:h-full sm:aspect-auto"><StoreIcon className="h-12 w-12 opacity-20"/></div>}
+          </div>
+          <div data-testid="storefront-product-details" className="p-5 sm:min-h-0 sm:overflow-y-auto sm:p-6">
           <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>{pick.name}</h3><p className="mt-2 text-sm leading-6" style={{color:t.colors.muted}}>{pick.description}</p></div>{editingKey&&<span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase" style={{background:t.colors.background,color:t.colors.primary}}>En tu pedido</span>}</div>
           <div className="mt-3 flex items-end justify-between gap-3"><div className="text-xl font-bold" style={{color:t.colors.primary}}>{money(unit||pick.price)}{weighted.enabled&&<span className="ml-1 text-xs font-semibold" style={{color:t.colors.muted}}>/ {weighted.unit}</span>}</div>{editingKey&&(pick.variants?.length>0||pick.extras?.length>0)&&<button type="button" onClick={resetAsNewCombination} className="text-xs font-semibold" style={{color:t.colors.primary}}>Agregar otra combinación</button>}</div>
 
@@ -306,6 +309,7 @@ export default function Storefront(){
           </div>:<div className="mt-6 flex items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius,width:'fit-content'}}><button type="button" onClick={()=>setQty(Math.max(1,qty-1))} className="p-3"><Minus className="h-4 w-4"/></button><span className="w-10 text-center font-bold">{formatCartQuantity(qty)}</span><button type="button" onClick={()=>setQty(qty+1)} className="p-3"><Plus className="h-4 w-4"/></button></div>}
 
           <button disabled={!canOrder||selectedQuantity<=0} onClick={saveProductSelection} className="mt-5 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi pedido':'Agregar a mi pedido'} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button>
+          </div>
         </div>
       </div>
     </div>}

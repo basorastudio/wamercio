@@ -35,6 +35,22 @@ export function productCartLines(items:StorefrontCartLine[],productID:string){re
 export function productCartQuantity(items:StorefrontCartLine[],productID:string){return roundQuantity(productCartLines(items,productID).reduce((sum,x)=>sum+Number(x.quantity||0),0))}
 
 function num(v:any,fallback:number){const n=Number(v);return Number.isFinite(n)&&n>0?n:fallback}
+export function initialProductQuantity(product:any,current?:{quantity?:number}|null){
+  const existing=roundQuantity(Number(current?.quantity||0))
+  if(existing>0)return existing
+  const cfg=weightedSaleConfig(product)
+  return cfg.enabled?cfg.minimum:1
+}
+
+export function normalizeStoredCart(items:StorefrontCartLine[]){
+  if(!Array.isArray(items))return[]
+  return items.map(line=>{
+    const mode=line.sale_mode||'unit'
+    if(mode==='unit')return{...line,quantity:Math.max(1,Math.round(Number(line.quantity)||1)),quantity_step:1}
+    return{...line,quantity:roundQuantity(Math.max(0,Number(line.quantity)||0)),quantity_step:Number(line.quantity_step)||undefined}
+  }).filter(line=>line.quantity>0)
+}
+
 export function weightedSaleConfig(product:any){
   const a=product?.attributes||{}
   const raw=a.wamercio_weighted_sale??a.weighted_sale??a.weightedSale??false

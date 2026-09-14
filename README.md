@@ -1,4 +1,4 @@
-# WAMERCIO 2.5.7
+# WAMERCIO 2.5.8
 
 WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, SPA + PWA y multi-tenant.
 

@@ -1,4 +1,11 @@
-# WAMERCIO 2.5.7 — Corrección de compilación API
+# WAMERCIO 2.5.8 — Corrección de compilación API
+
+## 2.5.8 - Tarjeta de producto en dos columnas y cantidades unitarias
+
+- Reestructura el detalle del producto en dos columnas en tablet/escritorio: imagen a la izquierda y datos/opciones/acciones a la derecha; en móvil conserva el apilado vertical.
+- Corrige la cantidad inicial de productos unitarios para que comience en 1 y reserve incrementos fraccionarios para productos vendidos por peso.
+- Migra automáticamente carritos locales antiguos que hayan guardado cantidades fraccionarias erróneas en productos unitarios.
+
 
 - Corrige `undefined: strconv` en `services/api/internal/httpapi/server.go` agregando el import requerido por `formatOrderQuantity`.
 - Sin cambios de base de datos, ENV, routing ni funcionalidad.
