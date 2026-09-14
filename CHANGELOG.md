@@ -1,3 +1,16 @@
+# WAMERCIO 2.5.8 — Carrito full-page simplificado
+
+- Editar un producto desde **Mi pedido** abre su ficha directamente sobre la página del carrito; el catálogo ya no reaparece detrás del modal.
+- Elimina el paso intermedio **Continuar con mi pedido**: modalidad, dirección, zona, forma de pago, notas y total están visibles desde el primer momento.
+- Elimina la acción duplicada **Volver al catálogo** y conserva una sola acción **Seguir comprando** en la cabecera del pedido.
+- Reorganiza el carrito al patrón de **Mi Funda** de ColmaPro: cabecera propia, productos como tarjetas independientes y checkout completo en una columna lateral `sticky` en escritorio.
+- En móvil conserva un flujo vertical de una sola columna y mantiene oculto el menú inferior mientras se revisa el pedido.
+- Añade eliminación directa de líneas del carrito y mantiene edición de variantes, adicionales, cantidades y productos por peso/monto.
+- Los clientes sin sesión pueden ver las opciones del checkout y reciben una invitación contextual para identificarse cuando necesitan sus direcciones guardadas.
+- No requiere migraciones, cambios de API ni nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Carrito como página completa
 
 - Sustituye el carrito lateral por una página completa dedicada, inspirada en la experiencia de compra de ColmaPro.

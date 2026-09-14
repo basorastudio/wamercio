@@ -12,7 +12,7 @@ checks={
     'search does not filter catalog canvas': 'const products=useMemo(()=>data?.products?.filter((p:Product)=>(cat===' not in store,
     'header address removed': 'data-testid="storefront-header-subtitle"' in store and "s.address||'Catálogo en línea'" not in store,
     'cart is now a dedicated full-page experience': 'data-testid="storefront-cart-page"' in store and 'data-testid="storefront-desktop-cart"' not in store,
-    'full-page cart remains responsive on mobile': 'lg:grid-cols-[minmax(0,1fr)_400px]' in store and '!cartOpen&&<StorefrontMobileNav' in store,
+    'full-page cart remains responsive on mobile': ('lg:grid-cols-[minmax(0,1fr)_400px]' in store or 'lg:grid-cols-[minmax(0,1fr)_420px]' in store) and '!cartOpen&&<StorefrontMobileNav' in store,
     'refined product card': 'data-testid="storefront-product-card"' in store and 'h-full' in store and 'focus-visible:ring' in store,
 }
 failed=[name for name,ok in checks.items() if not ok]

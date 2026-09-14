@@ -6,7 +6,7 @@ import {api,money} from '@/lib/api'
 import type {Product,PriceOption} from '@/lib/types'
 import CustomerAccessModal from '@/components/customer-access-modal'
 import {resolvedTheme,themeCSSVars,type StoreThemeConfig} from '@/lib/store-themes'
-import {ArrowLeft,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,WalletCards,X} from 'lucide-react'
+import {Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,WalletCards,X} from 'lucide-react'
 import StorefrontMobileNav from '@/components/storefront-mobile-nav'
 import {cartKey,formatCartQuantity,initialProductQuantity,mergeCartItem,normalizeStoredCart,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
 
@@ -31,11 +31,9 @@ export default function Storefront(){
   const[purchaseMode,setPurchaseMode]=useState<'weight'|'amount'>('weight')
   const[amountValue,setAmountValue]=useState(0)
   const[editingKey,setEditingKey]=useState('')
-  const[returnToCart,setReturnToCart]=useState(false)
   const[cartNotice,setCartNotice]=useState('')
   const[cart,setCart]=useState<CartItem[]>([])
   const[cartOpen,setCartOpen]=useState(false)
-  const[checkout,setCheckout]=useState(false)
   const[sending,setSending]=useState(false)
   const[done,setDone]=useState<any>(null)
   const[customer,setCustomer]=useState<any>(null)
@@ -94,12 +92,10 @@ export default function Storefront(){
     setQty(initialProductQuantity(p,current))
     setAmountValue(Number(current?.requested_amount||0))
   }
-  const closeProduct=()=>{const reopen=returnToCart;setPick(null);setEditingKey('');setReturnToCart(false);if(reopen)setCartOpen(true)}
+  const closeProduct=()=>{setPick(null);setEditingKey('')}
   const openCartItem=(line:CartItem)=>{
     const product=(data?.products||[]).find((p:Product)=>p.id===line.product_id)
     if(!product)return
-    setReturnToCart(true)
-    setCartOpen(false)
     openProduct(product,line)
   }
   const openSearchProduct=(p:Product)=>{
@@ -129,16 +125,11 @@ export default function Storefront(){
     setCart(v=>editingKey?replaceCartItem(v,editingKey,next):mergeCartItem(v,next))
     setCartNotice(editingKey?'Pedido actualizado':'Agregado a tu pedido')
     window.setTimeout(()=>setCartNotice(''),1800)
-    const reopen=returnToCart
     setPick(null)
     setEditingKey('')
-    setReturnToCart(false)
-    setCheckout(false)
-    if(reopen)setCartOpen(true)
   }
   const changeQty=(key:string,d:number)=>setCart(v=>v.map(x=>x.key===key?{...x,quantity:roundQuantity(Math.max(0,x.quantity+d*Number(x.quantity_step||1)))}:x).filter(x=>x.quantity>0))
-  const closeCart=()=>{setCartOpen(false);setCheckout(false);setError('')}
-  const beginCheckout=()=>{setError('');if(!customer){setCustomerAuthOpen(true);return}setCheckout(true);setCartOpen(true)}
+  const closeCart=()=>{setCartOpen(false);setError('')}
   const send=async(e:React.FormEvent)=>{
     e.preventDefault()
     if(!cart.length)return
@@ -147,11 +138,11 @@ export default function Storefront(){
     try{
       const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras}))}
       const out=await api('/public/store/checkout',{method:'POST',body:JSON.stringify(payload)})
-      setDone(out);setCart([]);setCheckout(false);setCartOpen(false)
+      setDone(out);setCart([]);setCartOpen(false)
     }catch(e:any){
       const message=e.message||'No pudimos confirmar el pedido'
       setError(message)
-      if(/sesión|Inicia sesión/i.test(message)){setCheckout(false);setCustomer(null);setCustomerAuthOpen(true)}
+      if(/sesión|Inicia sesión/i.test(message)){setCustomer(null);setCustomerAuthOpen(true)}
     }finally{setSending(false)}
   }
 
@@ -207,24 +198,24 @@ export default function Storefront(){
     </div>}
   </div>
 
-  const cartProducts=<section data-testid="storefront-cart-products" className="p-4 sm:p-5" style={surfaceStyle(t)}>
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-      <div><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Tu selección</p><h2 className="mt-1 text-xl font-semibold sm:text-2xl" style={{fontFamily:'var(--store-heading-font)'}}>Productos en tu pedido</h2><p className="mt-1 text-xs" style={{color:t.colors.muted}}>{itemCount} {itemCount===1?'producto':'productos'} agregado{itemCount===1?'':'s'}</p></div>
-      <button data-testid="storefront-cart-back-catalog" type="button" onClick={closeCart} className="inline-flex items-center gap-2 px-3.5 py-2.5 text-sm font-semibold" style={buttonStyle(t,true)}><StoreIcon className="h-4 w-4"/>Seguir comprando</button>
+  const cartProducts=<section data-testid="storefront-cart-products" className="space-y-4">
+    <div data-testid="storefront-cart-header" className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5" style={surfaceStyle(t)}>
+      <div><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Mi pedido</p><h1 className="mt-1 text-2xl font-semibold sm:text-3xl" style={{fontFamily:'var(--store-heading-font)'}}>Mi pedido</h1><p className="mt-1 text-sm" style={{color:t.colors.muted}}>{itemCount} {itemCount===1?'producto agregado':'productos agregados'}</p></div>
+      <button data-testid="storefront-cart-back-catalog" type="button" onClick={closeCart} className="inline-flex w-fit items-center gap-2 px-3.5 py-2.5 text-sm font-semibold" style={buttonStyle(t,true)}><StoreIcon className="h-4 w-4"/>Seguir comprando</button>
     </div>
-    <div className="space-y-3">{cart.map(x=><div key={x.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
+    <div className="space-y-3">{cart.map(x=><article key={x.key} className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:p-4" style={surfaceStyle(t)}>
       <button type="button" data-testid="edit-cart-item" onClick={()=>openCartItem(x)} className="h-20 w-20 shrink-0 overflow-hidden text-left" style={{borderRadius:Math.max(10,t.shape.radius-4),background:t.colors.background}}>{x.image_url?<img src={x.image_url} alt="" className="h-full w-full object-cover"/>:<StoreIcon className="m-6 h-7 w-7 opacity-20"/>}</button>
       <div className="min-w-0 flex-1"><button type="button" onClick={()=>openCartItem(x)} className="block max-w-full text-left"><div className="truncate font-semibold">{x.name}</div>{x.variant_name&&<div className="mt-0.5 text-xs" style={{color:t.colors.muted}}>{x.variant_name}</div>}{x.extras.length>0&&<div className="mt-0.5 line-clamp-2 text-[11px]" style={{color:t.colors.muted}}>{x.extras.map(y=>y.name).join(', ')}</div>}</button><div className="mt-2 flex items-center gap-3"><span className="text-base font-bold" style={{color:t.colors.primary}}>{money(x.unit_price*x.quantity)}</span><button type="button" onClick={()=>openCartItem(x)} className="text-xs font-semibold" style={{color:t.colors.primary}}>Editar</button></div></div>
-      {x.sale_mode==='weight'||x.sale_mode==='amount'?<button type="button" onClick={()=>openCartItem(x)} className="self-start rounded-xl px-3 py-2 text-xs font-bold sm:self-center" style={{background:t.colors.background,color:t.colors.primary}}>{formatCartQuantity(x.quantity,x.unit_label)}</button>:<div className="flex h-10 items-center self-start sm:self-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" aria-label="Restar cantidad" className="p-2.5" onClick={()=>changeQty(x.key,-1)}><Minus className="h-3.5 w-3.5"/></button><span className="w-8 text-center text-sm font-bold">{formatCartQuantity(x.quantity)}</span><button type="button" aria-label="Sumar cantidad" className="p-2.5" onClick={()=>changeQty(x.key,1)}><Plus className="h-3.5 w-3.5"/></button></div>}
-    </div>)}</div>
+      <div className="flex items-center gap-2 self-start sm:self-center">{x.sale_mode==='weight'||x.sale_mode==='amount'?<button type="button" onClick={()=>openCartItem(x)} className="rounded-xl px-3 py-2 text-xs font-bold" style={{background:t.colors.background,color:t.colors.primary}}>{formatCartQuantity(x.quantity,x.unit_label)}</button>:<div className="flex h-10 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" aria-label="Restar cantidad" className="p-2.5" onClick={()=>changeQty(x.key,-1)}><Minus className="h-3.5 w-3.5"/></button><span className="w-8 text-center text-sm font-bold">{formatCartQuantity(x.quantity)}</span><button type="button" aria-label="Sumar cantidad" className="p-2.5" onClick={()=>changeQty(x.key,1)}><Plus className="h-3.5 w-3.5"/></button></div>}<button type="button" aria-label={`Eliminar ${x.name}`} onClick={()=>setCart(v=>v.filter(line=>line.key!==x.key))} className="grid h-10 w-10 place-items-center rounded-xl" style={{background:'#fff1f2',color:'#e11d48'}}><X className="h-4 w-4"/></button></div>
+    </article>)}</div>
   </section>
 
-  const checkoutColumn=checkout?<div className="space-y-4">
-    <div className="flex items-center gap-3"><button type="button" aria-label="Volver al resumen" className="rounded-xl p-2" onClick={()=>{setCheckout(false);setError('')}}><ArrowLeft className="h-5 w-5"/></button><div><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Finalizar pedido</p><h2 className="mt-1 text-lg font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>Entrega y forma de pago</h2></div></div>
+  const checkoutColumn=<div className="space-y-4">
+    <div className="px-1"><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Finalizar pedido</p><h2 className="mt-1 text-xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>Entrega y forma de pago</h2><p className="mt-1 text-xs" style={{color:t.colors.muted}}>Completa los datos de tu pedido sin salir de esta página.</p></div>
+    {customer?<div className="flex items-center gap-3 rounded-2xl px-3.5 py-3" style={{...surfaceStyle(t),boxShadow:'none'}}><span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full" style={{background:t.colors.background}}>{customer.profile_picture_url?<img src={customer.profile_picture_url} alt="" className="h-full w-full object-cover"/>:<UserRound className="h-4 w-4"/>}</span><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wider" style={{color:t.colors.muted}}>Cliente</div><div className="truncate text-sm font-bold">{customer.name} {customer.last_name}</div><div className="text-xs" style={{color:t.colors.muted}}>+{customer.phone}</div></div></div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="flex w-full items-center gap-3 p-4 text-left" style={{...surfaceStyle(t),boxShadow:'none'}}><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full" style={{background:t.colors.background,color:t.colors.primary}}><UserRound className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block text-sm font-bold">Identifícate para finalizar</span><span className="mt-0.5 block text-xs" style={{color:t.colors.muted}}>Usaremos tus direcciones guardadas y datos de cliente.</span></span><ChevronRight className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/></button>}
     <form id="storefront-checkout-form" onSubmit={send} className="space-y-4">
       {error&&<div className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{error}</div>}
       {s.checkout_message&&<div className="p-3 text-sm" style={{background:t.colors.background,borderRadius:t.shape.buttonRadius,color:t.colors.text}}>{s.checkout_message}</div>}
-      {customer&&<div className="flex items-center gap-3 rounded-2xl px-3.5 py-3" style={{background:t.colors.background}}><span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full" style={{background:t.colors.surface}}>{customer.profile_picture_url?<img src={customer.profile_picture_url} alt="" className="h-full w-full object-cover"/>:<UserRound className="h-4 w-4"/>}</span><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wider" style={{color:t.colors.muted}}>Cliente</div><div className="truncate text-sm font-bold">{customer.name} {customer.last_name}</div><div className="text-xs" style={{color:t.colors.muted}}>+{customer.phone}</div></div></div>}
 
       <section data-testid="storefront-cart-step-delivery" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
         <div className="mb-3"><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>1 · Modalidad de pedido</div><div className="mt-1 text-sm font-semibold">¿Cómo recibirás tu pedido?</div></div>
@@ -232,10 +223,10 @@ export default function Storefront(){
           {s.delivery_enabled&&<button type="button" onClick={()=>setForm({...form,delivery_type:'delivery'})} className="relative p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.delivery_type==='delivery'?t.colors.primary:t.colors.border,background:form.delivery_type==='delivery'?t.colors.background:t.colors.surface}}><Truck className="h-4 w-4" style={{color:t.colors.primary}}/><div className="mt-2 text-sm font-bold">Delivery</div><div className="text-[11px]" style={{color:t.colors.muted}}>Entrega a domicilio</div>{form.delivery_type==='delivery'&&<Check className="absolute right-3 top-3 h-4 w-4" style={{color:t.colors.primary}}/>}</button>}
           {s.pickup_enabled&&<button type="button" onClick={()=>{setForm({...form,delivery_type:'pickup',shipping_zone_id:''});setAddressPickerOpen(false)}} className="relative p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.delivery_type==='pickup'?t.colors.primary:t.colors.border,background:form.delivery_type==='pickup'?t.colors.background:t.colors.surface}}><StoreIcon className="h-4 w-4" style={{color:t.colors.primary}}/><div className="mt-2 text-sm font-bold">Recoger</div><div className="text-[11px]" style={{color:t.colors.muted}}>Retiro en el negocio</div>{form.delivery_type==='pickup'&&<Check className="absolute right-3 top-3 h-4 w-4" style={{color:t.colors.primary}}/>}</button>}
         </div>
-        {form.delivery_type==='delivery'?<div className="mt-3 space-y-3">
+        {form.delivery_type==='delivery'?customer?<div className="mt-3 space-y-3">
           {selectedAddress&&!addressPickerOpen?<div data-testid="storefront-selected-address" className="flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de entrega</div><div className="mt-1 truncate text-sm font-semibold">{selectedAddress.label}</div><div className="mt-0.5 line-clamp-2 text-xs" style={{color:t.colors.muted}}>{selectedAddress.formatted}</div></div><button type="button" onClick={()=>setAddressPickerOpen(true)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold" style={{background:t.colors.surface,color:t.colors.primary}}>Cambiar</button></div>:<div><div className="mb-1 flex items-center justify-between"><label className="label">Dirección de entrega *</label><Link href="/cliente/perfil" className="text-[11px] font-semibold" style={{color:t.colors.primary}}>Administrar</Link></div><select className="field" required value={form.address_id} onChange={e=>{setForm({...form,address_id:e.target.value});if(e.target.value)setAddressPickerOpen(false)}}><option value="">Selecciona una dirección</option>{(customer?.addresses||[]).map((a:any)=><option key={a.id} value={a.id}>{a.label} · {a.formatted}</option>)}</select></div>}
           <div><label className="label">Zona de delivery *</label><select required className="field" value={form.shipping_zone_id} onChange={e=>setForm({...form,shipping_zone_id:e.target.value})}><option value="">Selecciona una zona</option>{data.shipping_zones.map((z:any)=><option key={z.id} value={z.id}>{z.name} · {money(z.charge)}</option>)}</select></div>
-        </div>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
+        </div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-xl p-3 text-left" style={{background:t.colors.background}}><MapPin className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-xs font-semibold">Inicia sesión para seleccionar una dirección de entrega.</span><ChevronRight className="ml-auto h-4 w-4"/></button>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
       </section>
 
       <section data-testid="storefront-cart-step-payment" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
@@ -245,20 +236,18 @@ export default function Storefront(){
       </section>
 
       <section className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>3 · Notas</div><label className="label mt-2">Indicaciones para el pedido <span className="font-normal" style={{color:t.colors.muted}}>(opcional)</span></label><textarea className="field min-h-20" placeholder="Ej.: llamar al llegar, sin servilletas..." value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})}/></section>
+
+      <section data-testid="storefront-cart-summary" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
+        <div className="rounded-2xl p-3.5 text-sm" style={{background:t.colors.background}}><div className="flex justify-between"><span style={{color:t.colors.muted}}>Subtotal</span><strong>{money(subtotal)}</strong></div>{form.delivery_type==='delivery'&&<div className="mt-2 flex justify-between"><span style={{color:t.colors.muted}}>Delivery</span><strong style={{color:t.colors.primary}}>{money(shipping)}</strong></div>}<div className="mt-3 flex justify-between pt-3 text-base" style={{borderTop:`1px solid ${t.colors.border}`}}><span>Total estimado</span><strong className="text-lg">{money(total)}</strong></div></div>
+        {minimumMissing>0&&<div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">Agrega {money(minimumMissing)} para alcanzar el pedido mínimo.</div>}
+        <button type="submit" disabled={sending||minimumMissing>0||!canOrder} className="mt-3 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{sending?'Confirmando...':canOrder?'Confirmar pedido':'Pedidos no disponibles'}</button>
+      </section>
     </form>
-    <div data-testid="storefront-cart-summary" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
-      <div className="rounded-2xl p-3.5 text-sm" style={{background:t.colors.background}}><div className="flex justify-between"><span style={{color:t.colors.muted}}>Subtotal</span><strong>{money(subtotal)}</strong></div>{form.delivery_type==='delivery'&&<div className="mt-2 flex justify-between"><span style={{color:t.colors.muted}}>Delivery</span><strong style={{color:t.colors.primary}}>{money(shipping)}</strong></div>}<div className="mt-3 flex justify-between pt-3 text-base" style={{borderTop:`1px solid ${t.colors.border}`}}><span>Total estimado</span><strong className="text-lg">{money(total)}</strong></div></div>
-      <button type="submit" form="storefront-checkout-form" disabled={sending||!canOrder} className="mt-3 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{sending?'Confirmando...':canOrder?'Confirmar pedido':'Pedidos no disponibles'}</button>
-    </div>
-  </div>:<div className="space-y-4">
-    <div><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Resumen</p><h2 className="mt-1 text-lg font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>Tu pedido</h2><p className="mt-1 text-xs" style={{color:t.colors.muted}}>Revisa tus productos antes de continuar.</p></div>
-    <div data-testid="storefront-cart-summary" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="flex justify-between text-sm"><span style={{color:t.colors.muted}}>Subtotal</span><strong className="text-lg">{money(subtotal)}</strong></div>{minimumMissing>0&&<div className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">Agrega {money(minimumMissing)} para alcanzar el pedido mínimo.</div>}<p className="mt-4 text-xs leading-5" style={{color:t.colors.muted}}>La modalidad de entrega y el costo de delivery se confirman en el siguiente paso.</p><button disabled={minimumMissing>0||!canOrder} onClick={beginCheckout} className="mt-4 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>Continuar con mi pedido</button></div>
   </div>
 
   const cartPage=<main data-testid="storefront-cart-page" className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
     {!canOrder&&<div className="mb-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><Clock3 className="mt-0.5 h-4 w-4 shrink-0"/><div><strong>{s.accepting_orders===false?'Pedidos pausados':'Estamos fuera de horario'}</strong><p className="mt-1 text-amber-800/80">Puedes revisar tu pedido ahora y confirmarlo cuando la tienda vuelva a estar disponible.</p></div></div>}
-    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Mi pedido</p><h1 className="mt-1 text-2xl font-semibold sm:text-3xl" style={{fontFamily:'var(--store-heading-font)'}}>Revisa y completa tu compra</h1><p className="mt-1 text-sm" style={{color:t.colors.muted}}>Todo tu pedido en una sola página, sin paneles laterales.</p></div><button data-testid="storefront-cart-back-catalog" type="button" onClick={closeCart} className="inline-flex w-fit items-center gap-2 px-3.5 py-2.5 text-sm font-semibold" style={buttonStyle(t,true)}><ArrowLeft className="h-4 w-4"/>Volver al catálogo</button></div>
-    {cart.length===0?<div className="grid min-h-[420px] place-items-center p-8 text-center" style={surfaceStyle(t)}><div><ShoppingBag className="mx-auto h-12 w-12 opacity-25"/><h2 className="mt-4 text-xl font-semibold">Tu pedido está vacío</h2><p className="mt-2 text-sm" style={{color:t.colors.muted}}>Agrega productos del catálogo para comenzar.</p><button type="button" onClick={closeCart} className="mt-5 px-5 py-3 text-sm font-semibold" style={buttonStyle(t)}>Explorar catálogo</button></div></div>:<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start">{cartProducts}<aside data-testid="storefront-cart-summary-column" className="space-y-4 lg:sticky lg:top-24">{checkoutColumn}</aside></div>}
+    {cart.length===0?<div className="grid min-h-[420px] place-items-center p-8 text-center" style={surfaceStyle(t)}><div><ShoppingBag className="mx-auto h-12 w-12 opacity-25"/><h2 className="mt-4 text-xl font-semibold">Tu pedido está vacío</h2><p className="mt-2 text-sm" style={{color:t.colors.muted}}>Agrega productos del catálogo para comenzar.</p><button type="button" onClick={closeCart} className="mt-5 px-5 py-3 text-sm font-semibold" style={buttonStyle(t)}>Explorar catálogo</button></div></div>:<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-start">{cartProducts}<aside data-testid="storefront-cart-summary-column" className="space-y-4 lg:sticky lg:top-24">{checkoutColumn}</aside></div>}
   </main>
 
   return <div className="storefront min-h-screen pb-[calc(76px+env(safe-area-inset-bottom))] md:pb-0" style={{...vars,background:pageBackground,color:t.colors.text,fontFamily:'var(--store-body-font)'}} data-theme={preset.id}>
@@ -271,7 +260,7 @@ export default function Storefront(){
         </div>
         {searchBox}
         <div className="flex items-center justify-end gap-2">
-          <button onClick={()=>{setCheckout(false);setCartOpen(true)}} className="relative inline-flex items-center gap-2 px-3 py-2.5 text-sm font-semibold shadow-sm sm:px-4" style={buttonStyle(t)}><ShoppingBag className="h-4 w-4"/><span className="hidden lg:inline">Mi pedido</span>{itemCount>0&&<span className="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[11px] font-semibold text-slate-900">{itemCount}</span>}</button>
+          <button onClick={()=>setCartOpen(true)} className="relative inline-flex items-center gap-2 px-3 py-2.5 text-sm font-semibold shadow-sm sm:px-4" style={buttonStyle(t)}><ShoppingBag className="h-4 w-4"/><span className="hidden lg:inline">Mi pedido</span>{itemCount>0&&<span className="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[11px] font-semibold text-slate-900">{itemCount}</span>}</button>
           {customer?<><Link href="/cliente/pedidos" className="hidden px-3 py-2.5 text-sm font-semibold lg:inline-flex" style={buttonStyle(t,true)}>Pedidos</Link><Link href="/cliente/perfil" className="inline-flex items-center gap-2 px-3 py-2.5 text-sm font-semibold" style={buttonStyle(t,true)}><span className="grid h-6 w-6 shrink-0 place-items-center overflow-hidden rounded-full" style={{background:t.colors.background}}>{customer.profile_picture_url?<img src={customer.profile_picture_url} alt={customer.whatsapp_name||customer.name||'Perfil de WhatsApp'} className="h-full w-full object-cover"/>:<UserRound className="h-3.5 w-3.5"/>}</span><span className="hidden xl:inline">{customer.name}</span></Link></>:<button onClick={()=>setCustomerAuthOpen(true)} className="px-3 py-2.5 text-sm font-semibold sm:px-4" style={buttonStyle(t,true)}>Entrar</button>}
         </div>
       </div>
@@ -342,8 +331,8 @@ export default function Storefront(){
 
     {cartNotice&&<div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-[65] -translate-x-1/2 rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-xl lg:bottom-6">{cartNotice}</div>}
 
-    {!cartOpen&&<StorefrontMobileNav itemCount={itemCount} customer={customer} primaryColor={t.colors.primary} onSearch={()=>{window.scrollTo({top:0,behavior:'smooth'});window.setTimeout(()=>{const el=document.getElementById('storefront-search') as HTMLInputElement|null;el?.focus();setSearchOpen(true)},220)}} onCart={()=>{setCartOpen(true);setCheckout(false)}} onLogin={()=>setCustomerAuthOpen(true)}/>}
-    <CustomerAccessModal open={customerAuthOpen} onClose={()=>setCustomerAuthOpen(false)} onAuthenticated={c=>{applyCustomer(c);setCustomerAuthOpen(false);if(cart.length){setCartOpen(true);setCheckout(true)}}}/>
+    {!cartOpen&&<StorefrontMobileNav itemCount={itemCount} customer={customer} primaryColor={t.colors.primary} onSearch={()=>{window.scrollTo({top:0,behavior:'smooth'});window.setTimeout(()=>{const el=document.getElementById('storefront-search') as HTMLInputElement|null;el?.focus();setSearchOpen(true)},220)}} onCart={()=>setCartOpen(true)} onLogin={()=>setCustomerAuthOpen(true)}/>}
+    <CustomerAccessModal open={customerAuthOpen} onClose={()=>setCustomerAuthOpen(false)} onAuthenticated={c=>{applyCustomer(c);setCustomerAuthOpen(false);if(cart.length)setCartOpen(true)}}/>
 
     {done&&<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/50 p-4"><div className="w-full max-w-md p-7 text-center shadow-2xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:t.shape.radius}}><div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-50 text-emerald-600"><Check className="h-8 w-8"/></div><h3 className="mt-4 text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>¡Pedido recibido!</h3><p className="mt-2" style={{color:t.colors.muted}}>Tu pedido <strong>#{done.number}</strong> fue registrado correctamente.</p><div className="mt-5 p-4" style={{background:t.colors.background,borderRadius:t.shape.radius}}><div className="text-sm" style={{color:t.colors.muted}}>Total</div><div className="text-2xl font-semibold">{money(done.total)}</div><div className="mt-1 text-xs" style={{color:t.colors.muted}}>{payLabel[done.payment_method]||''}</div></div>{done.payment_method==='bank_transfer'&&<p className="mt-3 text-xs leading-5" style={{color:t.colors.muted}}>Realiza la transferencia y sube tu comprobante desde el seguimiento del pedido.</p>}{done.tracking_url&&<a href={done.tracking_url} className="mt-5 inline-flex w-full items-center justify-center px-4 py-3 font-semibold" style={buttonStyle(t,true)}>Ver seguimiento{done.payment_method==='bank_transfer'?' y comprobante':''}</a>}<button onClick={()=>setDone(null)} className="mt-2 w-full px-4 py-3 font-semibold" style={buttonStyle(t)}>Seguir comprando</button></div></div>}
   </div>
