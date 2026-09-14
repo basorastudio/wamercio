@@ -14,13 +14,13 @@ La tienda pública conserva el catálogo visible mientras el cliente arma su ped
 
 ## Storefront 2.5.5
 
-La experiencia pública del negocio se refinó para mantener la tienda útil mientras el cliente compra:
+La experiencia pública del negocio se refinó para mantener la tienda útil mientras el cliente compra. Al abrir **Mi pedido**, WAMERCIO cambia a una página completa de carrito/checkout en lugar de usar un panel lateral:
 
 - acceso progresivo por WhatsApp sin botón intermedio;
 - búsqueda predictiva en la barra superior sin filtrar el lienzo del catálogo;
 - resultados contextuales que abren directamente la ficha del producto;
 - tarjetas de producto más consistentes y precios iniciales correctos cuando existen variantes;
-- carrito lateral estructural en escritorio y modal únicamente en móvil/tablet;
+- carrito como página completa dedicada: productos a la izquierda y resumen/checkout a la derecha en escritorio, con flujo vertical responsive en móvil;
 - la dirección deja de ocupar espacio en la barra superior.
 
 La publicación exacta de `*.ltd.do` y dominios personalizados conserva la arquitectura de WAMERCIO 2.5.4.

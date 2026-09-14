@@ -1,3 +1,14 @@
+# WAMERCIO 2.5.8 — Carrito como página completa
+
+- Sustituye el carrito lateral por una página completa dedicada, inspirada en la experiencia de compra de ColmaPro.
+- En escritorio organiza productos a la izquierda y resumen/checkout a la derecha; en móvil el flujo pasa a una sola columna.
+- Mantiene edición de productos, cantidades, venta por libra/monto, delivery/recogida, zonas, pagos, notas y resumen total.
+- El panel de resumen permanece visible con `sticky` en escritorio sin bloquear el desplazamiento natural de la página.
+- Oculta la navegación móvil inferior mientras el cliente está en la página del pedido para evitar controles duplicados.
+- Elimina por completo el drawer lateral y su overlay móvil.
+- Mantiene la corrección que oculta la tarjeta de una dirección mientras esa misma dirección se está editando.
+- Actualiza las regresiones de storefront para exigir la nueva experiencia full-page.
+
 # WAMERCIO 2.5.8 — Dirección sin duplicar y carrito simplificado
 
 - Al editar una dirección guardada en **Mi perfil**, la tarjeta de esa misma dirección se oculta mientras el formulario está abierto, evitando la sensación de que se están editando dos registros distintos.
