@@ -58,7 +58,7 @@ func New(cfg config.Config, db *pgxpool.Pool) *Server {
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
-	r.Use(cors.Handler(cors.Options{AllowedOrigins: s.cfg.AllowedOrigins, AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Internal-Secret"}, AllowCredentials: true, MaxAge: 300}))
+	r.Use(cors.Handler(cors.Options{AllowedOrigins: s.cfg.AllowedOrigins, AllowedMethods: []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}, AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "X-Internal-Secret", "X-Wamercio-Host"}, AllowCredentials: true, MaxAge: 300}))
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		jsonOut(w, 200, map[string]any{"ok": true, "service": "wamercio-api"})
 	})
@@ -81,6 +81,7 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/customer/register", s.customerRegister)
 		api.Post("/auth/customer/login", s.customerLogin)
 		api.Post("/auth/customer/logout", s.customerLogout)
+		api.Post("/auth/customer/sso/exchange", s.customerSSOExchange)
 		// Legacy aliases kept for clients created before 1.2.
 		api.Post("/auth/register", s.register)
 		api.Post("/auth/admin/login", s.adminLogin)
@@ -95,8 +96,8 @@ func (s *Server) Router() http.Handler {
 		api.Get("/public/legal", s.publicLegalSettings)
 		api.Get("/templates", s.listBusinessTemplates)
 		api.Get("/templates/{slug}", s.getBusinessTemplate)
-		api.Get("/public/stores/{slug}", s.publicStore)
-		api.Post("/public/stores/{slug}/checkout", s.checkout)
+		api.Get("/public/store", s.publicStore)
+		api.Post("/public/store/checkout", s.checkout)
 		api.Get("/public/orders/{token}", s.publicOrder)
 		api.Post("/public/orders/{token}/proof", s.publicOrderProof)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
@@ -115,6 +116,11 @@ func (s *Server) Router() http.Handler {
 			p.Delete("/stores/{id}", s.deleteStore)
 			p.Get("/stores/{id}/settings", s.getStoreSettings)
 			p.Put("/stores/{id}/settings", s.updateStoreSettings)
+			p.Get("/store-domains", s.listStoreDomains)
+			p.Post("/store-domains", s.createStoreDomain)
+			p.Post("/store-domains/{id}/verify", s.verifyStoreDomain)
+			p.Post("/store-domains/{id}/primary", s.primaryStoreDomain)
+			p.Delete("/store-domains/{id}", s.deleteStoreDomain)
 			p.Get("/categories", s.listCategories)
 			p.Post("/categories", s.createCategory)
 			p.Put("/categories/{id}", s.updateCategory)
@@ -188,6 +194,7 @@ func (s *Server) Router() http.Handler {
 			c.Delete("/customer/addresses/{id}", s.customerDeleteAddress)
 			c.Get("/customer/orders", s.customerOrders)
 			c.Get("/customer/orders/{id}", s.customerOrder)
+			c.Post("/customer/sso/start", s.customerSSOStart)
 		})
 
 		api.Group(func(a chi.Router) {
@@ -548,6 +555,23 @@ func (s *Server) setSessionCookie(w http.ResponseWriter, name, token string, max
 
 func (s *Server) clearSessionCookie(w http.ResponseWriter, name string) {
 	http.SetCookie(w, &http.Cookie{Name: name, Value: "", Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: strings.HasPrefix(s.cfg.AppURL, "https://"), MaxAge: -1})
+}
+
+func (s *Server) customerCookieDomain(r *http.Request) string {
+	host := s.requestHostname(r)
+	root := normalizeHostname(s.cfg.TenantRootDomain)
+	if root != "" && (host == root || strings.HasSuffix(host, "."+root)) {
+		return "." + root
+	}
+	return ""
+}
+
+func (s *Server) setCustomerSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	http.SetCookie(w, &http.Cookie{Name: "wamercio_customer_token", Value: token, Path: "/", Domain: s.customerCookieDomain(r), HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.requestScheme(r) == "https", MaxAge: maxAge})
+}
+
+func (s *Server) clearCustomerSessionCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{Name: "wamercio_customer_token", Value: "", Path: "/", Domain: s.customerCookieDomain(r), HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: s.requestScheme(r) == "https", MaxAge: -1})
 }
 
 func (s *Server) storeLookup(w http.ResponseWriter, r *http.Request) {
@@ -981,9 +1005,9 @@ func slugify(s string) string {
 
 var reservedStoreSlugs = map[string]bool{
 	"admin": true, "api": true, "catalog": true, "conversations": true, "coupons": true,
-	"customers": true, "cliente": true, "dashboard": true, "delivery": true, "health": true, "login": true,
+	"customers": true, "cliente": true, "dashboard": true, "delivery": true, "domains": true, "geo": true, "health": true, "id": true, "login": true,
 	"media": true, "order": true, "orders": true, "plans": true, "register": true, "pos": true, "staff": true, "payment-methods": true,
-	"settings": true, "store": true, "stores": true, "support": true, "transactions": true,
+	"settings": true, "store": true, "stores": true, "support": true, "transactions": true, "proyecto": true, "waxum": true, "www": true,
 	"favicon.ico": true, "icon.svg": true, "manifest.webmanifest": true, "sw.js": true,
 	"robots.txt": true, "sitemap.xml": true, "_next": true,
 	"terminos":   true,
@@ -1087,7 +1111,7 @@ func (s *Server) listStores(w http.ResponseWriter, r *http.Request) {
 		var themeConfig any = map[string]any{}
 		_ = json.Unmarshal(configRaw, &config)
 		_ = json.Unmarshal(themeRaw, &themeConfig)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created, "business_engine": engine, "template_config": config, "template_slug": templateSlug, "template_name": templateName, "visual_theme": visualTheme, "theme_config": themeConfig})
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "public_url": s.storePublicURL(r.Context(), id, slug), "description": desc, "logo_url": logo, "whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "is_active": active, "created_at": created, "business_engine": engine, "template_config": config, "template_slug": templateSlug, "template_name": templateName, "visual_theme": visualTheme, "theme_config": themeConfig})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1145,7 +1169,7 @@ func (s *Server) createStore(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo confirmar la tienda")
 		return
 	}
-	jsonOut(w, 201, map[string]any{"id": id, "slug": in.Slug})
+	jsonOut(w, 201, map[string]any{"id": id, "slug": in.Slug, "public_url": s.storePublicURL(r.Context(), id, in.Slug)})
 }
 
 func (s *Server) updateStore(w http.ResponseWriter, r *http.Request) {
@@ -2256,13 +2280,18 @@ func businessOpenNow(raw []byte, timezone string) bool {
 }
 
 func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
-	slug := chi.URLParam(r, "slug")
+	resolved, err := s.resolveStoreHost(r.Context(), s.requestHostname(r))
+	if err != nil {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	slug := resolved.Slug
 	var sid, name, desc, logo, banner, wa, address, currency, color, timezone, businessEngine, visualTheme string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var minimum float64
 	var pickup, delivery, cash, cod, transfer, acceptingOrders bool
 	var hoursRaw, templateConfigRaw, themeConfigRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),business_engine,template_config,visual_theme,theme_config FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw)
+	err = s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),business_engine,template_config,visual_theme,theme_config FROM stores WHERE id=$1 AND is_active=true`, resolved.StoreID).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -2313,7 +2342,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, map[string]any{
 		"store": map[string]any{
-			"id": sid, "name": name, "slug": slug, "description": desc, "logo_url": logo, "banner_url": banner,
+			"id": sid, "name": name, "slug": slug, "hostname": resolved.Hostname, "public_url": s.storePublicURL(r.Context(), sid, slug), "description": desc, "logo_url": logo, "banner_url": banner,
 			"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
 			"business_engine": businessEngine, "template_config": templateConfig, "visual_theme": visualTheme, "theme_config": themeConfig,
 			"pickup_enabled": pickup, "delivery_enabled": delivery, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "accepting_orders": acceptingOrders, "open_now": openNow,
@@ -2468,8 +2497,8 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	}
 
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
-	var storeName string
-	if s.db.QueryRow(r.Context(), `SELECT name,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&storeName, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
+	var storeName, storeSlug string
+	if s.db.QueryRow(r.Context(), `SELECT name,slug,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&storeName, &storeSlug, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2646,7 +2675,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	for _, item := range resolvedItems {
 		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
 	}
-	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
+	trackingURL := s.storePublicURL(r.Context(), storeID, storeSlug) + "/order/" + publicToken
 	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
 		"cliente":     strings.TrimSpace(in.CustomerName),
 		"negocio":     strings.TrimSpace(storeName),
@@ -2660,7 +2689,11 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
-	slug := chi.URLParam(r, "slug")
+	resolved, err := s.resolveStoreHost(r.Context(), s.requestHostname(r))
+	if err != nil {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
 	customerClaims, err := s.claimsFromCookie(r, "wamercio_customer_token")
 	if err != nil || customerClaims.Role != "customer" {
 		jsonErr(w, http.StatusUnauthorized, "Inicia sesión como cliente para confirmar el pedido")
@@ -2683,7 +2716,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	var minimum float64
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
 	var hoursRaw []byte
-	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE slug=$1 AND is_active=true`, slug).Scan(&sid, &ownerID, &storeName, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
+	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE id=$1 AND is_active=true`, resolved.StoreID).Scan(&sid, &ownerID, &storeName, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2925,7 +2958,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
 	s.publishStoreEvent(r.Context(), sid, "order", map[string]any{"id": orderID, "number": num, "source": "web"})
-	trackingURL := strings.TrimRight(s.cfg.AppURL, "/") + "/order/" + publicToken
+	trackingURL := s.requestOrigin(r) + "/order/" + publicToken
 	lines := make([]string, 0, len(resolvedItems))
 	for _, item := range resolvedItems {
 		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
@@ -3932,7 +3965,7 @@ func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
 		var created time.Time
 		var products, orders int
 		_ = rows.Scan(&id, &name, &slug, &active, &created, &ownerID, &owner, &ownerPhone, &products, &orders)
-		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "is_active": active, "created_at": created, "owner_id": ownerID, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
+		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "public_url": s.storePublicURL(r.Context(), id, slug), "is_active": active, "created_at": created, "owner_id": ownerID, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
 	}
 	jsonOut(w, 200, out)
 }
@@ -5414,13 +5447,21 @@ func (s *Server) decoratedPlatformSetting(ctx context.Context, key string) map[s
 		value[field+"_configured"] = s.platformSecretConfigured(ctx, key+"."+field)
 	}
 	if key == "domains" {
-		base := strings.TrimRight(strings.TrimSpace(s.cfg.AppURL), "/")
-		if base == "" {
-			base = "https://wamercio.com"
+		platform := normalizeHostname(s.cfg.PlatformDomain)
+		if platform == "" {
+			platform = "wamercio.com"
 		}
-		value["route_mode"] = "path"
-		value["runtime_app_url"] = base
-		value["public_url_format"] = base + "/{slug}"
+		tenant := normalizeHostname(s.cfg.TenantRootDomain)
+		if tenant == "" {
+			tenant = "ltd.do"
+		}
+		value["route_mode"] = "host"
+		value["platform_domain"] = platform
+		value["tenant_domain"] = tenant
+		value["runtime_app_url"] = "https://" + platform
+		value["public_url_format"] = "https://{slug}." + tenant
+		value["custom_domains_enabled"] = true
+		value["custom_domain_cname_target"] = normalizeHostname(s.cfg.CustomDomainCNAMETarget)
 	}
 	return value
 }
@@ -5438,16 +5479,14 @@ func (s *Server) savePlatformSetting(ctx context.Context, actorID, key string, i
 		return nil, fmt.Errorf("sección no permitida")
 	}
 	if key == "domains" {
-		// WAMERCIO 2.x publica cada negocio en APP_URL/{slug}. El dominio y
-		// TLS pertenecen a la infraestructura (Dokploy/Traefik), mientras que
-		// esta sección administra los identificadores que no pueden ser tiendas.
-		in["route_mode"] = "path"
-		delete(in, "tenant_domain")
-		delete(in, "custom_domains_enabled")
-		delete(in, "force_https")
+		in["route_mode"] = "host"
+		in["platform_domain"] = normalizeHostname(s.cfg.PlatformDomain)
+		in["tenant_domain"] = normalizeHostname(s.cfg.TenantRootDomain)
+		in["custom_domains_enabled"] = true
+		in["custom_domain_cname_target"] = normalizeHostname(s.cfg.CustomDomainCNAMETarget)
+		in["force_https"] = true
 		delete(in, "runtime_app_url")
 		delete(in, "public_url_format")
-		delete(in, "platform_domain")
 	}
 	if key == "access" {
 		current := s.platformSetting(ctx, "access")

@@ -216,7 +216,7 @@ func (s *Server) customerDeleteAddress(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) customerOrders(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	rows, err := s.db.Query(r.Context(), `SELECT o.id::text,o.order_number,o.total,o.status,o.payment_status,o.delivery_type,coalesce(o.delivery_address,''),o.source,o.created_at,s.name,s.slug,(SELECT count(*)::int FROM order_items oi WHERE oi.order_id=o.id) FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.global_customer_id=$1 ORDER BY o.created_at DESC LIMIT 300`, c.UserID)
+	rows, err := s.db.Query(r.Context(), `SELECT o.id::text,o.order_number,o.total,o.status,o.payment_status,o.delivery_type,coalesce(o.delivery_address,''),o.source,o.created_at,s.id::text,s.name,s.slug,(SELECT count(*)::int FROM order_items oi WHERE oi.order_id=o.id) FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.global_customer_id=$1 ORDER BY o.created_at DESC LIMIT 300`, c.UserID)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "No se pudieron cargar los pedidos")
 		return
@@ -224,13 +224,13 @@ func (s *Server) customerOrders(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, status, paymentStatus, deliveryType, address, source, storeName, storeSlug string
+		var id, status, paymentStatus, deliveryType, address, source, storeID, storeName, storeSlug string
 		var number int64
 		var total float64
 		var created time.Time
 		var itemCount int
-		if rows.Scan(&id, &number, &total, &status, &paymentStatus, &deliveryType, &address, &source, &created, &storeName, &storeSlug, &itemCount) == nil {
-			out = append(out, map[string]any{"id": id, "number": number, "total": total, "status": status, "payment_status": paymentStatus, "delivery_type": deliveryType, "delivery_address": address, "source": source, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "item_count": itemCount})
+		if rows.Scan(&id, &number, &total, &status, &paymentStatus, &deliveryType, &address, &source, &created, &storeID, &storeName, &storeSlug, &itemCount) == nil {
+			out = append(out, map[string]any{"id": id, "number": number, "total": total, "status": status, "payment_status": paymentStatus, "delivery_type": deliveryType, "delivery_address": address, "source": source, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "store_public_url": s.storePublicURL(r.Context(), storeID, storeSlug), "item_count": itemCount})
 		}
 	}
 	jsonOut(w, http.StatusOK, out)
@@ -243,7 +243,8 @@ func (s *Server) customerOrder(w http.ResponseWriter, r *http.Request) {
 	var total, subtotal, discount, shipping float64
 	var status, paymentStatus, paymentMethod, deliveryType, address, notes, storeName, storeSlug string
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT o.order_number,o.subtotal,o.discount,o.shipping,o.total,o.status,o.payment_status,o.payment_method,o.delivery_type,coalesce(o.delivery_address,''),coalesce(o.notes,''),o.created_at,s.name,s.slug FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.id=$1 AND o.global_customer_id=$2`, id, c.UserID).Scan(&number, &subtotal, &discount, &shipping, &total, &status, &paymentStatus, &paymentMethod, &deliveryType, &address, &notes, &created, &storeName, &storeSlug)
+	var storeID string
+	err := s.db.QueryRow(r.Context(), `SELECT o.order_number,o.subtotal,o.discount,o.shipping,o.total,o.status,o.payment_status,o.payment_method,o.delivery_type,coalesce(o.delivery_address,''),coalesce(o.notes,''),o.created_at,s.id::text,s.name,s.slug FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.id=$1 AND o.global_customer_id=$2`, id, c.UserID).Scan(&number, &subtotal, &discount, &shipping, &total, &status, &paymentStatus, &paymentMethod, &deliveryType, &address, &notes, &created, &storeID, &storeName, &storeSlug)
 	if err != nil {
 		jsonErr(w, http.StatusNotFound, "Pedido no encontrado")
 		return
@@ -261,5 +262,5 @@ func (s *Server) customerOrder(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonOut(w, http.StatusOK, map[string]any{"id": id, "number": number, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": status, "payment_status": paymentStatus, "payment_method": paymentMethod, "delivery_type": deliveryType, "delivery_address": address, "notes": notes, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "items": items})
+	jsonOut(w, http.StatusOK, map[string]any{"id": id, "number": number, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": status, "payment_status": paymentStatus, "payment_method": paymentMethod, "delivery_type": deliveryType, "delivery_address": address, "notes": notes, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "store_public_url": s.storePublicURL(r.Context(), storeID, storeSlug), "items": items})
 }

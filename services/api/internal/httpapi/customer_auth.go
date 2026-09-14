@@ -277,7 +277,7 @@ func (s *Server) customerRegister(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusInternalServerError, "Cuenta creada, pero no se pudo iniciar sesión")
 		return
 	}
-	s.setSessionCookie(w, "wamercio_customer_token", tok, 7*24*3600)
+	s.setCustomerSessionCookie(w, r, tok, 7*24*3600)
 	jsonOut(w, http.StatusCreated, map[string]any{
 		"customer": map[string]any{"id": customerID, "name": name, "last_name": lastName, "phone": phone, "national_id": cedula},
 		"address":  map[string]any{"label": address.Label, "formatted": customerAddressText(address)},
@@ -317,11 +317,11 @@ func (s *Server) customerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `UPDATE global_customers SET last_login_at=now(),updated_at=now() WHERE id=$1`, id)
-	s.setSessionCookie(w, "wamercio_customer_token", tok, 7*24*3600)
+	s.setCustomerSessionCookie(w, r, tok, 7*24*3600)
 	jsonOut(w, http.StatusOK, map[string]any{"customer": map[string]any{"id": id, "name": name, "last_name": lastName, "phone": storedPhone}})
 }
 
 func (s *Server) customerLogout(w http.ResponseWriter, r *http.Request) {
-	s.clearSessionCookie(w, "wamercio_customer_token")
+	s.clearCustomerSessionCookie(w, r)
 	jsonOut(w, http.StatusOK, map[string]bool{"ok": true})
 }

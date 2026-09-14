@@ -1,3 +1,16 @@
+# WAMERCIO 2.5.0 — Multi-tenant por host, dominios propios y PWA por negocio
+
+- Reemplaza la publicación `wamercio.com/{slug}` por `https://{slug}.ltd.do` como URL canónica de cada negocio, sin capa de compatibilidad por ruta.
+- Mantiene `wamercio.com` exclusivamente para landing, Superadmin y backoffice del comerciante.
+- Resuelve tenants en backend mediante el `Host` real y permite dominios propios verificados.
+- Añade `store_domains`, verificación DNS CNAME/TXT, dominio principal y sincronización dinámica con Traefik.
+- Añade `domain-router` para publicar routers exactos de subdominios activos y dominios personalizados.
+- Genera `manifest.webmanifest` dinámico por negocio y aísla el caché PWA por hostname.
+- Añade navegación inferior mobile-first al storefront y panel del cliente, respetando safe areas.
+- Comparte la sesión global del cliente entre `*.ltd.do` y añade SSO de un solo uso para dominios personalizados mediante `cliente.ltd.do`.
+- Centro SaaS y Configuración del negocio incorporan administración real de dominios.
+- Migración `000019_multitenant_domains`.
+
 # WAMERCIO 2.4.0 — Identidad global y panel de clientes
 
 - Registro global de clientes con WhatsApp validado mediante la sesión SaaS `support` de whatsmeow.

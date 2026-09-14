@@ -63,3 +63,39 @@ func TestSafeStoreSlug(t *testing.T) {
 		}
 	}
 }
+
+func TestTenantSlugFromHost(t *testing.T) {
+	tests := []struct {
+		host string
+		root string
+		want string
+		ok   bool
+	}{
+		{"pizzeria-juan.ltd.do", "ltd.do", "pizzeria-juan", true},
+		{"PIZZERIA-JUAN.LTD.DO:443", "ltd.do", "pizzeria-juan", true},
+		{"ltd.do", "ltd.do", "", false},
+		{"foo.bar.ltd.do", "ltd.do", "", false},
+		{"wamercio.com", "ltd.do", "", false},
+	}
+	for _, tt := range tests {
+		got, ok := tenantSlugFromHost(tt.host, tt.root)
+		if got != tt.want || ok != tt.ok {
+			t.Fatalf("tenantSlugFromHost(%q,%q)=(%q,%v), want (%q,%v)", tt.host, tt.root, got, ok, tt.want, tt.ok)
+		}
+	}
+}
+
+func TestValidCustomHostname(t *testing.T) {
+	valid := []string{"pizzeriajuan.com", "tienda.example.do", "WWW.NEGOCIO.COM."}
+	for _, raw := range valid {
+		if _, ok := validCustomHostname(raw); !ok {
+			t.Fatalf("validCustomHostname(%q)=false, want true", raw)
+		}
+	}
+	invalid := []string{"localhost", "https://tienda.com/ruta", "bad_name.com", "127.0.0.1"}
+	for _, raw := range invalid {
+		if _, ok := validCustomHostname(raw); ok {
+			t.Fatalf("validCustomHostname(%q)=true, want false", raw)
+		}
+	}
+}
