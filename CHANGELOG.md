@@ -1,3 +1,12 @@
+# WAMERCIO 2.5.8 — Hotfix de compilación Dokploy
+
+- Corrige el `sid` no utilizado en `saveConversationCustomer`, detectado por el compilador Go durante el build de la API.
+- Corrige el uso de `pgx`/`pgconn.CommandTag.RowsAffected()`: devuelve un único `int64`, no `(valor, error)`.
+- Añade una prueba de regresión específica para ambos errores y la integra en `verify-2.5.8.sh`.
+- No cambia base de datos, migraciones, variables de entorno, estilo visual ni comportamiento funcional.
+
+---
+
 # WAMERCIO 2.5.8 — Clientes, contactos y perfiles de WhatsApp
 
 - La sección **Clientes** separa ahora compradores reales de contactos de WhatsApp mediante las pestañas **Clientes | Contactos**.

@@ -2165,7 +2165,7 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
+	_, jid, ok := s.conversationOwned(r.Context(), c, id)
 	if !ok {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
@@ -3411,7 +3411,7 @@ func (s *Server) whatsappProfile(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo actualizar el perfil de WhatsApp")
 		return
 	}
-	rows, _ := result.RowsAffected()
+	rows := result.RowsAffected()
 	if rows > 0 {
 		s.publishStoreEvent(r.Context(), in.StoreID, "contact_profile", map[string]any{"remote_jid": in.RemoteJID})
 	}
