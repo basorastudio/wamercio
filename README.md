@@ -1,4 +1,4 @@
-# WAMERCIO 2.5.4
+# WAMERCIO 2.5.5
 
 WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, SPA + PWA y multi-tenant.
 
@@ -8,6 +8,17 @@ WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, 
 - Tiendas: `https://{slug}.ltd.do`
 - Dominios propios: host verificado por negocio
 
-En 2.5.4 las tiendas se publican en Traefik mediante routers exactos generados desde PostgreSQL. `*.ltd.do` se utiliza como wildcard DNS, mientras cada tienda activa obtiene una regla `Host(...)` y TLS individual.
+## Storefront 2.5.5
+
+La experiencia pública del negocio se refinó para mantener la tienda útil mientras el cliente compra:
+
+- acceso progresivo por WhatsApp sin botón intermedio;
+- búsqueda predictiva en la barra superior sin filtrar el lienzo del catálogo;
+- resultados contextuales que abren directamente la ficha del producto;
+- tarjetas de producto más consistentes y precios iniciales correctos cuando existen variantes;
+- carrito lateral estructural en escritorio y modal únicamente en móvil/tablet;
+- la dirección deja de ocupar espacio en la barra superior.
+
+La publicación exacta de `*.ltd.do` y dominios personalizados conserva la arquitectura de WAMERCIO 2.5.4.
 
 Consulta `DEPLOY_DOKPLOY.md` para el despliegue.

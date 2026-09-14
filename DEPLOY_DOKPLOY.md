@@ -1,4 +1,4 @@
-# Despliegue WAMERCIO 2.5.4 en Dokploy
+# Despliegue WAMERCIO 2.5.5 en Dokploy
 
 ## ENV
 
@@ -12,24 +12,25 @@ TENANT_ROOT_DOMAIN=ltd.do
 CUSTOM_DOMAIN_CNAME_TARGET=domains.ltd.do
 ```
 
-No se añade ninguna variable nueva en 2.5.4.
+No se añade ninguna variable nueva en 2.5.5.
 
 ## DNS
 
-Mantén el registro wildcard `*.ltd.do` apuntando al servidor/Dokploy. El wildcard es DNS; WAMERCIO publica en Traefik routers exactos para cada tienda activa.
+Mantén el wildcard `*.ltd.do` apuntando al servidor/Dokploy. WAMERCIO continúa publicando routers exactos por tienda mediante `domain-router`.
 
 ## Actualización
 
-1. Sustituye el código por WAMERCIO 2.5.4.
-2. Conserva PostgreSQL, Redis y uploads; no uses Fresh Volumes.
+1. Sustituye el código por WAMERCIO 2.5.5.
+2. Conserva PostgreSQL, Redis y uploads; no uses **Fresh Volumes**.
 3. Ejecuta **Rebuild** y después **Redeploy**.
-4. Espera unos segundos a que `domain-router` lea las tiendas activas y escriba `/etc/dokploy/traefik/dynamic/wamercio-store-hosts.yml`.
-5. Abre `https://pizzeria-juan.ltd.do`.
+4. Abre una tienda, por ejemplo `https://pizzeria-juan.ltd.do`.
 
 ## Qué debes observar
 
-- `pizzeria-juan.ltd.do` deja de caer en el 404 por ausencia de router.
-- El router HTTPS exacto solicita/usa certificado mediante `letsencrypt`.
-- `wamercio.com` continúa siendo exclusivamente plataforma y backoffice.
-- `proyecto.ltd.do`, `geo.ltd.do`, `id.ltd.do`, `waxum.ltd.do`, `domains.ltd.do` y `cliente.ltd.do` continúan reservados.
-- Los dominios personalizados activos siguen apuntando al mismo `wamercio-gateway`.
+- al completar un WhatsApp válido, el modal avanza solo a PIN o registro;
+- la búsqueda está en el header y sus resultados no filtran las tarjetas del catálogo;
+- seleccionar un resultado abre la ficha del producto;
+- la dirección del negocio ya no aparece en la barra superior;
+- en escritorio, abrir **Mi pedido** reduce el espacio del catálogo y coloca el carrito a la derecha sin bloquear la tienda;
+- en móvil/tablet, el carrito continúa usando una superficie modal adecuada al dispositivo;
+- `wamercio.com` sigue siendo exclusivamente plataforma/backoffice y `*.ltd.do` sigue siendo tiendas.
