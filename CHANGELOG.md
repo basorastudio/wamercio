@@ -1,3 +1,15 @@
+# WAMERCIO 2.5.8 — Dirección sin duplicar y carrito simplificado
+
+- Al editar una dirección guardada en **Mi perfil**, la tarjeta de esa misma dirección se oculta mientras el formulario está abierto, evitando la sensación de que se están editando dos registros distintos.
+- El carrito adopta una estructura más clara inspirada en el flujo de ColmaPro: productos en tarjetas, modalidad de pedido, dirección/resumen de recogida, método de pago con selección directa, notas y resumen final.
+- La dirección seleccionada se muestra como una tarjeta compacta con acción **Cambiar**, en lugar de mantener siempre un selector largo visible.
+- Los métodos de pago se muestran como opciones visuales seleccionables y la transferencia conserva sus datos bancarios cuando corresponde.
+- El resumen de subtotal, delivery y total queda agrupado en una única zona fija antes de **Confirmar pedido**, evitando duplicidades visuales.
+- El panel del carrito en escritorio se amplía para mejorar lectura y jerarquía sin alterar el comportamiento móvil.
+- No requiere migraciones, cambios de API ni nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Perfiles WhatsApp e identidad completa de usuarios
 
 - Las sesiones WhatsApp vinculadas de cada negocio y la sesión global del SuperAdmin muestran ahora nombre de WhatsApp, número e imagen de perfil, conservando el estado de conexión existente.

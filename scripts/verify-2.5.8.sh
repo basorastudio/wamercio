@@ -11,6 +11,7 @@ node scripts/test_2_5_8_cart_quantity.js
 node scripts/test_2_5_8_customer_address_territory.js
 python3 scripts/test_2_5_8_product_modal.py
 python3 scripts/test_2_5_8_catalog_customer_fixes.py
+python3 scripts/test_2_5_8_cart_address_experience.py
 python3 scripts/test_2_5_8_whatsapp_session_hygiene.py
 python3 scripts/test_2_5_8_customer_contact_profiles.py
 python3 scripts/test_2_5_8_api_build_regressions.py

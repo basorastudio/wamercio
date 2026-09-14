@@ -11,7 +11,7 @@ checks={
     'contextual search result menu': 'data-testid="storefront-search-results"' in store and 'openSearchProduct' in store,
     'search does not filter catalog canvas': 'const products=useMemo(()=>data?.products?.filter((p:Product)=>(cat===' not in store,
     'header address removed': 'data-testid="storefront-header-subtitle"' in store and "s.address||'Catálogo en línea'" not in store,
-    'desktop cart is structural': 'data-testid="storefront-desktop-cart"' in store and 'lg:pr-[420px]' in store,
+    'desktop cart is structural': 'data-testid="storefront-desktop-cart"' in store and ('lg:pr-[420px]' in store or 'lg:pr-[480px]' in store),
     'mobile cart remains modal': 'data-testid="storefront-mobile-cart"' in store and 'lg:hidden' in store,
     'refined product card': 'data-testid="storefront-product-card"' in store and 'h-full' in store and 'focus-visible:ring' in store,
 }
