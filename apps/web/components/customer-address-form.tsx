@@ -2,13 +2,41 @@
 
 import {useEffect,useState} from 'react'
 import {api} from '@/lib/api'
+import {loadAddressTerritory} from '@/lib/customer-address-territory'
 import {LoaderCircle,MapPin} from 'lucide-react'
 
 const blank={id:'',label:'Principal',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:'',is_primary:false}
 const unwrap=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?:any;onSaved:()=>void;onCancel:()=>void}){
   const[form,setForm]=useState<any>({...blank,...(initial||{})}),[territory,setTerritory]=useState(false),[available,setAvailable]=useState(true),[provinces,setProvinces]=useState<any[]>([]),[cities,setCities]=useState<any[]>([]),[neighborhoods,setNeighborhoods]=useState<any[]>([]),[busy,setBusy]=useState(false),[error,setError]=useState('')
-  useEffect(()=>{api<any>('/public/platform').then(x=>{const enabled=!!x?.territory?.enabled;setTerritory(enabled);if(enabled)api('/public/territories/provinces').then((v:any)=>setProvinces(unwrap(v))).catch(()=>setAvailable(false))}).catch(()=>{})},[])
+  useEffect(()=>{
+    let cancelled=false
+    const load=async()=>{
+      try{
+        const platform=await api<any>('/public/platform')
+        if(cancelled)return
+        const enabled=!!platform?.territory?.enabled
+        setTerritory(enabled)
+        if(!enabled)return
+        try{
+          const provinceList=unwrap(await api('/public/territories/provinces'))
+          if(cancelled)return
+          setProvinces(provinceList)
+          const provinceCode=String(initial?.province_code||'')
+          const cityId=String(initial?.city_id||'')
+          if(provinceCode){
+            const hydrated=await loadAddressTerritory(api,provinceCode,cityId)
+            if(cancelled)return
+            setCities(hydrated.cities)
+            setNeighborhoods(hydrated.neighborhoods)
+          }
+          setAvailable(true)
+        }catch{if(!cancelled)setAvailable(false)}
+      }catch{}
+    }
+    void load()
+    return()=>{cancelled=true}
+  },[initial?.id,initial?.province_code,initial?.city_id])
   const province=async(code:string)=>{const p=provinces.find(x=>String(x.code)===code);setForm((v:any)=>({...v,province_code:code,province:String(p?.name||''),city_id:'',municipality:'',neighborhood_id:'',neighborhood:''}));setCities([]);setNeighborhoods([]);if(code)try{setCities(unwrap(await api(`/public/territories/cities?provinceCode=${encodeURIComponent(code)}`)))}catch{setAvailable(false)}}
   const city=async(id:string)=>{const c=cities.find(x=>String(x.cityId||x.id)===id);setForm((v:any)=>({...v,city_id:id,municipality:String(c?.name||''),neighborhood_id:'',neighborhood:''}));setNeighborhoods([]);if(id)try{setNeighborhoods(unwrap(await api(`/public/territories/neighborhoods?cityId=${encodeURIComponent(id)}`)))}catch{setAvailable(false)}}
   const neighborhood=(id:string)=>{const n=neighborhoods.find(x=>String(x.neighborhoodId||x.id)===id);setForm((v:any)=>({...v,neighborhood_id:id,neighborhood:String(n?.name||'')}))}

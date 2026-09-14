@@ -8,7 +8,9 @@ grep -q 'wamercio-store-v2.5.8' apps/web/public/sw.js || fail 'PWA cache'
 
 node scripts/test_2_5_6_cart_helpers.js
 node scripts/test_2_5_8_cart_quantity.js
+node scripts/test_2_5_8_customer_address_territory.js
 python3 scripts/test_2_5_8_product_modal.py
+python3 scripts/test_2_5_8_catalog_customer_fixes.py
 python3 scripts/test_2_5_6_natural_purchase.py
 python3 scripts/test_2_5_7_api_imports.py
 python3 scripts/test_2_5_5_storefront_ux.py

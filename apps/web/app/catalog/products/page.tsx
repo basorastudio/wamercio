@@ -24,7 +24,7 @@ export default function Products(){
  const itemLabel=String(currentStore?.template_config?.item_label||'producto')
  const itemLabelPlural=String(currentStore?.template_config?.item_label_plural||'productos')
  const cap=(v:string)=>v.charAt(0).toUpperCase()+v.slice(1)
- const newLabel=`Nuevo ${itemLabel}`
+ const newLabel='Nuevo producto'
  const nameLabel=`Nombre del ${itemLabel}`
  const variantHint=String(currentStore?.template_config?.variant_hint||'Tamaño / Color / Presentación')
  const engine=currentStore?.business_engine||'retail'
