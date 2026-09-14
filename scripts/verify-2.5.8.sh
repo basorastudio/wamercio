@@ -18,6 +18,7 @@ python3 scripts/test_2_5_8_admin_settings_independent_scroll.py
 python3 scripts/test_2_5_8_owner_identity_landing_editor.py
 python3 scripts/test_2_5_8_next_page_exports.py
 python3 scripts/test_2_5_8_owner_customer_access_profile.py
+python3 scripts/test_2_5_8_whatsapp_identity_user_profiles.py
 python3 scripts/test_2_5_6_natural_purchase.py
 python3 scripts/test_2_5_7_api_imports.py
 python3 scripts/test_2_5_5_storefront_ux.py

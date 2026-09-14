@@ -209,6 +209,7 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners", s.adminCreateOwner)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners/verify-identity", s.adminVerifyOwnerIdentity)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners/validate-whatsapp", s.adminValidateOwnerWhatsApp)
+			a.With(s.requireAdminArea("owners")).Post("/admin/owners/profiles/refresh", s.adminRefreshOwnerWhatsAppProfiles)
 			a.With(s.requireAdminArea("owners")).Get("/admin/territories/provinces", s.adminTerritoryProvinces)
 			a.With(s.requireAdminArea("owners")).Get("/admin/territories/cities", s.adminTerritoryCities)
 			a.With(s.requireAdminArea("owners")).Get("/admin/territories/neighborhoods", s.adminTerritoryNeighborhoods)
@@ -897,14 +898,23 @@ func (s *Server) adminMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) me(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	var name, phone, role string
+	var phone, role string
+	if err := s.db.QueryRow(r.Context(), `SELECT coalesce(phone,''),role FROM users WHERE id=$1`, c.UserID).Scan(&phone, &role); err != nil {
+		jsonErr(w, 404, "Usuario no encontrado")
+		return
+	}
+	if role == "owner" && phone != "" {
+		_ = s.refreshUserWhatsAppProfile(r.Context(), c.UserID, phone, "")
+	}
+	var name, lastName, document, birthDate, gender, whatsappName, profilePictureURL string
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(phone,''),role,created_at FROM users WHERE id=$1`, c.UserID).Scan(&name, &phone, &role, &created)
+	var identityVerified, whatsappVerified bool
+	err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(last_name,''),coalesce(phone,''),role,created_at,coalesce(document_number,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),identity_verified_at IS NOT NULL,whatsapp_verified_at IS NOT NULL,coalesce(whatsapp_name,''),coalesce(profile_picture_url,'') FROM users WHERE id=$1`, c.UserID).Scan(&name, &lastName, &phone, &role, &created, &document, &birthDate, &gender, &identityVerified, &whatsappVerified, &whatsappName, &profilePictureURL)
 	if err != nil {
 		jsonErr(w, 404, "Usuario no encontrado")
 		return
 	}
-	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "phone": phone, "role": role, "created_at": created})
+	jsonOut(w, 200, map[string]any{"id": c.UserID, "name": name, "last_name": lastName, "phone": phone, "role": role, "created_at": created, "document_number": document, "birth_date": birthDate, "gender": gender, "identity_verified": identityVerified, "whatsapp_verified": whatsappVerified, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL})
 }
 
 func (s *Server) publishStoreEvent(ctx context.Context, storeID, event string, payload any) {
@@ -3503,11 +3513,15 @@ func (s *Server) whatsappReceipt(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var in struct {
-		Name  string `json:"name"`
-		Phone string `json:"phone"`
+		Name           string `json:"name"`
+		LastName       string `json:"last_name"`
+		Phone          string `json:"phone"`
+		DocumentNumber string `json:"document_number"`
+		BirthDate      string `json:"birth_date"`
+		Gender         string `json:"gender"`
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
-		jsonErr(w, 400, "El nombre es obligatorio")
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Datos inválidos")
 		return
 	}
 	phone := normalizePhone(in.Phone)
@@ -3521,11 +3535,66 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 409, "Ese WhatsApp ya está asociado a otra cuenta")
 		return
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE users SET name=$1,phone=$2,updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Name), phone, c.UserID)
+
+	var currentName, currentLastName, currentDocument, currentBirthDate, currentGender string
+	var identityVerified bool
+	if err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(last_name,''),coalesce(document_number,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),identity_verified_at IS NOT NULL FROM users WHERE id=$1 AND role='owner'`, c.UserID).Scan(&currentName, &currentLastName, &currentDocument, &currentBirthDate, &currentGender, &identityVerified); err != nil {
+		jsonErr(w, 404, "Cuenta no encontrada")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	lastName := strings.TrimSpace(in.LastName)
+	document := digitsOnly(in.DocumentNumber)
+	birthDate := strings.TrimSpace(in.BirthDate)
+	gender := normalizeOwnerGender(in.Gender)
+	var verifiedAt any
+	if identityVerified {
+		name, lastName, document, birthDate, gender = currentName, currentLastName, currentDocument, currentBirthDate, currentGender
+		verifiedAt = time.Now()
+	} else if document != "" {
+		if len(document) != 11 {
+			jsonErr(w, 400, "La Cédula debe tener exactamente 11 dígitos")
+			return
+		}
+		identity := s.platformSetting(r.Context(), "identity")
+		if enabled, _ := identity["enabled"].(bool); enabled {
+			envelope, _, err := s.verifyIdentityDocument(r.Context(), "persona", document)
+			if err != nil {
+				jsonErr(w, 422, "No pudimos verificar la Cédula: "+err.Error())
+				return
+			}
+			profile := identityProfile("persona", envelope)
+			if v := strings.TrimSpace(str(profile["name"])); v != "" {
+				name = v
+			}
+			if v := strings.TrimSpace(str(profile["last_name"])); v != "" {
+				lastName = v
+			}
+			if v := strings.TrimSpace(str(profile["birth_date"])); v != "" {
+				birthDate = v
+			}
+			if v := normalizeOwnerGender(str(profile["gender"])); v != "" {
+				gender = v
+			}
+			verifiedAt = time.Now()
+		}
+	}
+	if strings.TrimSpace(name) == "" {
+		jsonErr(w, 400, "El nombre es obligatorio")
+		return
+	}
+	if birthDate != "" {
+		if _, err := time.Parse("2006-01-02", birthDate); err != nil {
+			jsonErr(w, 400, "La fecha de nacimiento no es válida")
+			return
+		}
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE users SET name=$1,last_name=$2,phone=$3,document_type=CASE WHEN nullif($4,'') IS NULL THEN document_type ELSE 'persona' END,document_number=CASE WHEN $4='' THEN document_number ELSE $4 END,birth_date=CASE WHEN $5='' THEN birth_date ELSE $5::date END,gender=CASE WHEN $6='' THEN gender ELSE $6 END,identity_verified_at=coalesce($7,identity_verified_at),whatsapp_verified_at=CASE WHEN regexp_replace(coalesce(phone,''),'[^0-9]','','g')<>$3 THEN NULL ELSE whatsapp_verified_at END,profile_picture_updated_at=CASE WHEN regexp_replace(coalesce(phone,''),'[^0-9]','','g')<>$3 THEN NULL ELSE profile_picture_updated_at END,updated_at=now() WHERE id=$8`, name, lastName, phone, document, birthDate, gender, verifiedAt, c.UserID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar el perfil")
 		return
 	}
+	_ = s.refreshUserWhatsAppProfile(r.Context(), c.UserID, phone, "")
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -3998,7 +4067,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.last_name,''),coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>''),coalesce(u.document_type,''),coalesce(u.document_number,''),u.identity_verified_at IS NOT NULL FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY u.created_at DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT u.id,u.name,coalesce(u.last_name,''),coalesce(u.phone,''),u.status,u.created_at,coalesce(p.id::text,''),coalesce(p.name,'Sin plan'),coalesce(p.slug,''),(SELECT count(*) FROM stores st WHERE st.user_id=u.id),(coalesce(u.pin_hash,'')<>''),coalesce(u.document_type,''),coalesce(u.document_number,''),u.identity_verified_at IS NOT NULL,coalesce(u.whatsapp_name,''),coalesce(u.profile_picture_url,'') FROM users u LEFT JOIN subscriptions sub ON sub.user_id=u.id LEFT JOIN plans p ON p.id=sub.plan_id WHERE u.role='owner' ORDER BY u.created_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -4006,13 +4075,13 @@ func (s *Server) adminUsers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, lastName, phone, status, planID, planName, planSlug, docType, document string
+		var id, name, lastName, phone, status, planID, planName, planSlug, docType, document, whatsappName, profilePictureURL string
 		var created time.Time
 		var stores int
 		var pinConfigured, identityVerified bool
-		_ = rows.Scan(&id, &name, &lastName, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured, &docType, &document, &identityVerified)
+		_ = rows.Scan(&id, &name, &lastName, &phone, &status, &created, &planID, &planName, &planSlug, &stores, &pinConfigured, &docType, &document, &identityVerified, &whatsappName, &profilePictureURL)
 		fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
-		out = append(out, map[string]any{"id": id, "name": name, "last_name": lastName, "full_name": fullName, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured, "document_type": docType, "document_number": document, "identity_verified": identityVerified})
+		out = append(out, map[string]any{"id": id, "name": name, "last_name": lastName, "full_name": fullName, "phone": phone, "status": status, "created_at": created, "plan_id": planID, "plan_name": planName, "plan_slug": planSlug, "stores": stores, "pin_configured": pinConfigured, "document_type": docType, "document_number": document, "identity_verified": identityVerified, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL})
 	}
 	jsonOut(w, 200, out)
 }
@@ -4687,14 +4756,14 @@ func (s *Server) adminTicketStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) supportWhatsAppInfo(w http.ResponseWriter, r *http.Request) {
-	var whatsapp, status string
+	var whatsapp, status, whatsappName, profilePictureURL string
 	var lastSeen *time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT coalesce(whatsapp,''),status,last_seen_at FROM support_whatsapp_session WHERE singleton=true`).Scan(&whatsapp, &status, &lastSeen)
+	err := s.db.QueryRow(r.Context(), `SELECT coalesce(whatsapp,''),status,last_seen_at,coalesce(whatsapp_name,''),coalesce(profile_picture_url,'') FROM support_whatsapp_session WHERE singleton=true`).Scan(&whatsapp, &status, &lastSeen, &whatsappName, &profilePictureURL)
 	if err != nil {
-		jsonOut(w, 200, map[string]any{"connected": false, "whatsapp": "", "status": "disconnected"})
+		jsonOut(w, 200, map[string]any{"connected": false, "whatsapp": "", "status": "disconnected", "whatsapp_name": "", "profile_picture_url": ""})
 		return
 	}
-	jsonOut(w, 200, map[string]any{"connected": status == "connected" && whatsapp != "", "whatsapp": whatsapp, "status": status, "last_seen_at": lastSeen})
+	jsonOut(w, 200, map[string]any{"connected": status == "connected" && whatsapp != "", "whatsapp": whatsapp, "status": status, "last_seen_at": lastSeen, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL})
 }
 
 // bridgeMediaReq forwards a browser upload to the internal WhatsApp service without
@@ -6304,6 +6373,8 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 			coalesce(g.status,'active'),
 			g.identity_verified_at IS NOT NULL,
 			g.whatsapp_verified_at IS NOT NULL,
+			coalesce(g.whatsapp_name,''),
+			coalesce(g.profile_picture_url,''),
 			(SELECT count(DISTINCT c.store_id)::int FROM customers c WHERE c.global_customer_id=g.id),
 			(SELECT count(c.id)::int FROM customers c WHERE c.global_customer_id=g.id),
 			(SELECT coalesce(sum(c.order_count),0)::int FROM customers c WHERE c.global_customer_id=g.id),
@@ -6320,31 +6391,33 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, phone, name, lastName, nationalID, status string
+		var id, phone, name, lastName, nationalID, status, whatsappName, profilePictureURL string
 		var identityVerified, whatsappVerified bool
 		var stores, records, orders, addressCount int
 		var spent float64
 		var last *time.Time
 		var updated time.Time
-		if rows.Scan(&id, &phone, &name, &lastName, &nationalID, &status, &identityVerified, &whatsappVerified, &stores, &records, &orders, &spent, &last, &addressCount, &updated) == nil {
+		if rows.Scan(&id, &phone, &name, &lastName, &nationalID, &status, &identityVerified, &whatsappVerified, &whatsappName, &profilePictureURL, &stores, &records, &orders, &spent, &last, &addressCount, &updated) == nil {
 			fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
 			out = append(out, map[string]any{
-				"id":                id,
-				"phone":             phone,
-				"name":              name,
-				"last_name":         lastName,
-				"full_name":         fullName,
-				"national_id":       nationalID,
-				"status":            status,
-				"identity_verified": identityVerified,
-				"whatsapp_verified": whatsappVerified,
-				"businesses":        stores,
-				"records":           records,
-				"orders":            orders,
-				"total_spent":       spent,
-				"last_order_at":     last,
-				"address_count":     addressCount,
-				"updated_at":        updated,
+				"id":                  id,
+				"phone":               phone,
+				"name":                name,
+				"last_name":           lastName,
+				"full_name":           fullName,
+				"national_id":         nationalID,
+				"status":              status,
+				"identity_verified":   identityVerified,
+				"whatsapp_verified":   whatsappVerified,
+				"whatsapp_name":       whatsappName,
+				"profile_picture_url": profilePictureURL,
+				"businesses":          stores,
+				"records":             records,
+				"orders":              orders,
+				"total_spent":         spent,
+				"last_order_at":       last,
+				"address_count":       addressCount,
+				"updated_at":          updated,
 			})
 		}
 	}
@@ -6518,7 +6591,7 @@ func (s *Server) listStoreStaff(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(phone,''),role,panel,status,created_at FROM store_staff WHERE store_id=$1 ORDER BY created_at`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,coalesce(last_name,''),coalesce(phone,''),coalesce(document_number,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),identity_verified_at IS NOT NULL,whatsapp_verified_at IS NOT NULL,coalesce(whatsapp_name,''),coalesce(profile_picture_url,''),role,panel,status,created_at FROM store_staff WHERE store_id=$1 ORDER BY created_at`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los usuarios")
 		return
@@ -6526,27 +6599,98 @@ func (s *Server) listStoreStaff(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, n, p, role, panel, status string
+		var id, name, lastName, phone, document, birthDate, gender, whatsappName, profilePictureURL, role, panel, status string
+		var identityVerified, whatsappVerified bool
 		var created time.Time
-		if rows.Scan(&id, &n, &p, &role, &panel, &status, &created) == nil {
-			out = append(out, map[string]any{"id": id, "name": n, "phone": p, "role": role, "panel": panel, "status": status, "created_at": created})
+		if rows.Scan(&id, &name, &lastName, &phone, &document, &birthDate, &gender, &identityVerified, &whatsappVerified, &whatsappName, &profilePictureURL, &role, &panel, &status, &created) == nil {
+			out = append(out, map[string]any{"id": id, "name": name, "last_name": lastName, "phone": phone, "document_number": document, "birth_date": birthDate, "gender": gender, "identity_verified": identityVerified, "whatsapp_verified": whatsappVerified, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "role": role, "panel": panel, "status": status, "created_at": created})
 		}
 	}
 	jsonOut(w, 200, out)
 }
+
 func (s *Server) createStoreStaff(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var in struct {
-		StoreID string `json:"store_id"`
-		Name    string `json:"name"`
-		Phone   string `json:"phone"`
-		Role    string `json:"role"`
-		Panel   string `json:"panel"`
-		PIN     string `json:"pin"`
+		StoreID        string `json:"store_id"`
+		Name           string `json:"name"`
+		LastName       string `json:"last_name"`
+		Phone          string `json:"phone"`
+		DocumentNumber string `json:"document_number"`
+		BirthDate      string `json:"birth_date"`
+		Gender         string `json:"gender"`
+		Role           string `json:"role"`
+		Panel          string `json:"panel"`
+		PIN            string `json:"pin"`
 	}
-	if decode(r, &in) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) || strings.TrimSpace(in.Name) == "" {
+	if decode(r, &in) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) {
 		jsonErr(w, 400, "Datos inválidos")
 		return
+	}
+	phone := normalizePhone(in.Phone)
+	if phone == "" {
+		jsonErr(w, 400, "El WhatsApp es obligatorio")
+		return
+	}
+	if _, err := s.validateOwnerWhatsAppForSave(r.Context(), phone); err != nil {
+		jsonErr(w, http.StatusUnprocessableEntity, err.Error())
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	lastName := strings.TrimSpace(in.LastName)
+	document := digitsOnly(in.DocumentNumber)
+	if len(document) != 11 {
+		jsonErr(w, 400, "La Cédula es obligatoria y debe tener exactamente 11 dígitos")
+		return
+	}
+	birthDate := strings.TrimSpace(in.BirthDate)
+	gender := normalizeOwnerGender(in.Gender)
+	var identityVerifiedAt any
+	if document != "" {
+		if len(document) != 11 {
+			jsonErr(w, 400, "La Cédula debe tener exactamente 11 dígitos")
+			return
+		}
+		identity := s.platformSetting(r.Context(), "identity")
+		if enabled, _ := identity["enabled"].(bool); enabled {
+			envelope, _, err := s.verifyIdentityDocument(r.Context(), "persona", document)
+			if err != nil {
+				jsonErr(w, 422, "No pudimos verificar la Cédula: "+err.Error())
+				return
+			}
+			profile := identityProfile("persona", envelope)
+			if v := strings.TrimSpace(str(profile["name"])); v != "" {
+				name = v
+			}
+			if v := strings.TrimSpace(str(profile["last_name"])); v != "" {
+				lastName = v
+			}
+			if v := strings.TrimSpace(str(profile["birth_date"])); v != "" {
+				birthDate = v
+			}
+			if v := normalizeOwnerGender(str(profile["gender"])); v != "" {
+				gender = v
+			}
+			identityVerifiedAt = time.Now()
+		}
+	}
+	if name == "" {
+		jsonErr(w, 400, "El nombre es obligatorio")
+		return
+	}
+	if birthDate != "" {
+		if _, err := time.Parse("2006-01-02", birthDate); err != nil {
+			jsonErr(w, 400, "La fecha de nacimiento no es válida")
+			return
+		}
+	}
+	if document != "" {
+		var dup int
+		_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM store_staff WHERE store_id=$1 AND document_number=$2`, in.StoreID, document).Scan(&dup)
+		if dup > 0 {
+			jsonErr(w, 409, "Ya existe un usuario con esa Cédula en este negocio")
+			return
+		}
 	}
 	var hash any = nil
 	if in.PIN != "" {
@@ -6565,12 +6709,14 @@ func (s *Server) createStoreStaff(w http.ResponseWriter, r *http.Request) {
 		in.Panel = "operations"
 	}
 	var id string
-	if s.db.QueryRow(r.Context(), `INSERT INTO store_staff(store_id,name,phone,role,panel,pin_hash) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, in.StoreID, strings.TrimSpace(in.Name), normalizePhone(in.Phone), in.Role, in.Panel, hash).Scan(&id) != nil {
+	if s.db.QueryRow(r.Context(), `INSERT INTO store_staff(store_id,name,last_name,phone,document_number,birth_date,gender,identity_verified_at,whatsapp_verified_at,role,panel,pin_hash) VALUES($1,$2,nullif($3,''),$4,nullif($5,''),nullif($6,'')::date,nullif($7,''),$8,now(),$9,$10,$11) RETURNING id`, in.StoreID, name, lastName, phone, document, birthDate, gender, identityVerifiedAt, in.Role, in.Panel, hash).Scan(&id) != nil {
 		jsonErr(w, 500, "No se pudo crear el usuario")
 		return
 	}
+	_ = s.refreshStoreStaffWhatsAppProfile(r.Context(), id, in.StoreID, phone)
 	jsonOut(w, 201, map[string]any{"id": id, "ok": true})
 }
+
 func (s *Server) updateStoreStaff(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
@@ -6580,26 +6726,95 @@ func (s *Server) updateStoreStaff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name   string `json:"name"`
-		Phone  string `json:"phone"`
-		Role   string `json:"role"`
-		Panel  string `json:"panel"`
-		Status string `json:"status"`
+		Name           string `json:"name"`
+		LastName       string `json:"last_name"`
+		Phone          string `json:"phone"`
+		DocumentNumber string `json:"document_number"`
+		BirthDate      string `json:"birth_date"`
+		Gender         string `json:"gender"`
+		Role           string `json:"role"`
+		Panel          string `json:"panel"`
+		Status         string `json:"status"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
 		return
 	}
+	phone := normalizePhone(in.Phone)
+	if phone == "" {
+		jsonErr(w, 400, "El WhatsApp es obligatorio")
+		return
+	}
+	var currentName, currentLastName, currentDocument, currentBirthDate, currentGender, currentPhone string
+	var identityVerified bool
+	if err := s.db.QueryRow(r.Context(), `SELECT name,coalesce(last_name,''),coalesce(document_number,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),coalesce(phone,''),identity_verified_at IS NOT NULL FROM store_staff WHERE id=$1`, id).Scan(&currentName, &currentLastName, &currentDocument, &currentBirthDate, &currentGender, &currentPhone, &identityVerified); err != nil {
+		jsonErr(w, 404, "Usuario no encontrado")
+		return
+	}
+	name := strings.TrimSpace(in.Name)
+	lastName := strings.TrimSpace(in.LastName)
+	document := digitsOnly(in.DocumentNumber)
+	if len(document) != 11 {
+		jsonErr(w, 400, "La Cédula es obligatoria y debe tener exactamente 11 dígitos")
+		return
+	}
+	birthDate := strings.TrimSpace(in.BirthDate)
+	gender := normalizeOwnerGender(in.Gender)
+	var identityVerifiedAt any
+	if identityVerified {
+		name, lastName, document, birthDate, gender = currentName, currentLastName, currentDocument, currentBirthDate, currentGender
+		identityVerifiedAt = time.Now()
+	} else if document != "" {
+		if len(document) != 11 {
+			jsonErr(w, 400, "La Cédula debe tener exactamente 11 dígitos")
+			return
+		}
+		identity := s.platformSetting(r.Context(), "identity")
+		if enabled, _ := identity["enabled"].(bool); enabled {
+			envelope, _, err := s.verifyIdentityDocument(r.Context(), "persona", document)
+			if err != nil {
+				jsonErr(w, 422, "No pudimos verificar la Cédula: "+err.Error())
+				return
+			}
+			profile := identityProfile("persona", envelope)
+			if v := strings.TrimSpace(str(profile["name"])); v != "" {
+				name = v
+			}
+			if v := strings.TrimSpace(str(profile["last_name"])); v != "" {
+				lastName = v
+			}
+			if v := strings.TrimSpace(str(profile["birth_date"])); v != "" {
+				birthDate = v
+			}
+			if v := normalizeOwnerGender(str(profile["gender"])); v != "" {
+				gender = v
+			}
+			identityVerifiedAt = time.Now()
+		}
+	}
+	if name == "" {
+		jsonErr(w, 400, "El nombre es obligatorio")
+		return
+	}
 	if in.Status == "" {
 		in.Status = "active"
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE store_staff SET name=$1,phone=$2,role=$3,panel=$4,status=$5,updated_at=now() WHERE id=$6`, strings.TrimSpace(in.Name), normalizePhone(in.Phone), in.Role, in.Panel, in.Status, id)
+	phoneChanged := normalizePhone(currentPhone) != phone
+	if phoneChanged {
+		if _, err := s.validateOwnerWhatsAppForSave(r.Context(), phone); err != nil {
+			jsonErr(w, http.StatusUnprocessableEntity, err.Error())
+			return
+		}
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE store_staff SET name=$1,last_name=nullif($2,''),phone=$3,document_number=nullif($4,''),birth_date=nullif($5,'')::date,gender=nullif($6,''),identity_verified_at=coalesce($7,identity_verified_at),whatsapp_verified_at=CASE WHEN $8 THEN now() ELSE whatsapp_verified_at END,profile_picture_updated_at=CASE WHEN $8 THEN NULL ELSE profile_picture_updated_at END,role=$9,panel=$10,status=$11,updated_at=now() WHERE id=$12`, name, lastName, phone, document, birthDate, gender, identityVerifiedAt, phoneChanged, in.Role, in.Panel, in.Status, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo guardar el usuario")
 		return
 	}
+	_ = s.refreshStoreStaffWhatsAppProfile(r.Context(), id, sid, phone)
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
+
 func (s *Server) deleteStoreStaff(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")

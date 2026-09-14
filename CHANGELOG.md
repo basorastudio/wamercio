@@ -1,3 +1,20 @@
+# WAMERCIO 2.5.8 — Perfiles WhatsApp e identidad completa de usuarios
+
+- Las sesiones WhatsApp vinculadas de cada negocio y la sesión global del SuperAdmin muestran ahora nombre de WhatsApp, número e imagen de perfil, conservando el estado de conexión existente.
+- El nombre de la cuenta vinculada prioriza `BusinessName`/`PushName` del dispositivo whatsmeow y conserva el fallback al caché de contactos.
+- **Propietarios**, **Clientes globales** y **Mi cuenta** muestran la foto y el nombre de WhatsApp sin reemplazar el nombre legal/registrado de la persona.
+- **Mi cuenta** incorpora Cédula, nombre, apellido, fecha de nacimiento y género; los datos de identidad permanecen protegidos cuando la Cédula ya fue verificada.
+- El formulario **Nuevo usuario** se reorganiza como WhatsApp → Cédula → Nombre → Apellido → Fecha de nacimiento → Género → Rol/Panel/PIN, valida WhatsApp e identidad y bloquea los datos verificados.
+- Los campos de WhatsApp reutilizan el componente `PhoneInput` basado en `intl-tel-input`, con prefijo internacional, bandera y validación.
+- Los usuarios internos del negocio pueden conservar nombre/foto de WhatsApp e información de identidad para mostrarlos en el listado.
+- Añade la migración `000023_whatsapp_identity_user_profiles` y pruebas de regresión para las nuevas superficies.
+
+## Despliegue
+
+Requiere ejecutar la migración `000023_whatsapp_identity_user_profiles` y reconstruir/redeployar API, Web y WhatsApp Bridge. No añade nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Acceso del propietario y perfil WhatsApp del cliente
 
 - El botón **Entrar** de cada tienda distingue ahora al propietario del negocio antes de iniciar el flujo de cliente. Si el WhatsApp corresponde al propietario de esa tienda, muestra su PIN y abre el panel administrativo en `wamercio.com`.

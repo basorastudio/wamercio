@@ -243,17 +243,55 @@ func (m *Manager) handleSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 404, map[string]string{"error": "Ruta inválida"})
 	}
 }
+func (m *Manager) linkedAccountMetadata(sessionKey string) (phone, name, pictureURL, pictureID string) {
+	if sessionKey == SupportSessionKey {
+		_ = m.db.QueryRow(`SELECT coalesce(whatsapp,''),coalesce(whatsapp_name,''),coalesce(profile_picture_url,''),coalesce(profile_picture_id,'') FROM support_whatsapp_session WHERE singleton=true`).Scan(&phone, &name, &pictureURL, &pictureID)
+		return
+	}
+	_ = m.db.QueryRow(`SELECT coalesce(phone,''),coalesce(whatsapp_name,''),coalesce(profile_picture_url,''),coalesce(profile_picture_id,'') FROM whatsapp_sessions WHERE store_id=$1`, sessionKey).Scan(&phone, &name, &pictureURL, &pictureID)
+	return
+}
+
+func (m *Manager) refreshLinkedAccountProfile(s *Session) {
+	if !sessionLinked(s) || s.Client == nil || s.Client.Store == nil || s.Client.Store.ID == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+	defer cancel()
+	jid := s.Client.Store.ID.ToNonAD()
+	name := strings.TrimSpace(s.Client.Store.BusinessName)
+	if name == "" {
+		name = strings.TrimSpace(s.Client.Store.PushName)
+	}
+	if name == "" {
+		name = m.whatsappContactName(s, jid, "")
+	}
+	pictureURL, pictureID := "", ""
+	if pic, err := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: true}); err == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
+		if localURL, saveErr := m.persistProfilePicture(s.StoreID, jid, pic.URL); saveErr == nil {
+			pictureURL = localURL
+			pictureID = pic.ID
+		}
+	}
+	if s.StoreID == SupportSessionKey {
+		_, _ = m.db.Exec(`UPDATE support_whatsapp_session SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=now(),updated_at=now() WHERE singleton=true`, name, pictureURL, pictureID)
+	} else {
+		_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=now(),updated_at=now() WHERE store_id=$4`, name, pictureURL, pictureID, s.StoreID)
+	}
+}
+
 func (m *Manager) status(w http.ResponseWriter, sessionKey string) {
 	m.mu.RLock()
 	s := m.sessions[sessionKey]
 	m.mu.RUnlock()
+	storedPhone, profileName, profilePictureURL, profilePictureID := m.linkedAccountMetadata(sessionKey)
 	if s == nil {
 		var jid string
 		if err := m.db.QueryRow(`SELECT jid FROM whatsapp_bridge_sessions_v2 WHERE session_key=$1`, sessionKey).Scan(&jid); err == nil && jid != "" {
-			writeJSON(w, 200, map[string]any{"status": "reconnecting", "connected": false, "linked": true})
+			writeJSON(w, 200, map[string]any{"status": "reconnecting", "connected": false, "linked": true, "phone": storedPhone, "whatsapp_name": profileName, "profile_picture_url": profilePictureURL, "profile_picture_id": profilePictureID})
 			return
 		}
-		writeJSON(w, 200, map[string]any{"status": "disconnected", "connected": false, "linked": false})
+		writeJSON(w, 200, map[string]any{"status": "disconnected", "connected": false, "linked": false, "phone": storedPhone, "whatsapp_name": profileName, "profile_picture_url": profilePictureURL, "profile_picture_id": profilePictureID})
 		return
 	}
 	linked := sessionLinked(s)
@@ -264,7 +302,18 @@ func (m *Manager) status(w http.ResponseWriter, sessionKey string) {
 	} else if linked && status != "logged_out" {
 		status = "reconnecting"
 	}
-	writeJSON(w, 200, map[string]any{"status": status, "connected": connected, "linked": linked, "qr": s.QR, "phone": s.Phone, "updated_at": s.Updated})
+	phone := s.Phone
+	if phone == "" {
+		phone = storedPhone
+	}
+	if connected && profileName == "" && profilePictureURL == "" {
+		m.refreshLinkedAccountProfile(s)
+		storedPhone, profileName, profilePictureURL, profilePictureID = m.linkedAccountMetadata(sessionKey)
+		if phone == "" {
+			phone = storedPhone
+		}
+	}
+	writeJSON(w, 200, map[string]any{"status": status, "connected": connected, "linked": linked, "qr": s.QR, "phone": phone, "whatsapp_name": profileName, "profile_picture_url": profilePictureURL, "profile_picture_id": profilePictureID, "updated_at": s.Updated})
 }
 
 func (m *Manager) connect(w http.ResponseWriter, r *http.Request, sessionKey string) {
@@ -416,6 +465,7 @@ func (m *Manager) onConnected(s *Session) {
 	} else {
 		_, _ = m.db.Exec(`INSERT INTO whatsapp_sessions(store_id,jid,phone,status,last_seen_at,updated_at) VALUES($1,$2,$3,'connected',now(),now()) ON CONFLICT(store_id) DO UPDATE SET jid=excluded.jid,phone=excluded.phone,status='connected',last_seen_at=now(),updated_at=now()`, s.StoreID, jid, phone)
 	}
+	go m.refreshLinkedAccountProfile(s)
 }
 
 func (m *Manager) maintainSession(s *Session) {
