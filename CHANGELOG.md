@@ -1,3 +1,8 @@
+# WAMERCIO 2.5.7 — Corrección de compilación API
+
+- Corrige `undefined: strconv` en `services/api/internal/httpapi/server.go` agregando el import requerido por `formatOrderQuantity`.
+- Sin cambios de base de datos, ENV, routing ni funcionalidad.
+
 # WAMERCIO 2.5.6 — Flujo natural de compra
 
 ## Storefront

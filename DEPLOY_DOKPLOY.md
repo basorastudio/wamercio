@@ -1,4 +1,4 @@
-# Despliegue WAMERCIO 2.5.6 en Dokploy
+# Despliegue WAMERCIO 2.5.7 en Dokploy
 
 ## ENV
 
@@ -12,7 +12,7 @@ TENANT_ROOT_DOMAIN=ltd.do
 CUSTOM_DOMAIN_CNAME_TARGET=domains.ltd.do
 ```
 
-No se añade ninguna variable nueva en 2.5.6.
+No se añade ninguna variable nueva en 2.5.7.
 
 ## DNS
 
@@ -20,7 +20,7 @@ Mantén el wildcard `*.ltd.do` apuntando al servidor/Dokploy. WAMERCIO continúa
 
 ## Actualización
 
-1. Sustituye el código por WAMERCIO 2.5.6.
+1. Sustituye el código por WAMERCIO 2.5.7.
 2. Conserva PostgreSQL, Redis y uploads; no uses **Fresh Volumes**.
 3. Ejecuta **Rebuild** y después **Redeploy**.
 4. Abre una tienda, por ejemplo `https://pizzeria-juan.ltd.do`.
