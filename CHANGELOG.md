@@ -1,3 +1,14 @@
+# WAMERCIO 2.5.8 — Checkout limpio y métodos de pago refinados
+
+- Elimina del carrito los textos redundantes **Finalizar pedido / Entrega y forma de pago** y la tarjeta duplicada con la identidad del cliente.
+- Elimina el selector manual **Zona de delivery** del checkout; el backend deja de exigir una zona explícita y conserva compatibilidad con clientes antiguos que todavía envíen `shipping_zone_id`.
+- Sustituye la etiqueta **Pago al recibir** por **Tarjeta en terminal** en storefront, pedidos, POS, conversaciones y configuración, manteniendo el identificador interno existente para no requerir migraciones.
+- Renombra **Transferencia manual** como **Transferencia electrónica** y unifica esa denominación en las superficies de compra.
+- Convierte **Tipo de cuenta** en un selector restringido a **Ahorros** o **Corriente** para evitar valores inconsistentes.
+- No añade migraciones ni variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Carrito full-page simplificado
 
 - Editar un producto desde **Mi pedido** abre su ficha directamente sobre la página del carrito; el catálogo ya no reaparece detrás del modal.

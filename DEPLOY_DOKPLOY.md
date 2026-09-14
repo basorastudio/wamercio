@@ -33,5 +33,5 @@ Mantén el wildcard `*.ltd.do` apuntando al servidor/Dokploy. WAMERCIO continúa
 - desde el carrito, **Editar** abre la misma ficha del producto y regresa al carrito al guardar/cerrar;
 - productos con variantes o adicionales pueden usar **Agregar otra combinación**;
 - los productos con **Vender por libra** permiten indicar peso y, si está habilitado, comprar por monto;
-- en escritorio el carrito sigue siendo un panel estructural y en móvil/tablet conserva su superficie modal;
+- el carrito funciona como una página completa: productos a la izquierda y checkout a la derecha en escritorio, con flujo vertical en móvil;
 - `wamercio.com` sigue siendo exclusivamente plataforma/backoffice y `*.ltd.do` sigue siendo tiendas.

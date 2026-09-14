@@ -3053,11 +3053,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 
 	shipping := 0.0
 	var zone any = nil
-	if in.DeliveryType == "delivery" {
-		if in.ShippingZoneID == "" {
-			jsonErr(w, 400, "Selecciona una zona de delivery")
-			return
-		}
+	if in.DeliveryType == "delivery" && strings.TrimSpace(in.ShippingZoneID) != "" {
 		if tx.QueryRow(r.Context(), `SELECT charge FROM shipping_zones WHERE id=$1 AND store_id=$2 AND is_active=true`, in.ShippingZoneID, sid).Scan(&shipping) == nil {
 			zone = in.ShippingZoneID
 		} else {

@@ -13,7 +13,7 @@ const steps=[
   ['delivered','Entregado'],
 ]
 const aliases:any={processing:'preparing',picked_up:'delivered'}
-const payLabel:any={cash:'Efectivo',cash_on_delivery:'Pago al recibir',bank_transfer:'Transferencia bancaria'}
+const payLabel:any={cash:'Efectivo',cash_on_delivery:'Tarjeta en terminal',bank_transfer:'Transferencia electrónica'}
 
 export default function OrderTracking(){
  const{token}=useParams<{token:string}>()

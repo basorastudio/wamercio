@@ -7,7 +7,7 @@ import type {Order} from '@/lib/types'
 import {Eye,ExternalLink,Phone,MapPin,PackageCheck,WalletCards,Store as StoreIcon,Truck} from 'lucide-react'
 const states=[['pending','Pendiente'],['confirmed','Confirmado'],['preparing','Preparando'],['ready','Listo'],['out_for_delivery','En camino'],['delivered','Entregado'],['picked_up','Recogido'],['canceled','Cancelado']]
 const paymentStates=[['pending','Pendiente'],['paid','Pagado'],['refunded','Reembolsado']]
-const paymentName=(v:string)=>v==='bank_transfer'?'Transferencia':v==='cash'?'Efectivo':'Pago al recibir'
+const paymentName=(v:string)=>v==='bank_transfer'?'Transferencia electrónica':v==='cash'?'Efectivo':'Tarjeta en terminal'
 export default function Orders(){
  const[store,setStore]=useState(''),[rows,setRows]=useState<Order[]>([]),[loading,setLoading]=useState(false),[detail,setDetail]=useState<any>(null),[updating,setUpdating]=useState(false)
  const load=()=>{if(!store){setRows([]);return};setLoading(true);api<Order[]>(`/orders?store_id=${store}`).then(setRows).finally(()=>setLoading(false))}
