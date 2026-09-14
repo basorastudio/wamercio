@@ -10,11 +10,13 @@ import {WhatsAppMessageContent,type WhatsAppMessage} from '@/components/whatsapp
 
 type Conv={
   id:string;remote_jid:string;display_name:string;unread_count:number;last_message:string;
-  last_message_at?:string|null;created_at:string;customer_id?:string;status?:string;phone?:string
+  last_message_at?:string|null;created_at:string;customer_id?:string;status?:string;phone?:string;
+  whatsapp_name?:string;profile_picture_url?:string;contact_type?:'customer'|'contact'
 }
 type Msg=WhatsAppMessage
 type Customer={id:string;name:string;phone:string;address:string;notes:string;status:string;order_count:number;total_spent:number;last_order_at?:string|null}
-type Detail={id:string;remote_jid:string;display_name:string;phone:string;status:string;customer:Customer;orders:any[];metrics:{messages:number;incoming:number;outgoing:number;images:number;videos:number;audios:number;documents:number;first_interaction?:string|null;last_interaction?:string|null}}
+type ContactData={name:string;phone:string;address:string;notes:string;status:string}
+type Detail={id:string;remote_jid:string;display_name:string;phone:string;status:string;contact_type:'customer'|'contact';whatsapp_name?:string;profile_picture_url?:string;contact:ContactData;customer:Customer;orders:any[];metrics:{messages:number;incoming:number;outgoing:number;images:number;videos:number;audios:number;documents:number;first_interaction?:string|null;last_interaction?:string|null}}
 type Note={id:string;note:string;author?:string;created_at:string}
 type Panel='contact'|'records'|'sale'|null
 type Product={id:string;name:string;price:number;image_url?:string;description?:string;stock?:number;track_stock?:boolean;variants?:{name:string;price:number}[];extras?:{name:string;price:number}[]}
@@ -26,6 +28,7 @@ const label=(c:Conv)=>c.display_name||c.phone||c.remote_jid.split('@')[0]
 const time=(v?:string|null)=>v?new Date(v).toLocaleTimeString('es-DO',{hour:'2-digit',minute:'2-digit'}):''
 const dayTime=(v?:string|null)=>v?new Date(v).toLocaleString('es-DO',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'}):'—'
 const statusLabel=(v?:string)=>v==='closed'?'Cerrada':v==='pending'?'Pendiente':'Abierta'
+const kindLabel=(v?:string)=>v==='customer'?'Cliente':'Contacto'
 
 export default function Conversations(){
   const[store,setStore]=useState('')
@@ -34,7 +37,7 @@ export default function Conversations(){
   const[messages,setMessages]=useState<Msg[]>([])
   const[text,setText]=useState('')
   const[search,setSearch]=useState('')
-  const[onlyUnread,setOnlyUnread]=useState(false)
+  const[chatFilter,setChatFilter]=useState<'all'|'customer'|'contact'|'unread'>('all')
   const[sending,setSending]=useState(false)
   const[sendingMedia,setSendingMedia]=useState(false)
   const fileInput=useRef<HTMLInputElement>(null)
@@ -79,8 +82,8 @@ export default function Conversations(){
     try{
       const d=await api<Detail>(`/conversations/${x.id}/details`)
       setDetail(d)
-      setContactForm({name:d.customer?.name||d.display_name||'',address:d.customer?.address||'',notes:d.customer?.notes||'',status:d.customer?.status||'active'})
-      setOrderForm(v=>({...v,delivery_address:v.delivery_address||d.customer?.address||''}))
+      setContactForm({name:d.contact?.name||d.customer?.name||d.display_name||'',address:d.contact?.address||d.customer?.address||'',notes:d.contact?.notes||d.customer?.notes||'',status:d.contact?.status||d.customer?.status||'active'})
+      setOrderForm(v=>({...v,delivery_address:v.delivery_address||d.contact?.address||d.customer?.address||''}))
     }catch{}
   }
   const loadNotes=async(c?:Conv|null)=>{
@@ -105,7 +108,7 @@ export default function Conversations(){
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'})},[messages.length])
 
   const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);setShowQuick(false);void loadMsgs(c)}
-  const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);setOrderMessage('');void loadDetails().then(()=>{});if(mode==='records')void loadNotes();if(mode==='sale'){void loadCatalog();setOrderForm(v=>({...v,delivery_address:detail?.customer?.address||v.delivery_address}))}}
+  const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);setOrderMessage('');void loadDetails().then(()=>{});if(mode==='records')void loadNotes();if(mode==='sale'){void loadCatalog();setOrderForm(v=>({...v,delivery_address:detail?.contact?.address||detail?.customer?.address||v.delivery_address}))}}
   const send=async(e:React.FormEvent)=>{
     e.preventDefault();if(!selected||!text.trim())return
     const body=text.trim();setSending(true);setText('')
@@ -132,8 +135,8 @@ export default function Conversations(){
     setSavingContact(true)
     try{
       const out=await api<any>(`/conversations/${selected.id}/customer`,{method:'PUT',body:JSON.stringify(contactForm)})
-      setConvs(v=>v.map(c=>c.id===selected.id?{...c,display_name:out.name,customer_id:out.customer_id,phone:out.phone}:c))
-      setSelected(v=>v?{...v,display_name:out.name,customer_id:out.customer_id,phone:out.phone}:v)
+      setConvs(v=>v.map(c=>c.id===selected.id?{...c,display_name:out.name,customer_id:out.customer_id,phone:out.phone,contact_type:out.contact_type}:c))
+      setSelected(v=>v?{...v,display_name:out.name,customer_id:out.customer_id,phone:out.phone,contact_type:out.contact_type}:v)
       await loadDetails()
     }catch(e:any){alert(e.message)}finally{setSavingContact(false)}
   }
@@ -170,25 +173,25 @@ export default function Conversations(){
     if(!selected||cart.length===0)return
     setCreatingOrder(true);setOrderMessage('')
     try{
-      const out=await api<any>(`/conversations/${selected.id}/orders`,{method:'POST',body:JSON.stringify({customer_name:detail?.customer?.name||selected.display_name||selected.phone,delivery_address:orderForm.delivery_address,delivery_type:orderForm.delivery_type,shipping_zone_id:orderForm.shipping_zone_id,payment_method:orderForm.payment_method,notes:orderForm.notes,items:cart.map(x=>({product_id:x.product.id,quantity:x.quantity,variant_name:x.variant_name||'',extras:x.extras||[]}))})})
-      setCart([]);setOrderMessage(`Pedido #${out.number} creado y enviado por WhatsApp.`);await loadDetails();setTimeout(()=>loadMsgs(selected),500)
+      const out=await api<any>(`/conversations/${selected.id}/orders`,{method:'POST',body:JSON.stringify({customer_name:detail?.contact?.name||detail?.customer?.name||selected.display_name||selected.phone,delivery_address:orderForm.delivery_address,delivery_type:orderForm.delivery_type,shipping_zone_id:orderForm.shipping_zone_id,payment_method:orderForm.payment_method,notes:orderForm.notes,items:cart.map(x=>({product_id:x.product.id,quantity:x.quantity,variant_name:x.variant_name||'',extras:x.extras||[]}))})})
+      setCart([]);setOrderMessage(`Pedido #${out.number} creado y enviado por WhatsApp.`);await loadDetails();await loadConvs();setTimeout(()=>loadMsgs(selected),500)
     }catch(e:any){setOrderMessage(e.message||'No se pudo crear el pedido')}finally{setCreatingOrder(false)}
   }
 
-  const filtered=useMemo(()=>convs.filter(c=>(!onlyUnread||c.unread_count>0)&&(label(c)+' '+c.last_message+' '+(c.phone||'')).toLowerCase().includes(search.toLowerCase())),[convs,search,onlyUnread])
+  const filtered=useMemo(()=>convs.filter(c=>{const filterOK=chatFilter==='all'||(chatFilter==='unread'?c.unread_count>0:c.contact_type===chatFilter);return filterOK&&(label(c)+' '+(c.whatsapp_name||'')+' '+c.last_message+' '+(c.phone||'')).toLowerCase().includes(search.toLowerCase())}),[convs,search,chatFilter])
   const paneOpen=!!panel&&!!selected
 
-  return <StoreShell title="WhatsApp" subtitle="Atiende a tus clientes desde una experiencia similar a WhatsApp Web" context={<StoreSelector value={store} onChange={setStore}/>} fullHeight actions={<button className="btn-secondary px-3" title="Actualizar" onClick={()=>{loadConvs();selected&&loadMsgs(selected);paneOpen&&loadDetails()}}><RefreshCw className="h-4 w-4"/></button>}>
+  return <StoreShell title="WhatsApp" subtitle="Atiende clientes y contactos desde una experiencia similar a WhatsApp Web" context={<StoreSelector value={store} onChange={setStore}/>} fullHeight actions={<button className="btn-secondary px-3" title="Actualizar" onClick={()=>{loadConvs();selected&&loadMsgs(selected);paneOpen&&loadDetails()}}><RefreshCw className="h-4 w-4"/></button>}>
     <div className="relative flex h-full min-h-0 overflow-hidden rounded-[28px] border border-[#dde3e7] bg-white shadow-[0_16px_48px_rgba(15,23,42,.06)]">
       <aside className={`${selected?'hidden md:flex':'flex'} w-full shrink-0 flex-col border-r border-[#e9edef] bg-white md:w-[340px] xl:w-[380px]`}>
         <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-3 py-3.5">
           <div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#00a884]">WhatsApp</p><h2 className="text-[15px] font-semibold text-[#111b21]">Bandeja de conversaciones</h2></div><button onClick={()=>{loadConvs();selected&&loadMsgs(selected)}} className="grid h-9 w-9 place-items-center rounded-full text-[#54656f] hover:bg-white"><RefreshCw className="h-4 w-4"/></button></div>
           <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#667781]"/><input className="h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#b9e5dc]" placeholder="Buscar o iniciar un chat" value={search} onChange={e=>setSearch(e.target.value)}/></div>
-          <div className="mt-3 flex gap-2"><button onClick={()=>setOnlyUnread(false)} className={`rounded-full px-3.5 py-1.5 text-xs font-medium ${!onlyUnread?'bg-[#d9fdd3] text-[#008069]':'bg-white text-[#667781]'}`}>Todos</button><button onClick={()=>setOnlyUnread(true)} className={`rounded-full px-3.5 py-1.5 text-xs font-medium ${onlyUnread?'bg-[#d9fdd3] text-[#008069]':'bg-white text-[#667781]'}`}>No leídos</button></div>
+          <div className="mt-3 flex flex-wrap gap-2">{([['all','Todos'],['customer','Clientes'],['contact','Contactos'],['unread','No leídos']] as const).map(([value,text])=><button key={value} onClick={()=>setChatFilter(value)} className={`rounded-full px-3.5 py-1.5 text-xs font-medium ${chatFilter===value?'bg-[#d9fdd3] text-[#008069]':'bg-white text-[#667781]'}`}>{text}</button>)}</div>
         </div>
         <div className="flex-1 overflow-y-auto bg-white">{!store?<div className="p-8 text-center text-sm text-[#8696a0]">Selecciona una tienda.</div>:filtered.length===0?<div className="p-10 text-center"><MessageCircleMore className="mx-auto h-9 w-9 text-[#c4cdd1]"/><p className="mt-3 text-sm font-medium text-[#3b4a54]">Sin conversaciones</p><p className="mt-1 text-xs text-[#8696a0]">Los mensajes nuevos aparecerán aquí.</p></div>:filtered.map(c=><button key={c.id} onClick={()=>choose(c)} className={`flex w-full gap-3 border-b border-[#f0f2f5] px-3 py-3 text-left transition hover:bg-[#f5f6f6] ${selected?.id===c.id?'bg-[#f0f2f5]':''}`}>
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#dfe5e7] text-base font-semibold text-[#54656f]">{label(c).slice(0,1).toUpperCase()}</div>
-          <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-[15px] font-medium text-[#111b21]">{label(c)}</span>{c.last_message_at&&<span className={`ml-auto shrink-0 text-[11px] ${c.unread_count>0?'text-[#00a884]':'text-[#667781]'}`}>{time(c.last_message_at)}</span>}</div><div className="mt-1 flex items-center gap-2"><span className="truncate text-[13px] text-[#667781]">{c.last_message||'Nueva conversación'}</span>{c.unread_count>0&&<span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-white">{c.unread_count}</span>}</div></div>
+          <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-full bg-[#dfe5e7] text-base font-semibold text-[#54656f]">{c.profile_picture_url?<img src={c.profile_picture_url} alt={label(c)} className="h-full w-full object-cover"/>:label(c).slice(0,1).toUpperCase()}</div>
+          <div className="min-w-0 flex-1"><div className="flex items-center gap-2"><span className="truncate text-[15px] font-medium text-[#111b21]">{label(c)}</span>{c.last_message_at&&<span className={`ml-auto shrink-0 text-[11px] ${c.unread_count>0?'text-[#00a884]':'text-[#667781]'}`}>{time(c.last_message_at)}</span>}</div><div className="mt-1 flex items-center gap-2"><span className="truncate text-[13px] text-[#667781]">{c.last_message||'Nueva conversación'}</span><span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${c.contact_type==='customer'?'bg-[#e7fce7] text-[#008069]':'bg-[#eef2f5] text-[#667781]'}`}>{kindLabel(c.contact_type)}</span>{c.unread_count>0&&<span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-white">{c.unread_count}</span>}</div></div>
         </button>)}</div>
       </aside>
 
@@ -197,8 +200,8 @@ export default function Conversations(){
           <header className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[#dfe3e6] bg-[#f0f2f5] px-3 sm:px-4">
             <button onClick={()=>setSelected(null)} className="rounded-full p-2 text-[#54656f] hover:bg-white md:hidden"><ArrowLeft className="h-5 w-5"/></button>
             <button onClick={()=>openPanel('contact')} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#dfe5e7] font-semibold text-[#54656f]">{label(selected).slice(0,1).toUpperCase()}</div>
-              <div className="min-w-0"><div className="truncate text-[15px] font-medium text-[#111b21]">{label(selected)}</div><div className="truncate text-xs text-[#667781]">{selected.phone?`+${selected.phone}`:selected.remote_jid.split('@')[0]} · {statusLabel(selected.status)}</div></div>
+              <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-[#dfe5e7] font-semibold text-[#54656f]">{selected.profile_picture_url?<img src={selected.profile_picture_url} alt={label(selected)} className="h-full w-full object-cover"/>:label(selected).slice(0,1).toUpperCase()}</div>
+              <div className="min-w-0"><div className="flex items-center gap-2"><div className="truncate text-[15px] font-medium text-[#111b21]">{label(selected)}</div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${selected.contact_type==='customer'?'bg-[#d9fdd3] text-[#008069]':'bg-[#e2e5e7] text-[#54656f]'}`}>{kindLabel(selected.contact_type)}</span></div><div className="truncate text-xs text-[#667781]">{selected.phone?`+${selected.phone}`:selected.remote_jid.split('@')[0]} · {statusLabel(selected.status)}</div></div>
             </button>
             <div className="flex items-center gap-1"><button title="Crear pedido" onClick={()=>openPanel('sale')} className={`rounded-full p-2.5 ${panel==='sale'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ShoppingCart className="h-5 w-5"/></button><button title="Datos del contacto" onClick={()=>openPanel('contact')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='contact'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><Info className="h-5 w-5"/></button><button title="Registros de atención" onClick={()=>openPanel('records')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button></div>
           </header>
@@ -219,13 +222,13 @@ export default function Conversations(){
       {paneOpen&&selected&&<aside className="absolute inset-0 z-20 flex flex-col border-l border-[#dfe3e6] bg-white md:left-[340px] xl:static xl:w-[390px] xl:shrink-0">
         <div className="flex h-[72px] shrink-0 items-center gap-3 border-b border-[#e9edef] bg-[#f0f2f5] px-4"><button onClick={()=>setPanel(null)} className="rounded-full p-2 text-[#54656f] hover:bg-white"><X className="h-5 w-5"/></button><h2 className="text-[16px] font-medium text-[#111b21]">{panel==='contact'?'Datos del contacto':panel==='sale'?'Crear pedido':'Registros de atención'}</h2></div>
         {!detail?<div className="grid flex-1 place-items-center text-sm text-[#8696a0]">Cargando...</div>:panel==='contact'?<div className="flex-1 overflow-y-auto bg-[#f0f2f5]">
-          <div className="bg-white px-5 py-7 text-center"><div className="mx-auto grid h-24 w-24 place-items-center rounded-full bg-[#dfe5e7] text-3xl font-medium text-[#54656f]">{(contactForm.name||label(selected)).slice(0,1).toUpperCase()}</div><div className="mt-4 text-xl font-medium text-[#111b21]">{contactForm.name||label(selected)}</div><div className="mt-1 text-sm text-[#667781]">+{detail.customer?.phone||detail.phone}</div></div>
+          <div className="bg-white px-5 py-7 text-center"><div className="mx-auto grid h-24 w-24 place-items-center overflow-hidden rounded-full bg-[#dfe5e7] text-3xl font-medium text-[#54656f]">{detail.profile_picture_url?<img src={detail.profile_picture_url} alt={contactForm.name||label(selected)} className="h-full w-full object-cover"/>:(contactForm.name||label(selected)).slice(0,1).toUpperCase()}</div><div className="mt-4 flex items-center justify-center gap-2"><div className="text-xl font-medium text-[#111b21]">{contactForm.name||label(selected)}</div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${detail.contact_type==='customer'?'bg-[#d9fdd3] text-[#008069]':'bg-[#eef2f5] text-[#667781]'}`}>{kindLabel(detail.contact_type)}</span></div>{detail.whatsapp_name&&detail.whatsapp_name!==(contactForm.name||label(selected))&&<div className="mt-1 text-xs font-medium text-[#00a884]">Perfil de WhatsApp: {detail.whatsapp_name}</div>}<div className="mt-1 text-sm text-[#667781]">{detail.phone?`+${detail.phone}`:'WhatsApp'}</div></div>
           <div className="mt-2 bg-white p-5"><div className="grid grid-cols-2 gap-3"><div className="rounded-lg bg-[#f7f8fa] p-3 text-center"><div className="text-lg font-semibold text-[#111b21]">{detail.customer?.order_count||0}</div><div className="text-[11px] text-[#667781]">Pedidos</div></div><div className="rounded-lg bg-[#f7f8fa] p-3 text-center"><div className="text-lg font-semibold text-[#111b21]">{money(detail.customer?.total_spent||0)}</div><div className="text-[11px] text-[#667781]">Compras</div></div></div></div>
-          <div className="mt-2 space-y-4 bg-white p-5"><div><label className="mb-1 block text-xs font-medium text-[#667781]">Nombre</label><input className="field" value={contactForm.name} onChange={e=>setContactForm({...contactForm,name:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Dirección</label><textarea className="field min-h-20 resize-none" value={contactForm.address} onChange={e=>setContactForm({...contactForm,address:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Notas del cliente</label><textarea className="field min-h-24 resize-none" value={contactForm.notes} onChange={e=>setContactForm({...contactForm,notes:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Estado del cliente</label><select className="field" value={contactForm.status} onChange={e=>setContactForm({...contactForm,status:e.target.value})}><option value="active">Activo</option><option value="blocked">Bloqueado</option></select></div><button disabled={savingContact||!contactForm.name.trim()} onClick={saveContact} className="btn-primary w-full">{savingContact?'Guardando...':detail.customer?.id?'Guardar cambios':'Guardar contacto'}</button></div>
+          <div className="mt-2 space-y-4 bg-white p-5"><div><label className="mb-1 block text-xs font-medium text-[#667781]">Nombre</label><input className="field" value={contactForm.name} onChange={e=>setContactForm({...contactForm,name:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Dirección</label><textarea className="field min-h-20 resize-none" value={contactForm.address} onChange={e=>setContactForm({...contactForm,address:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Notas del {detail.contact_type==='customer'?'cliente':'contacto'}</label><textarea className="field min-h-24 resize-none" value={contactForm.notes} onChange={e=>setContactForm({...contactForm,notes:e.target.value})}/></div><div><label className="mb-1 block text-xs font-medium text-[#667781]">Estado del {detail.contact_type==='customer'?'cliente':'contacto'}</label><select className="field" value={contactForm.status} onChange={e=>setContactForm({...contactForm,status:e.target.value})}><option value="active">Activo</option><option value="blocked">Bloqueado</option></select></div><button disabled={savingContact||!contactForm.name.trim()} onClick={saveContact} className="btn-primary w-full">{savingContact?'Guardando...':'Guardar cambios'}</button></div>
           <div className="mt-2 bg-white p-5"><h3 className="text-sm font-medium text-[#111b21]">Pedidos recientes</h3><div className="mt-3 space-y-2">{detail.orders?.length?detail.orders.map(o=><div key={o.id} className="flex items-center justify-between rounded-lg border border-[#e9edef] p-3"><div><div className="text-sm font-medium">Pedido #{o.number}</div><div className="mt-0.5 text-[11px] text-[#8696a0]">{dayTime(o.created_at)}</div></div><div className="text-right"><div className="text-sm font-medium">{money(o.total)}</div><div className="text-[10px] capitalize text-[#667781]">{o.status}</div></div></div>):<p className="py-3 text-sm text-[#8696a0]">Todavía no tiene pedidos vinculados.</p>}</div></div>
         </div>:panel==='sale'?<div className="flex-1 overflow-y-auto bg-[#f0f2f5]">
           <div className="bg-white p-4">
-            <div className="rounded-xl bg-[#e7fce7] p-3"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#008069]">Venta por WhatsApp</p><p className="mt-1 text-sm font-medium text-[#111b21]">{detail.customer?.name||detail.display_name||'Cliente'}</p><p className="mt-0.5 text-xs text-[#667781]">Crea el pedido sin salir de la conversación.</p></div>
+            <div className="rounded-xl bg-[#e7fce7] p-3"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#008069]">Venta por WhatsApp</p><p className="mt-1 text-sm font-medium text-[#111b21]">{detail.contact?.name||detail.customer?.name||detail.display_name||'Contacto'}</p><p className="mt-0.5 text-xs text-[#667781]">Crea el pedido sin salir de la conversación.</p></div>
             {orderMessage&&<div className={`mt-3 rounded-xl px-3 py-2.5 text-xs ${orderMessage.includes('creado')?'bg-emerald-50 text-emerald-700':'bg-rose-50 text-rose-700'}`}>{orderMessage}</div>}
           </div>
           <div className="mt-2 bg-white p-4"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#8696a0]"/><input value={productSearch} onChange={e=>setProductSearch(e.target.value)} className="field pl-10" placeholder="Buscar producto..."/></div><div className="mt-3 max-h-56 space-y-2 overflow-y-auto">{visibleProducts.slice(0,30).map(product=><button type="button" key={product.id} onClick={()=>addProduct(product)} className="flex w-full items-center gap-3 rounded-xl border border-[#e9edef] p-2.5 text-left hover:bg-[#f7f9f8]"><div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#eef2f1]">{product.image_url?<img src={product.image_url} className="h-full w-full object-cover"/>:<Package2 className="h-4 w-4 text-[#8696a0]"/>}</div><div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[#111b21]">{product.name}</div><div className="mt-0.5 text-xs text-[#667781]">{money(product.price)}</div></div><Plus className="h-4 w-4 text-[#00a884]"/></button>)}{visibleProducts.length===0&&<p className="py-5 text-center text-xs text-[#8696a0]">No hay productos para mostrar.</p>}</div></div>

@@ -5,25 +5,47 @@ import {api,dateTime,money} from '@/lib/api'
 import {Loading,Modal,PageEmpty,SearchBox,Status,Alert} from '@/components/ui'
 import type {Customer} from '@/lib/types'
 import {phoneDisplay} from '@/components/phone-input'
-import {Eye,MapPin,ShoppingBag,WalletCards,Pencil,MessageCircleMore,ArrowLeft} from 'lucide-react'
+import {Eye,MapPin,ShoppingBag,WalletCards,Pencil,MessageCircleMore,ArrowLeft,UsersRound} from 'lucide-react'
 
 type ModalView='detail'|'edit'|null
+type DirectoryTab='customers'|'contacts'
+type Contact={
+ id:string;conversation_id:string;name:string;phone:string;whatsapp_name?:string;profile_picture_url?:string;
+ unread_count:number;last_message:string;last_message_at?:string|null;status:string;created_at:string;
+ address?:string;notes?:string;contact_status?:string;contact_type:'contact'
+}
+
+function Avatar({name,url,size='md'}:{name:string;url?:string;size?:'md'|'lg'}){
+ const cls=size==='lg'?'h-14 w-14 text-lg':'h-10 w-10 text-sm'
+ return <div className={`grid shrink-0 place-items-center overflow-hidden rounded-full bg-[#edf2f1] font-semibold text-[#54656f] ${cls}`}>
+  {url?<img src={url} alt={name||'Contacto'} className="h-full w-full object-cover"/>:(name||'?').slice(0,1).toUpperCase()}
+ </div>
+}
 
 export default function Customers(){
- const[store,setStore]=useState(''),[rows,setRows]=useState<Customer[]>([]),[loading,setLoading]=useState(false),[search,setSearch]=useState(''),[detail,setDetail]=useState<any>(null),[edit,setEdit]=useState<any>(null),[err,setErr]=useState(''),[view,setView]=useState<ModalView>(null)
- const load=()=>{if(!store){setRows([]);return};setLoading(true);api<Customer[]>(`/customers?store_id=${store}`).then(setRows).finally(()=>setLoading(false))}
+ const[store,setStore]=useState(''),[rows,setRows]=useState<Customer[]>([]),[contacts,setContacts]=useState<Contact[]>([]),[loading,setLoading]=useState(false),[search,setSearch]=useState(''),[tab,setTab]=useState<DirectoryTab>('customers'),[detail,setDetail]=useState<any>(null),[edit,setEdit]=useState<any>(null),[err,setErr]=useState(''),[view,setView]=useState<ModalView>(null)
+ const load=()=>{if(!store){setRows([]);setContacts([]);return};setLoading(true);Promise.all([api<Customer[]>(`/customers?store_id=${store}`),api<Contact[]>(`/contacts?store_id=${store}`)]).then(([customers,contactRows])=>{setRows(customers);setContacts(contactRows)}).finally(()=>setLoading(false))}
  useEffect(load,[store])
- const filtered=useMemo(()=>rows.filter(x=>(x.name+' '+x.phone).toLowerCase().includes(search.toLowerCase())),[rows,search])
+ const filteredCustomers=useMemo(()=>rows.filter(x=>(x.name+' '+x.phone+' '+(x.whatsapp_name||'')).toLowerCase().includes(search.toLowerCase())),[rows,search])
+ const filteredContacts=useMemo(()=>contacts.filter(x=>(x.name+' '+x.phone+' '+(x.whatsapp_name||'')+' '+(x.last_message||'')).toLowerCase().includes(search.toLowerCase())),[contacts,search])
  const open=async(id:string)=>{const data=await api(`/customers/${id}`);setDetail(data);setEdit(null);setErr('');setView('detail')}
  const startEdit=(c:any)=>{setEdit({id:c.id,name:c.name,address:c.address||'',notes:c.notes||'',status:c.status||'active'});setErr('');setView('edit')}
  const closeModal=()=>{setView(null);setDetail(null);setEdit(null);setErr('')}
  const backToDetail=async()=>{if(edit?.id){try{setDetail(await api(`/customers/${edit.id}`))}catch{}}setView('detail');setErr('')}
  const save=async(e:React.FormEvent)=>{e.preventDefault();setErr('');try{await api(`/customers/${edit.id}`,{method:'PUT',body:JSON.stringify(edit)});load();const updated=await api(`/customers/${edit.id}`);setDetail(updated);setEdit({id:updated.id,name:updated.name,address:updated.address||'',notes:updated.notes||'',status:updated.status||'active'});setView('detail')}catch(e:any){setErr(e.message)}}
  const modalTitle=view==='edit'?'Editar cliente':detail?.name||'Cliente'
+ const openWhatsApp=(phone:string)=>{const digits=String(phone||'').replace(/\D/g,'');if(digits)window.open(`https://wa.me/${digits}`,'_blank','noopener,noreferrer')}
 
- return <AdminShell title="Clientes" subtitle="Clientes registrados en la plataforma" context={<StoreSelector value={store} onChange={setStore}/>}>
-  <div className="mb-5"><SearchBox value={search} onChange={setSearch} placeholder="Buscar por nombre o WhatsApp..."/></div>
-  {!store?<PageEmpty title="Selecciona una tienda" detail="Los clientes pertenecen a cada tienda y se consolidan por número de WhatsApp."/>:loading?<Loading/>:filtered.length===0?<PageEmpty title="Aún no hay clientes" detail="Los clientes aparecerán automáticamente cuando realicen su primer pedido."/>:<div className="table-wrap overflow-x-auto"><table className="table"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Total comprado</th><th>Último pedido</th><th>Estado</th><th></th></tr></thead><tbody>{filtered.map(c=><tr key={c.id}><td><div className="min-w-[220px]"><div className="font-semibold text-ink-900">{c.name}</div><div className="mt-0.5 text-xs text-[#a2a6b8]">{phoneDisplay(c.phone)}</div></div></td><td className="font-semibold">{c.order_count}</td><td className="font-semibold">{money(c.total_spent)}</td><td className="text-[#8d92aa]">{c.last_order_at?dateTime(c.last_order_at):'—'}</td><td><Status value={c.status}/></td><td><div className="flex justify-end gap-2"><button onClick={()=>open(c.id)} className="btn-secondary px-3"><Eye className="h-4 w-4"/></button><button onClick={()=>startEdit(c)} className="btn-secondary px-3"><Pencil className="h-4 w-4"/></button></div></td></tr>)}</tbody></table></div>}
+ return <AdminShell title="Clientes" subtitle="Distingue compradores de los contactos que llegan por WhatsApp" context={<StoreSelector value={store} onChange={setStore}/>}> 
+  <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+   <div className="inline-flex w-fit rounded-2xl border border-[#e5e9ef] bg-white p-1 shadow-sm">
+    <button onClick={()=>setTab('customers')} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${tab==='customers'?'bg-[#e8f8f2] text-[#08785f]':'text-[#7a8097] hover:text-[#26324b]'}`}><ShoppingBag className="h-4 w-4"/>Clientes <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px]">{rows.length}</span></button>
+    <button onClick={()=>setTab('contacts')} className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${tab==='contacts'?'bg-[#e8f8f2] text-[#08785f]':'text-[#7a8097] hover:text-[#26324b]'}`}><UsersRound className="h-4 w-4"/>Contactos <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px]">{contacts.length}</span></button>
+   </div>
+   <div className="w-full sm:max-w-md"><SearchBox value={search} onChange={setSearch} placeholder={tab==='customers'?'Buscar clientes por nombre o WhatsApp...':'Buscar contactos por nombre, WhatsApp o mensaje...'}/></div>
+  </div>
+
+  {!store?<PageEmpty title="Selecciona una tienda" detail="Los clientes y contactos pertenecen a cada tienda."/>:loading?<Loading/>:tab==='customers'?(filteredCustomers.length===0?<PageEmpty title="Aún no hay clientes" detail="Un contacto pasa a Cliente cuando registra su primera compra no cancelada."/>:<div className="table-wrap overflow-x-auto"><table className="table"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Total comprado</th><th>Último pedido</th><th>Estado</th><th></th></tr></thead><tbody>{filteredCustomers.map(c=><tr key={c.id}><td><div className="flex min-w-[240px] items-center gap-3"><Avatar name={c.name} url={c.profile_picture_url}/><div className="min-w-0"><div className="truncate font-semibold text-ink-900">{c.name}</div><div className="mt-0.5 text-xs text-[#a2a6b8]">{phoneDisplay(c.phone)}</div>{c.whatsapp_name&&c.whatsapp_name!==c.name&&<div className="mt-0.5 truncate text-[11px] text-[#00a884]">WhatsApp: {c.whatsapp_name}</div>}</div></div></td><td className="font-semibold">{c.order_count}</td><td className="font-semibold">{money(c.total_spent)}</td><td className="text-[#8d92aa]">{c.last_order_at?dateTime(c.last_order_at):'—'}</td><td><Status value={c.status}/></td><td><div className="flex justify-end gap-2"><button onClick={()=>open(c.id)} className="btn-secondary px-3"><Eye className="h-4 w-4"/></button><button onClick={()=>startEdit(c)} className="btn-secondary px-3"><Pencil className="h-4 w-4"/></button></div></td></tr>)}</tbody></table></div>):(filteredContacts.length===0?<PageEmpty title="Aún no hay contactos" detail="Los chats individuales de WhatsApp que todavía no han comprado aparecerán aquí."/>:<div className="table-wrap overflow-x-auto"><table className="table"><thead><tr><th>Contacto</th><th>Último mensaje</th><th>No leídos</th><th>Última interacción</th><th>Estado</th><th></th></tr></thead><tbody>{filteredContacts.map(c=><tr key={c.id}><td><div className="flex min-w-[240px] items-center gap-3"><Avatar name={c.name} url={c.profile_picture_url}/><div className="min-w-0"><div className="truncate font-semibold text-ink-900">{c.name}</div><div className="mt-0.5 text-xs text-[#a2a6b8]">{c.phone?phoneDisplay(c.phone):'WhatsApp'}</div>{c.whatsapp_name&&c.whatsapp_name!==c.name&&<div className="mt-0.5 truncate text-[11px] text-[#00a884]">Perfil: {c.whatsapp_name}</div>}</div></div></td><td className="max-w-[320px]"><div className="truncate text-sm text-[#6c7290]">{c.last_message||'Nueva conversación'}</div></td><td>{c.unread_count>0?<span className="inline-grid h-6 min-w-6 place-items-center rounded-full bg-[#25d366] px-1.5 text-[11px] font-bold text-white">{c.unread_count}</span>:<span className="text-[#a2a6b8]">—</span>}</td><td className="text-[#8d92aa]">{c.last_message_at?dateTime(c.last_message_at):'—'}</td><td><span className="inline-flex rounded-full bg-[#eef8f4] px-2.5 py-1 text-xs font-semibold text-[#08785f]">Contacto</span></td><td><div className="flex justify-end"><button onClick={()=>openWhatsApp(c.phone)} disabled={!c.phone} className="btn-secondary px-3" title="Abrir WhatsApp"><MessageCircleMore className="h-4 w-4"/></button></div></td></tr>)}</tbody></table></div>)}
 
   <Modal open={!!view} onClose={closeModal} title={modalTitle} subtitle={view==='edit'?'Edita la ficha sin salir del flujo actual.':'Ficha comercial consolidada automáticamente.'} wide>
    <div key={view||'closed'} className="transition-all duration-200 ease-out">

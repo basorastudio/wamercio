@@ -48,6 +48,9 @@ type Manager struct {
 	http            *http.Client
 	mu              sync.RWMutex
 	sessions        map[string]*Session
+	profileMu       sync.Mutex
+	profileRefresh  map[string]time.Time
+	profileSem      chan struct{}
 }
 
 func New(ctx context.Context, dbURL, coreURL, secret, uploadDir string) (*Manager, error) {
@@ -76,7 +79,7 @@ func New(ctx context.Context, dbURL, coreURL, secret, uploadDir string) (*Manage
 		uploadDir = "/app/data/uploads"
 	}
 	_ = os.MkdirAll(filepath.Join(uploadDir, "whatsapp"), 0755)
-	return &Manager{db: db, container: container, coreURL: strings.TrimRight(coreURL, "/"), secret: secret, uploadDir: uploadDir, http: &http.Client{Timeout: 45 * time.Second}, sessions: map[string]*Session{}}, nil
+	return &Manager{db: db, container: container, coreURL: strings.TrimRight(coreURL, "/"), secret: secret, uploadDir: uploadDir, http: &http.Client{Timeout: 45 * time.Second}, sessions: map[string]*Session{}, profileRefresh: map[string]time.Time{}, profileSem: make(chan struct{}, 4)}, nil
 }
 
 func (m *Manager) Close() {
@@ -353,6 +356,11 @@ func (m *Manager) installHandler(s *Session) {
 			}
 		case *events.HistorySync:
 			go m.forwardHistory(s, v)
+		case *events.Picture:
+			if m.isCurrentSession(s) && isDirectUserJID(v.JID) {
+				m.invalidateContactProfile(s, v.JID)
+				m.queueContactProfile(s, v.JID, phoneForJID(s, v.JID), "")
+			}
 		case *events.LoggedOut:
 			m.markLoggedOut(s)
 		}
@@ -998,28 +1006,166 @@ func (m *Manager) persistOutgoingMedia(sessionKey, messageID, kind, mimeType, fi
 	return u, n
 }
 
-func directPhone(s *Session, v *events.Message) string {
-	if v.Info.IsGroup {
-		return ""
+func phoneForJID(s *Session, jid types.JID) string {
+	jid = jid.ToNonAD()
+	if jid.Server == types.DefaultUserServer && jid.User != "" {
+		return nonDigits.ReplaceAllString(jid.User, "")
 	}
-	for _, jid := range []types.JID{v.Info.Chat, v.Info.Sender, v.Info.SenderAlt} {
-		jid = jid.ToNonAD()
-		if jid.Server == types.DefaultUserServer && jid.User != "" {
-			return nonDigits.ReplaceAllString(jid.User, "")
-		}
-		// Modern WhatsApp traffic can arrive addressed to an LID rather than the
-		// phone-number JID. Resolve it from the session store so CRM matching and
-		// SuperAdmin support still use the merchant/customer WhatsApp number.
-		if jid.Server == types.HiddenUserServer && s != nil && s.Client != nil && s.Client.Store != nil && s.Client.Store.LIDs != nil {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			pn, err := s.Client.Store.LIDs.GetPNForLID(ctx, jid)
-			cancel()
-			if err == nil && !pn.IsEmpty() && pn.User != "" {
-				return nonDigits.ReplaceAllString(pn.User, "")
-			}
+	if jid.Server == types.HiddenUserServer && s != nil && s.Client != nil && s.Client.Store != nil && s.Client.Store.LIDs != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pn, err := s.Client.Store.LIDs.GetPNForLID(ctx, jid)
+		cancel()
+		if err == nil && !pn.IsEmpty() && pn.User != "" {
+			return nonDigits.ReplaceAllString(pn.User, "")
 		}
 	}
 	return ""
+}
+
+func directPhone(s *Session, v *events.Message) string {
+	if v == nil || v.Info.IsGroup {
+		return ""
+	}
+	for _, jid := range []types.JID{v.Info.Chat, v.Info.Sender, v.Info.SenderAlt} {
+		if phone := phoneForJID(s, jid); phone != "" {
+			return phone
+		}
+	}
+	return ""
+}
+
+func (m *Manager) profileTargetJID(s *Session, jid types.JID) types.JID {
+	jid = jid.ToNonAD()
+	if jid.Server == types.HiddenUserServer && s != nil && s.Client != nil && s.Client.Store != nil && s.Client.Store.LIDs != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		pn, err := s.Client.Store.LIDs.GetPNForLID(ctx, jid)
+		cancel()
+		if err == nil && !pn.IsEmpty() {
+			return pn.ToNonAD()
+		}
+	}
+	return jid
+}
+
+func (m *Manager) whatsappContactName(s *Session, jid types.JID, fallbackName string) string {
+	fallbackName = strings.TrimSpace(fallbackName)
+	if s == nil || s.Client == nil || s.Client.Store == nil || s.Client.Store.Contacts == nil {
+		return fallbackName
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	candidates := []types.JID{jid.ToNonAD()}
+	target := m.profileTargetJID(s, jid)
+	if target.String() != candidates[0].String() {
+		candidates = append(candidates, target)
+	}
+	for _, candidate := range candidates {
+		info, err := s.Client.Store.Contacts.GetContact(ctx, candidate)
+		if err != nil || !info.Found {
+			continue
+		}
+		for _, name := range []string{info.BusinessName, info.PushName, info.FullName, info.FirstName} {
+			if strings.TrimSpace(name) != "" {
+				return strings.TrimSpace(name)
+			}
+		}
+	}
+	return fallbackName
+}
+
+func (m *Manager) profileRefreshKey(s *Session, jid types.JID) string {
+	if s == nil {
+		return jid.ToNonAD().String()
+	}
+	return s.StoreID + "|" + jid.ToNonAD().String()
+}
+
+func (m *Manager) invalidateContactProfile(s *Session, jid types.JID) {
+	m.profileMu.Lock()
+	delete(m.profileRefresh, m.profileRefreshKey(s, jid))
+	m.profileMu.Unlock()
+}
+
+func (m *Manager) queueContactProfile(s *Session, jid types.JID, phone, fallbackName string) {
+	if s == nil || s.StoreID == SupportSessionKey || !m.isCurrentSession(s) || !isDirectUserJID(jid) {
+		return
+	}
+	key := m.profileRefreshKey(s, jid)
+	m.profileMu.Lock()
+	if last, ok := m.profileRefresh[key]; ok && time.Since(last) < 6*time.Hour {
+		m.profileMu.Unlock()
+		return
+	}
+	m.profileRefresh[key] = time.Now()
+	m.profileMu.Unlock()
+	go func() {
+		m.profileSem <- struct{}{}
+		defer func() { <-m.profileSem }()
+		if !m.isCurrentSession(s) {
+			return
+		}
+		m.refreshContactProfile(s, jid.ToNonAD(), phone, fallbackName)
+	}()
+}
+
+func (m *Manager) refreshContactProfile(s *Session, conversationJID types.JID, phone, fallbackName string) {
+	if !m.isCurrentSession(s) || s.Client == nil {
+		return
+	}
+	name := m.whatsappContactName(s, conversationJID, fallbackName)
+	if phone == "" {
+		phone = phoneForJID(s, conversationJID)
+	}
+	payload := map[string]any{
+		"store_id": s.StoreID, "remote_jid": conversationJID.String(), "phone": phone, "whatsapp_name": name,
+		"profile_picture_url": "", "profile_picture_id": "",
+	}
+	target := m.profileTargetJID(s, conversationJID)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	pic, err := s.Client.GetProfilePictureInfo(ctx, target, &whatsmeow.GetProfilePictureParams{Preview: true})
+	cancel()
+	if err == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
+		if localURL, err := m.persistProfilePicture(s.StoreID, conversationJID, pic.URL); err == nil {
+			payload["profile_picture_url"] = localURL
+			payload["profile_picture_id"] = pic.ID
+		}
+	}
+	m.postCore("/api/v1/internal/whatsapp/profile", payload)
+}
+
+func (m *Manager) persistProfilePicture(sessionKey string, jid types.JID, sourceURL string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := m.http.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", fmt.Errorf("perfil HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if err != nil || len(data) == 0 {
+		return "", fmt.Errorf("perfil vacío")
+	}
+	dirKey := unsafeFile.ReplaceAllString(sessionKey, "_")
+	dir := filepath.Join(m.uploadDir, "whatsapp", dirKey, "profiles")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	userKey := unsafeFile.ReplaceAllString(jid.ToNonAD().User, "_")
+	if userKey == "" {
+		userKey = "contact"
+	}
+	base := userKey + ".jpg"
+	if err := os.WriteFile(filepath.Join(dir, base), data, 0644); err != nil {
+		return "", err
+	}
+	return "/media/whatsapp/" + dirKey + "/profiles/" + base, nil
 }
 
 func (m *Manager) forwardMessage(s *Session, v *events.Message) {
@@ -1031,13 +1177,16 @@ func (m *Manager) forwardMessage(s *Session, v *events.Message) {
 	if v.Info.IsFromMe {
 		direction = "out"
 	}
+	phone := directPhone(s, v)
+	whatsappName := m.whatsappContactName(s, v.Info.Chat, v.Info.PushName)
 	payload := map[string]any{
 		"store_id": s.StoreID, "session_key": s.StoreID, "remote_jid": v.Info.Chat.String(), "message_id": v.Info.ID,
-		"body": meta.Body, "direction": direction, "type": meta.Type, "display_name": v.Info.PushName,
-		"phone": directPhone(s, v), "occurred_at": v.Info.Timestamp, "media_url": meta.URL, "mime_type": meta.MimeType,
+		"body": meta.Body, "direction": direction, "type": meta.Type, "display_name": whatsappName,
+		"phone": phone, "occurred_at": v.Info.Timestamp, "media_url": meta.URL, "mime_type": meta.MimeType,
 		"file_name": meta.FileName, "file_size": meta.FileSize, "caption": meta.Caption,
 	}
 	m.postCore("/api/v1/internal/whatsapp/events", payload)
+	m.queueContactProfile(s, v.Info.Chat, phone, whatsappName)
 	m.touchSession(s)
 }
 func (m *Manager) forwardReceipt(sessionKey string, v *events.Receipt) {

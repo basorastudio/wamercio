@@ -102,6 +102,7 @@ func (s *Server) Router() http.Handler {
 		api.Get("/public/orders/{token}", s.publicOrder)
 		api.Post("/public/orders/{token}/proof", s.publicOrderProof)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
+		api.Post("/internal/whatsapp/profile", s.whatsappProfile)
 		api.Post("/internal/whatsapp/receipts", s.whatsappReceipt)
 
 		api.Group(func(p chi.Router) {
@@ -148,6 +149,7 @@ func (s *Server) Router() http.Handler {
 			p.Patch("/orders/{id}/status", s.updateOrderStatus)
 			p.Patch("/orders/{id}/payment", s.updateOrderPayment)
 			p.Get("/customers", s.listCustomers)
+			p.Get("/contacts", s.listContacts)
 			p.Get("/banks", s.listActiveBanks)
 			p.Get("/customers/{id}", s.getCustomer)
 			p.Put("/customers/{id}", s.updateCustomer)
@@ -955,7 +957,7 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	var revenueToday float64
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM stores WHERE user_id=$1`, c.UserID).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM products p JOIN stores s ON s.id=p.store_id WHERE s.user_id=$1`, c.UserID).Scan(&products)
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM customers cu JOIN stores s ON s.id=cu.store_id WHERE s.user_id=$1`, c.UserID).Scan(&customers)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM customers cu JOIN stores s ON s.id=cu.store_id WHERE s.user_id=$1 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=cu.id AND o.status<>'canceled')`, c.UserID).Scan(&customers)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*),coalesce(sum(o.total) FILTER (WHERE o.status<>'canceled'),0) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.created_at>=date_trunc('day',now())`, c.UserID).Scan(&ordersToday, &revenueToday)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.status IN ('pending','confirmed','processing','preparing','ready','out_for_delivery')`, c.UserID).Scan(&pendingOrders)
 	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(sum(c.unread_count),0) FROM conversations c JOIN stores s ON s.id=c.store_id WHERE s.user_id=$1`, c.UserID).Scan(&unreadChats)
@@ -1990,7 +1992,23 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT c.id,c.remote_jid,coalesce(cu.name,nullif(c.display_name,''),''),c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,coalesce(c.customer_id::text,''),coalesce(c.status,'open'),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.store_id=$1 AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid') ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC LIMIT 300`, sid)
+	rows, err := s.db.Query(r.Context(), `
+		SELECT c.id,c.remote_jid,
+		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled')
+		            THEN coalesce(nullif(cu.name,''),nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'')
+		            ELSE coalesce(nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'') END,
+		       c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,
+		       coalesce(c.customer_id::text,''),coalesce(c.status,'open'),
+		       coalesce(nullif(c.whatsapp_phone,''),nullif(cu.phone,''),
+		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
+		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),
+		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled') THEN 'customer' ELSE 'contact' END
+		FROM conversations c
+		LEFT JOIN customers cu ON cu.id=c.customer_id
+		WHERE c.store_id=$1
+		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
+		ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
+		LIMIT 300`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las conversaciones")
 		return
@@ -1998,12 +2016,17 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, jid, name, last, customerID, status, phone string
+		var id, jid, name, last, customerID, status, phone, whatsappName, profilePictureURL, contactType string
 		var unread int
 		var lastAt *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created, &customerID, &status, &phone)
-		out = append(out, map[string]any{"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "created_at": created, "customer_id": customerID, "status": status, "phone": phone})
+		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created, &customerID, &status, &phone, &whatsappName, &profilePictureURL, &contactType)
+		out = append(out, map[string]any{
+			"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread,
+			"last_message": last, "last_message_at": lastAt, "created_at": created,
+			"customer_id": customerID, "status": status, "phone": phone,
+			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "contact_type": contactType,
+		})
 	}
 	jsonOut(w, 200, out)
 }
@@ -2059,19 +2082,26 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
 	}
-	var displayName, customerID, status string
-	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(display_name,''),coalesce(customer_id::text,''),coalesce(status,'open') FROM conversations WHERE id=$1`, id).Scan(&displayName, &customerID, &status)
-	phone := conversationPhone(jid)
-	customer := map[string]any{"id": "", "name": displayName, "phone": phone, "address": "", "notes": "", "status": "active", "order_count": 0, "total_spent": 0.0}
+	var displayName, customerID, status, contactName, contactAddress, contactNotes, contactStatus, whatsappName, whatsappPhone, profilePictureURL string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(display_name,''),coalesce(customer_id::text,''),coalesce(status,'open'),coalesce(contact_name,''),coalesce(contact_address,''),coalesce(contact_notes,''),coalesce(contact_status,'active'),coalesce(whatsapp_name,''),coalesce(whatsapp_phone,''),coalesce(profile_picture_url,'') FROM conversations WHERE id=$1`, id).Scan(&displayName, &customerID, &status, &contactName, &contactAddress, &contactNotes, &contactStatus, &whatsappName, &whatsappPhone, &profilePictureURL)
+	phone := normalizePhone(whatsappPhone)
+	if phone == "" && strings.HasSuffix(strings.ToLower(jid), "@s.whatsapp.net") {
+		phone = conversationPhone(jid)
+	}
+	customer := map[string]any{"id": "", "name": "", "phone": phone, "address": "", "notes": "", "status": "active", "order_count": 0, "total_spent": 0.0}
 	orders := []map[string]any{}
+	isCustomer := false
 	if customerID != "" {
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled')`, customerID).Scan(&isCustomer)
 		var name, cphone, address, notes, cstatus string
 		var count int
 		var spent float64
 		var last *time.Time
 		var created time.Time
 		if s.db.QueryRow(r.Context(), `SELECT name,phone,coalesce(address,''),coalesce(notes,''),status,order_count,total_spent,last_order_at,created_at FROM customers WHERE id=$1`, customerID).Scan(&name, &cphone, &address, &notes, &cstatus, &count, &spent, &last, &created) == nil {
-			customer = map[string]any{"id": customerID, "name": name, "phone": cphone, "address": address, "notes": notes, "status": cstatus, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created}
+			if phone == "" {
+				phone = normalizePhone(cphone)
+			}
 			orows, _ := s.db.Query(r.Context(), `SELECT id,order_number,total,status,payment_status,created_at FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 20`, customerID)
 			if orows != nil {
 				defer orows.Close()
@@ -2084,12 +2114,53 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 					orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": ost, "payment_status": ps, "created_at": at})
 				}
 			}
+			if isCustomer {
+				customer = map[string]any{"id": customerID, "name": name, "phone": cphone, "address": address, "notes": notes, "status": cstatus, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created}
+				if contactName == "" {
+					contactName = name
+				}
+				if contactAddress == "" {
+					contactAddress = address
+				}
+				if contactNotes == "" {
+					contactNotes = notes
+				}
+				if contactStatus == "" {
+					contactStatus = cstatus
+				}
+			}
 		}
 	}
+	if contactName == "" {
+		contactName = strings.TrimSpace(whatsappName)
+	}
+	if contactName == "" {
+		contactName = strings.TrimSpace(displayName)
+	}
+	if contactName == "" && phone != "" {
+		contactName = "+" + phone
+	}
+	if isCustomer {
+		if name, ok := customer["name"].(string); ok && strings.TrimSpace(name) != "" {
+			displayName = name
+		}
+	} else {
+		displayName = contactName
+	}
+	contactType := "contact"
+	if isCustomer {
+		contactType = "customer"
+	}
+	contact := map[string]any{"name": contactName, "phone": phone, "address": contactAddress, "notes": contactNotes, "status": contactStatus}
 	var total, incoming, outgoing, images, videos, audios, documents int
 	var firstAt, lastAt *time.Time
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,count(*) FILTER (WHERE direction='in')::int,count(*) FILTER (WHERE direction='out')::int,count(*) FILTER (WHERE type ILIKE '%image%')::int,count(*) FILTER (WHERE type ILIKE '%video%')::int,count(*) FILTER (WHERE type ILIKE '%audio%' OR type ILIKE '%ptt%')::int,count(*) FILTER (WHERE type ILIKE '%document%')::int,min(occurred_at),max(occurred_at) FROM messages WHERE conversation_id=$1`, id).Scan(&total, &incoming, &outgoing, &images, &videos, &audios, &documents, &firstAt, &lastAt)
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "remote_jid": jid, "display_name": displayName, "phone": phone, "status": status, "customer": customer, "orders": orders, "metrics": map[string]any{"messages": total, "incoming": incoming, "outgoing": outgoing, "images": images, "videos": videos, "audios": audios, "documents": documents, "first_interaction": firstAt, "last_interaction": lastAt}})
+	jsonOut(w, 200, map[string]any{
+		"id": id, "store_id": sid, "remote_jid": jid, "display_name": displayName, "phone": phone,
+		"status": status, "contact_type": contactType, "whatsapp_name": whatsappName,
+		"profile_picture_url": profilePictureURL, "contact": contact, "customer": customer, "orders": orders,
+		"metrics": map[string]any{"messages": total, "incoming": incoming, "outgoing": outgoing, "images": images, "videos": videos, "audios": audios, "documents": documents, "first_interaction": firstAt, "last_interaction": lastAt},
+	})
 }
 func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
@@ -2109,28 +2180,45 @@ func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request
 		jsonErr(w, 400, "El nombre es obligatorio")
 		return
 	}
-	phone := conversationPhone(jid)
-	var linkedCustomerID, linkedPhone string
-	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(c.customer_id::text,''),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, id).Scan(&linkedCustomerID, &linkedPhone)
-	if linkedPhone != "" {
+	if in.Status != "blocked" {
+		in.Status = "active"
+	}
+	var linkedCustomerID, linkedPhone, whatsappPhone string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(c.customer_id::text,''),coalesce(cu.phone,''),coalesce(c.whatsapp_phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.id=$1`, id).Scan(&linkedCustomerID, &linkedPhone, &whatsappPhone)
+	phone := normalizePhone(whatsappPhone)
+	if phone == "" {
 		phone = normalizePhone(linkedPhone)
+	}
+	if phone == "" && strings.HasSuffix(strings.ToLower(jid), "@s.whatsapp.net") {
+		phone = conversationPhone(jid)
 	}
 	if phone == "" {
 		jsonErr(w, 400, "No se pudo determinar el WhatsApp del contacto")
 		return
 	}
-	if in.Status != "blocked" {
-		in.Status = "active"
+	isCustomer := false
+	if linkedCustomerID != "" {
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled')`, linkedCustomerID).Scan(&isCustomer)
 	}
-	var customerID string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,address,notes,status) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(store_id,phone) DO UPDATE SET name=excluded.name,address=excluded.address,notes=excluded.notes,status=excluded.status,updated_at=now() RETURNING id`, sid, strings.TrimSpace(in.Name), phone, strings.TrimSpace(in.Address), in.Notes, in.Status).Scan(&customerID)
+	name := strings.TrimSpace(in.Name)
+	address := strings.TrimSpace(in.Address)
+	if isCustomer {
+		_, err := s.db.Exec(r.Context(), `UPDATE customers SET name=$1,address=$2,notes=$3,status=$4,updated_at=now() WHERE id=$5`, name, address, in.Notes, in.Status, linkedCustomerID)
+		if err != nil {
+			jsonErr(w, 500, "No se pudo guardar el cliente")
+			return
+		}
+		_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET contact_name=$1,contact_address=$2,contact_notes=$3,contact_status=$4,display_name=$1,whatsapp_phone=coalesce(nullif(whatsapp_phone,''),$5),updated_at=now() WHERE id=$6`, name, address, in.Notes, in.Status, phone, id)
+		s.refreshCustomerStats(r.Context(), linkedCustomerID)
+		jsonOut(w, 200, map[string]any{"ok": true, "customer_id": linkedCustomerID, "name": name, "phone": phone, "contact_type": "customer"})
+		return
+	}
+	_, err := s.db.Exec(r.Context(), `UPDATE conversations SET customer_id=NULL,contact_name=$1,contact_address=$2,contact_notes=$3,contact_status=$4,display_name=$1,whatsapp_phone=coalesce(nullif(whatsapp_phone,''),$5),updated_at=now() WHERE id=$6`, name, address, in.Notes, in.Status, phone, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo guardar el contacto")
 		return
 	}
-	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET customer_id=$1,display_name=$2,updated_at=now() WHERE id=$3`, customerID, strings.TrimSpace(in.Name), id)
-	s.refreshCustomerStats(r.Context(), customerID)
-	jsonOut(w, 200, map[string]any{"ok": true, "customer_id": customerID, "name": strings.TrimSpace(in.Name), "phone": phone})
+	jsonOut(w, 200, map[string]any{"ok": true, "customer_id": "", "name": name, "phone": phone, "contact_type": "contact"})
 }
 func (s *Server) updateConversationStatus(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
@@ -2501,8 +2589,11 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	phone := conversationPhone(remoteJID)
-	var displayName, customerID string
-	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(display_name,''),coalesce(customer_id::text,'') FROM conversations WHERE id=$1`, conversationID).Scan(&displayName, &customerID)
+	var displayName, customerID, whatsappPhone string
+	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(nullif(contact_name,''),nullif(whatsapp_name,''),display_name,''),coalesce(customer_id::text,''),coalesce(whatsapp_phone,'') FROM conversations WHERE id=$1`, conversationID).Scan(&displayName, &customerID, &whatsappPhone)
+	if strings.TrimSpace(whatsappPhone) != "" {
+		phone = strings.TrimSpace(whatsappPhone)
+	}
 	if strings.TrimSpace(in.CustomerName) == "" {
 		in.CustomerName = strings.TrimSpace(displayName)
 	}
@@ -2960,6 +3051,8 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
 	}
+	// Link any pre-existing WhatsApp conversation to the buyer after the first purchase.
+	_, _ = tx.Exec(r.Context(), `UPDATE conversations SET customer_id=$1,updated_at=now() WHERE store_id=$2 AND split_part(lower(remote_jid),'@',2) IN ('s.whatsapp.net','lid') AND coalesce(nullif(regexp_replace(coalesce(whatsapp_phone,''),'[^0-9]','','g'),''),CASE WHEN split_part(lower(remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(remote_jid,'@',1),'[^0-9]','','g') ELSE '' END)=$3`, customerID, sid, customerPhone)
 	for _, it := range resolvedItems {
 		b, _ := json.Marshal(it.extras)
 		if _, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,variant_name,extras,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, it.pid, it.name, it.variant, b, it.unit, it.qty, it.line); err != nil {
@@ -3268,21 +3361,18 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	var customerID any
 	phone := normalizePhone(in.Phone)
 	if phone != "" {
-		name := strings.TrimSpace(in.DisplayName)
-		if name == "" {
-			name = "+" + phone
-		}
 		var cid string
-		if tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,status) VALUES($1,$2,$3,'active') ON CONFLICT(store_id,phone) DO UPDATE SET name=CASE WHEN customers.name=customers.phone OR customers.name=('+'||customers.phone) OR customers.name='' THEN excluded.name ELSE customers.name END,updated_at=now() RETURNING id`, in.StoreID, name, phone).Scan(&cid) == nil {
+		if tx.QueryRow(r.Context(), `SELECT id FROM customers WHERE store_id=$1 AND phone=$2 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=customers.id AND o.status<>'canceled') ORDER BY last_order_at DESC NULLS LAST,created_at DESC LIMIT 1`, in.StoreID, phone).Scan(&cid) == nil {
 			customerID = cid
 		}
 	}
+	whatsappName := strings.TrimSpace(in.DisplayName)
 	unreadInc := 0
 	if in.Direction != "out" {
 		unreadInc = 1
 	}
 	var convID string
-	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$5,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, in.DisplayName, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
+	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,whatsapp_name,whatsapp_phone,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=CASE WHEN coalesce(conversations.contact_name,'')='' THEN coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name) ELSE conversations.display_name END,whatsapp_name=coalesce(nullif(EXCLUDED.whatsapp_name,''),conversations.whatsapp_name),whatsapp_phone=coalesce(nullif(EXCLUDED.whatsapp_phone,''),conversations.whatsapp_phone),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$6,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, whatsappName, phone, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo registrar conversación")
 		return
@@ -3295,6 +3385,37 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	_ = tx.Commit(r.Context())
 	s.publishStoreEvent(r.Context(), in.StoreID, "message", map[string]any{"conversation_id": convID, "direction": in.Direction, "type": in.Type})
 	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) whatsappProfile(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Internal-Secret") != s.cfg.InternalWebhookSecret || s.cfg.InternalWebhookSecret == "" {
+		jsonErr(w, 403, "No autorizado")
+		return
+	}
+	var in struct {
+		StoreID           string `json:"store_id"`
+		RemoteJID         string `json:"remote_jid"`
+		Phone             string `json:"phone"`
+		WhatsAppName      string `json:"whatsapp_name"`
+		ProfilePictureURL string `json:"profile_picture_url"`
+		ProfilePictureID  string `json:"profile_picture_id"`
+	}
+	if decode(r, &in) != nil || in.StoreID == "" || !isDirectWhatsAppJID(in.RemoteJID) {
+		jsonErr(w, 400, "Perfil inválido")
+		return
+	}
+	name := strings.TrimSpace(in.WhatsAppName)
+	phone := normalizePhone(in.Phone)
+	result, err := s.db.Exec(r.Context(), `UPDATE conversations SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),whatsapp_phone=coalesce(nullif($2,''),whatsapp_phone),profile_picture_url=coalesce(nullif($3,''),profile_picture_url),profile_picture_id=coalesce(nullif($4,''),profile_picture_id),profile_picture_updated_at=CASE WHEN nullif($3,'') IS NOT NULL OR nullif($4,'') IS NOT NULL THEN now() ELSE profile_picture_updated_at END,display_name=CASE WHEN coalesce(contact_name,'')='' THEN coalesce(nullif($1,''),display_name) ELSE display_name END,updated_at=now() WHERE store_id=$5 AND remote_jid=$6`, name, phone, strings.TrimSpace(in.ProfilePictureURL), strings.TrimSpace(in.ProfilePictureID), in.StoreID, in.RemoteJID)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo actualizar el perfil de WhatsApp")
+		return
+	}
+	rows, _ := result.RowsAffected()
+	if rows > 0 {
+		s.publishStoreEvent(r.Context(), in.StoreID, "contact_profile", map[string]any{"remote_jid": in.RemoteJID})
+	}
+	jsonOut(w, 200, map[string]any{"ok": true, "updated": rows > 0})
 }
 
 func (s *Server) supportWhatsAppEvent(ctx context.Context, w http.ResponseWriter, remoteJID, messageID, body, direction, typ, displayName, phone, mediaURL, mimeType, fileName string, fileSize int64, caption string, occurredAt time.Time) {
@@ -3567,7 +3688,24 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,name,phone,coalesce(address,''),coalesce(notes,''),status,order_count,total_spent,last_order_at,created_at FROM customers WHERE store_id=$1 ORDER BY last_order_at DESC NULLS LAST,created_at DESC`, sid)
+	rows, err := s.db.Query(r.Context(), `
+		SELECT cu.id,cu.name,cu.phone,coalesce(cu.address,''),coalesce(cu.notes,''),cu.status,
+		       cu.order_count,cu.total_spent,cu.last_order_at,cu.created_at,
+		       coalesce(latest.whatsapp_name,''),coalesce(latest.profile_picture_url,'')
+		FROM customers cu
+		LEFT JOIN LATERAL (
+			SELECT c.whatsapp_name,c.profile_picture_url
+			FROM conversations c
+			WHERE c.customer_id=cu.id
+			ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
+			LIMIT 1
+		) latest ON true
+		WHERE cu.store_id=$1
+		  AND EXISTS (
+			SELECT 1 FROM orders o
+			WHERE o.customer_id=cu.id AND o.status<>'canceled'
+		  )
+		ORDER BY cu.last_order_at DESC NULLS LAST,cu.created_at DESC`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los clientes")
 		return
@@ -3575,13 +3713,64 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, address, notes, status string
+		var id, name, phone, address, notes, status, whatsappName, profilePictureURL string
 		var count int
 		var spent float64
 		var last *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created)
-		out = append(out, map[string]any{"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "store_id": sid, "owner": c.UserID})
+		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created, &whatsappName, &profilePictureURL)
+		out = append(out, map[string]any{
+			"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status,
+			"order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created,
+			"store_id": sid, "owner": c.UserID, "contact_type": "customer",
+			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL,
+		})
+	}
+	jsonOut(w, 200, out)
+}
+
+func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
+	sid, ok := s.assertStore(w, r)
+	if !ok {
+		return
+	}
+	rows, err := s.db.Query(r.Context(), `
+		SELECT c.id,
+		       coalesce(nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),
+		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN '+'||split_part(c.remote_jid,'@',1) ELSE split_part(c.remote_jid,'@',1) END),
+		       coalesce(nullif(c.whatsapp_phone,''),nullif(cu.phone,''),
+		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
+		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),c.unread_count,
+		       coalesce(c.last_message,''),c.last_message_at,coalesce(c.status,'open'),c.created_at,
+		       coalesce(c.contact_address,''),coalesce(c.contact_notes,''),coalesce(c.contact_status,'active')
+		FROM conversations c
+		LEFT JOIN customers cu ON cu.id=c.customer_id
+		WHERE c.store_id=$1
+		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
+		  AND NOT EXISTS (
+			SELECT 1 FROM orders o
+			WHERE o.customer_id=c.customer_id AND o.status<>'canceled'
+		  )
+		ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
+		LIMIT 500`, sid)
+	if err != nil {
+		jsonErr(w, 500, "No se pudieron cargar los contactos")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var id, name, phone, whatsappName, profilePictureURL, lastMessage, status, address, notes, contactStatus string
+		var unread int
+		var lastAt *time.Time
+		var created time.Time
+		_ = rows.Scan(&id, &name, &phone, &whatsappName, &profilePictureURL, &unread, &lastMessage, &lastAt, &status, &created, &address, &notes, &contactStatus)
+		out = append(out, map[string]any{
+			"id": id, "conversation_id": id, "name": name, "phone": phone, "whatsapp_name": whatsappName,
+			"profile_picture_url": profilePictureURL, "unread_count": unread, "last_message": lastMessage,
+			"last_message_at": lastAt, "status": status, "created_at": created, "address": address,
+			"notes": notes, "contact_status": contactStatus, "contact_type": "contact",
+		})
 	}
 	jsonOut(w, 200, out)
 }
@@ -3654,7 +3843,7 @@ func (s *Server) refreshCustomerStats(ctx context.Context, customerID string) {
 	if customerID == "" {
 		return
 	}
-	_, _ = s.db.Exec(ctx, `UPDATE customers c SET order_count=x.cnt,total_spent=x.spent,last_order_at=x.last_at,updated_at=now() FROM (SELECT count(*)::int cnt,coalesce(sum(total) FILTER (WHERE status<>'canceled'),0) spent,max(created_at) last_at FROM orders WHERE customer_id=$1) x WHERE c.id=$1`, customerID)
+	_, _ = s.db.Exec(ctx, `UPDATE customers c SET order_count=x.cnt,total_spent=x.spent,last_order_at=x.last_at,updated_at=now() FROM (SELECT count(*) FILTER (WHERE status<>'canceled')::int cnt,coalesce(sum(total) FILTER (WHERE status<>'canceled'),0) spent,max(created_at) FILTER (WHERE status<>'canceled') last_at FROM orders WHERE customer_id=$1) x WHERE c.id=$1`, customerID)
 }
 
 func (s *Server) updateOrderPayment(w http.ResponseWriter, r *http.Request) {
@@ -6485,6 +6674,9 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 	if err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,subtotal,discount,shipping,total,payment_method,payment_status,status,source,delivery_type) VALUES($1,$2,$3,$4,$5,0,0,$5,$6,'paid','completed','pos','pickup') RETURNING id,order_number`, in.StoreID, customerID, name, phone, subtotal, method).Scan(&orderID, &num); err != nil {
 		jsonErr(w, 500, "No se pudo registrar la venta")
 		return
+	}
+	if cid, ok := customerID.(string); ok && cid != "" && phone != "" {
+		_, _ = tx.Exec(r.Context(), `UPDATE conversations SET customer_id=$1,updated_at=now() WHERE store_id=$2 AND split_part(lower(remote_jid),'@',2) IN ('s.whatsapp.net','lid') AND coalesce(nullif(regexp_replace(coalesce(whatsapp_phone,''),'[^0-9]','','g'),''),CASE WHEN split_part(lower(remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(remote_jid,'@',1),'[^0-9]','','g') ELSE '' END)=$3`, cid, in.StoreID, phone)
 	}
 	for _, ln := range lines {
 		_, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6)`, orderID, ln.id, ln.name, ln.price, ln.qty, ln.price*ln.qty)

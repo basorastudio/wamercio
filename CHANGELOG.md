@@ -1,3 +1,20 @@
+# WAMERCIO 2.5.8 — Clientes, contactos y perfiles de WhatsApp
+
+- La sección **Clientes** separa ahora compradores reales de contactos de WhatsApp mediante las pestañas **Clientes | Contactos**.
+- Un contacto se considera **Cliente** únicamente después de registrar al menos un pedido no cancelado; los chats de personas que todavía no han comprado permanecen como **Contacto**.
+- La bandeja de conversaciones incorpora filtros tipo chip para **Todos**, **Clientes**, **Contactos** y **No leídos**, manteniendo el mismo patrón visual de WAMERCIO.
+- Se sincronizan y muestran el nombre y la foto de perfil de WhatsApp en la bandeja, el encabezado del chat, el panel lateral y los listados de clientes/contactos.
+- La API deja de crear clientes automáticamente al recibir un mensaje de WhatsApp y mantiene los datos CRM básicos del contacto en la conversación hasta que exista una compra.
+- La migración `000021_customer_contact_profiles` preserva datos de contactos heredados, desvincula falsos clientes, reconcilia por teléfono los compradores reales y recalcula estadísticas ignorando pedidos cancelados.
+- Las compras Web, POS y las creadas desde el chat enlazan automáticamente la conversación correspondiente con el cliente real por WhatsApp/teléfono.
+- La obtención de perfiles desde WhatsApp se limita a cuatro solicitudes concurrentes durante sincronizaciones grandes para evitar sobrecargar la sesión.
+
+## Despliegue
+
+Requiere ejecutar la migración `000021_customer_contact_profiles` y reconstruir/redeployar API, Web y WhatsApp Bridge. No añade nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Higiene de WhatsApp y sesión vinculada
 
 - La bandeja de WhatsApp ahora admite únicamente conversaciones directas con personas; grupos, estados, listas de difusión, canales/newsletters y otros JID no directos se descartan tanto en tiempo real como durante `HistorySync`.
