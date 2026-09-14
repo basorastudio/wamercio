@@ -8,8 +8,9 @@ import CustomerAccessModal from '@/components/customer-access-modal'
 import {resolvedTheme,themeCSSVars,type StoreThemeConfig} from '@/lib/store-themes'
 import {ArrowLeft,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,WalletCards,X} from 'lucide-react'
 import StorefrontMobileNav from '@/components/storefront-mobile-nav'
+import {cartKey,formatCartQuantity,mergeCartItem,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
 
-type CartItem={key:string;product_id:string;name:string;image_url:string;quantity:number;base_price:number;unit_price:number;variant_name:string;extras:PriceOption[]}
+type CartItem=StorefrontCartLine
 const payLabel:any={cash_on_delivery:'Pago al recibir',cash:'Efectivo',bank_transfer:'Transferencia bancaria'}
 const ratioClass:Record<string,string>={'1:1':'aspect-square','4:3':'aspect-[4/3]','3:4':'aspect-[3/4]','16:9':'aspect-video'}
 const gridClass:Record<number,string>={1:'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',2:'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}
@@ -27,6 +28,11 @@ export default function Storefront(){
   const[variant,setVariant]=useState<PriceOption|null>(null)
   const[extras,setExtras]=useState<PriceOption[]>([])
   const[qty,setQty]=useState(1)
+  const[purchaseMode,setPurchaseMode]=useState<'weight'|'amount'>('weight')
+  const[amountValue,setAmountValue]=useState(0)
+  const[editingKey,setEditingKey]=useState('')
+  const[returnToCart,setReturnToCart]=useState(false)
+  const[cartNotice,setCartNotice]=useState('')
   const[cart,setCart]=useState<CartItem[]>([])
   const[cartOpen,setCartOpen]=useState(false)
   const[checkout,setCheckout]=useState(false)
@@ -68,18 +74,32 @@ export default function Storefront(){
     if(!needle||!data?.products)return [] as Product[]
     return (data.products as Product[]).filter(p=>(`${p.name} ${p.description||''} ${p.tag||''} ${categoryById.get(String(p.category_id))||''}`).toLowerCase().includes(needle)).sort((a,b)=>Number(!!b.is_featured)-Number(!!a.is_featured)).slice(0,8)
   },[data,search,categoryById])
-  const itemCount=cart.reduce((a,x)=>a+x.quantity,0)
+  const itemCount=cart.reduce((a,x)=>a+((x.sale_mode==='weight'||x.sale_mode==='amount')?1:x.quantity),0)
   const subtotal=cart.reduce((a,x)=>a+x.unit_price*x.quantity,0)
   const zone=data?.shipping_zones?.find((z:any)=>z.id===form.shipping_zone_id)
   const shipping=form.delivery_type==='delivery'?Number(zone?.charge||0):0
   const total=subtotal+shipping
 
-  const openProduct=(p:Product)=>{
+  const openProduct=(p:Product,line?:CartItem)=>{
     if(p.track_stock&&Number(p.stock||0)<=0)return
+    const existing=line?[line]:productCartLines(cart,p.id)
+    const current=line||(existing.length===1?existing[0]:undefined)
+    const weighted=weightedSaleConfig(p)
     setPick(p)
-    setVariant(p.variants?.[0]||null)
-    setExtras([])
-    setQty(1)
+    setEditingKey(current?.key||'')
+    setVariant(current?.variant_name?(p.variants||[]).find(v=>v.name===current.variant_name)||p.variants?.[0]||null:p.variants?.[0]||null)
+    setExtras(current?.extras||[])
+    setPurchaseMode(current?.sale_mode==='amount'?'amount':'weight')
+    setQty(current?.quantity||weighted.minimum||1)
+    setAmountValue(Number(current?.requested_amount||0))
+  }
+  const closeProduct=()=>{const reopen=returnToCart;setPick(null);setEditingKey('');setReturnToCart(false);if(reopen)setCartOpen(true)}
+  const openCartItem=(line:CartItem)=>{
+    const product=(data?.products||[]).find((p:Product)=>p.id===line.product_id)
+    if(!product)return
+    setReturnToCart(true)
+    setCartOpen(false)
+    openProduct(product,line)
   }
   const openSearchProduct=(p:Product)=>{
     setSearchOpen(false)
@@ -87,20 +107,35 @@ export default function Storefront(){
     openProduct(p)
   }
   const toggleExtra=(x:PriceOption)=>setExtras(v=>v.some(y=>y.name===x.name)?v.filter(y=>y.name!==x.name):[...v,x])
+  const weighted=pick?weightedSaleConfig(pick):{enabled:false,unit:'lb',increment:0.25,minimum:0.25,allowAmount:true}
   const unit=pick?(Number(variant?.price||0)>0?Number(variant?.price):pick.price)+extras.reduce((a,x)=>a+Number(x.price||0),0):0
-  const add=()=>{
+  const selectedQuantity=weighted.enabled&&purchaseMode==='amount'?quantityFromAmount(amountValue||unit,unit):roundQuantity(qty)
+  const selectionTotal=weighted.enabled&&purchaseMode==='amount'?Number(amountValue||unit):unit*selectedQuantity
+  const resetAsNewCombination=()=>{
     if(!pick)return
-    const key=[pick.id,variant?.name||'',...extras.map(x=>x.name).sort()].join('|')
-    setCart(v=>{
-      const ex=v.find(x=>x.key===key)
-      if(ex)return v.map(x=>x.key===key?{...x,quantity:x.quantity+qty}:x)
-      return[...v,{key,product_id:pick.id,name:pick.name,image_url:pick.image_url,quantity:qty,base_price:pick.price,unit_price:unit,variant_name:variant?.name||'',extras}]
-    })
-    setPick(null)
-    setCheckout(false)
-    setCartOpen(true)
+    const cfg=weightedSaleConfig(pick)
+    setEditingKey('')
+    setVariant(pick.variants?.[0]||null)
+    setExtras([])
+    setPurchaseMode('weight')
+    setQty(cfg.enabled?cfg.minimum:1)
+    setAmountValue(0)
   }
-  const changeQty=(key:string,d:number)=>setCart(v=>v.map(x=>x.key===key?{...x,quantity:Math.max(0,x.quantity+d)}:x).filter(x=>x.quantity>0))
+  const saveProductSelection=()=>{
+    if(!pick||selectedQuantity<=0)return
+    const key=cartKey(pick.id,variant?.name||'',extras)
+    const next:CartItem={key,product_id:pick.id,name:pick.name,image_url:pick.image_url,quantity:selectedQuantity,base_price:pick.price,unit_price:unit,variant_name:variant?.name||'',extras,sale_mode:weighted.enabled?(purchaseMode==='amount'?'amount':'weight'):'unit',unit_label:weighted.enabled?weighted.unit:undefined,requested_amount:weighted.enabled&&purchaseMode==='amount'?Number(amountValue||selectionTotal):undefined,quantity_step:weighted.enabled?weighted.increment:1}
+    setCart(v=>editingKey?replaceCartItem(v,editingKey,next):mergeCartItem(v,next))
+    setCartNotice(editingKey?'Pedido actualizado':'Agregado a tu pedido')
+    window.setTimeout(()=>setCartNotice(''),1800)
+    const reopen=returnToCart
+    setPick(null)
+    setEditingKey('')
+    setReturnToCart(false)
+    setCheckout(false)
+    if(reopen)setCartOpen(true)
+  }
+  const changeQty=(key:string,d:number)=>setCart(v=>v.map(x=>x.key===key?{...x,quantity:roundQuantity(Math.max(0,x.quantity+d*Number(x.quantity_step||1)))}:x).filter(x=>x.quantity>0))
   const closeCart=()=>{setCartOpen(false);setCheckout(false);setError('')}
   const beginCheckout=()=>{setError('');if(!customer){setCustomerAuthOpen(true);return}setCheckout(true);setCartOpen(true)}
   const send=async(e:React.FormEvent)=>{
@@ -178,7 +213,7 @@ export default function Storefront(){
       <button aria-label="Cerrar" className="ml-auto rounded-xl p-2" onClick={closeCart}><X/></button>
     </div>
     {!checkout?<>
-      <div className="scroll-clean min-h-0 flex-1 overflow-y-auto p-5">{cart.length===0?<div className="grid h-full place-items-center text-center"><div><ShoppingBag className="mx-auto h-10 w-10 opacity-25"/><h4 className="mt-3 font-bold">Tu pedido está vacío</h4><p className="mt-1 text-sm" style={{color:t.colors.muted}}>Agrega productos del catálogo.</p></div></div>:<div className="space-y-4">{cart.map(x=><div key={x.key} className="flex gap-3 pb-4" style={{borderBottom:`1px solid ${t.colors.border}`}}><div className="h-16 w-16 shrink-0 overflow-hidden" style={{borderRadius:t.shape.radius,background:t.colors.background}}>{x.image_url&&<img src={x.image_url} alt="" className="h-full w-full object-cover"/>}</div><div className="min-w-0 flex-1"><div className="font-semibold">{x.name}</div>{x.variant_name&&<div className="text-xs" style={{color:t.colors.muted}}>{x.variant_name}</div>}{x.extras.length>0&&<div className="text-[11px]" style={{color:t.colors.muted}}>{x.extras.map(y=>y.name).join(', ')}</div>}<div className="mt-1 text-sm font-bold">{money(x.unit_price)}</div></div><div className="flex h-9 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button className="p-2" onClick={()=>changeQty(x.key,-1)}><Minus className="h-3 w-3"/></button><span className="w-5 text-center text-xs font-bold">{x.quantity}</span><button className="p-2" onClick={()=>changeQty(x.key,1)}><Plus className="h-3 w-3"/></button></div></div>)}</div>}</div>
+      <div className="scroll-clean min-h-0 flex-1 overflow-y-auto p-5">{cart.length===0?<div className="grid h-full place-items-center text-center"><div><ShoppingBag className="mx-auto h-10 w-10 opacity-25"/><h4 className="mt-3 font-bold">Tu pedido está vacío</h4><p className="mt-1 text-sm" style={{color:t.colors.muted}}>Agrega productos del catálogo.</p></div></div>:<div className="space-y-4">{cart.map(x=><div key={x.key} className="flex gap-3 pb-4" style={{borderBottom:`1px solid ${t.colors.border}`}}><button type="button" data-testid="edit-cart-item" onClick={()=>openCartItem(x)} className="h-16 w-16 shrink-0 overflow-hidden text-left" style={{borderRadius:t.shape.radius,background:t.colors.background}}>{x.image_url&&<img src={x.image_url} alt="" className="h-full w-full object-cover"/>}</button><div className="min-w-0 flex-1"><button type="button" onClick={()=>openCartItem(x)} className="block max-w-full text-left"><div className="truncate font-semibold">{x.name}</div>{x.variant_name&&<div className="text-xs" style={{color:t.colors.muted}}>{x.variant_name}</div>}{x.extras.length>0&&<div className="line-clamp-1 text-[11px]" style={{color:t.colors.muted}}>{x.extras.map(y=>y.name).join(', ')}</div>}</button><div className="mt-1 flex items-center gap-2"><span className="text-sm font-bold">{money(x.unit_price)}</span><button type="button" onClick={()=>openCartItem(x)} className="text-[11px] font-semibold" style={{color:t.colors.primary}}>Editar</button></div></div>{x.sale_mode==='weight'||x.sale_mode==='amount'?<button type="button" onClick={()=>openCartItem(x)} className="self-center rounded-xl px-3 py-2 text-xs font-bold" style={{background:t.colors.background,color:t.colors.primary}}>{formatCartQuantity(x.quantity,x.unit_label)}</button>:<div className="flex h-9 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button className="p-2" onClick={()=>changeQty(x.key,-1)}><Minus className="h-3 w-3"/></button><span className="w-6 text-center text-xs font-bold">{formatCartQuantity(x.quantity)}</span><button className="p-2" onClick={()=>changeQty(x.key,1)}><Plus className="h-3 w-3"/></button></div>}</div>)}</div>}</div>
       {cart.length>0&&<div className="shrink-0 p-5" style={{borderTop:`1px solid ${t.colors.border}`}}><div className="mb-3 flex justify-between text-lg"><span>Subtotal</span><strong>{money(subtotal)}</strong></div>{minimumMissing>0&&<div className="mb-4 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">Agrega {money(minimumMissing)} para alcanzar el pedido mínimo.</div>}<button disabled={minimumMissing>0||!canOrder} onClick={beginCheckout} className="w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>Completar pedido</button></div>}
     </>:<>
       <form id="storefront-checkout-form" onSubmit={send} className="scroll-clean min-h-0 flex-1 overflow-y-auto p-5">
@@ -230,6 +265,9 @@ export default function Storefront(){
         const sold=p.track_stock&&Number(p.stock||0)<=0
         const industrial=t.products.card==='industrial'
         const category=categoryById.get(String(p.category_id))||''
+        const cartLines=productCartLines(cart,p.id)
+        const cartQty=roundQuantity(cartLines.reduce((sum,line)=>sum+Number(line.quantity||0),0))
+        const weightedCfg=weightedSaleConfig(p)
         return <button data-testid="storefront-product-card" disabled={sold} key={p.id} onClick={()=>openProduct(p)} className={`storefront-product-card group h-full overflow-hidden text-left transition duration-200 focus:outline-none focus-visible:ring-4 ${industrial?'flex min-h-36':'flex flex-col'} ${sold?'cursor-not-allowed opacity-60':'hover:-translate-y-1 hover:shadow-xl'}`} style={surfaceStyle(t)}>
           <div className={`${industrial?'h-auto min-h-36 w-[36%] shrink-0':ratioClass[t.products.imageRatio]||'aspect-square'} relative overflow-hidden`} style={{background:`linear-gradient(135deg,${t.colors.primary}12,${t.colors.secondary}40)`}}>
             {p.image_url?<img src={p.image_url} alt={p.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.04]"/>:<div className="grid h-full place-items-center"><StoreIcon className="h-7 w-7 opacity-20"/></div>}
@@ -241,7 +279,7 @@ export default function Storefront(){
             {category&&<div className="mb-1.5 truncate text-[9px] font-bold uppercase tracking-[.12em]" style={{color:t.colors.primary}}>{category}</div>}
             <h3 className={`${t.products.card==='editorial'||t.products.card==='luxury'?'text-base':'text-sm'} line-clamp-2 font-semibold leading-snug`} style={{fontFamily:t.products.card==='editorial'||t.products.card==='luxury'?'var(--store-heading-font)':'inherit'}}>{p.name}</h3>
             {p.description&&<p className={`mt-1.5 ${industrial?'line-clamp-3':'line-clamp-2'} text-xs leading-5`} style={{color:t.colors.muted}}>{p.description}</p>}
-            <div className="mt-auto flex items-end justify-between gap-2 pt-4"><div className="min-w-0"><div className="text-base font-bold" style={{color:t.colors.primary}}>{p.variants?.length&&<span className="mr-1 text-[10px] font-semibold uppercase tracking-wide" style={{color:t.colors.muted}}>Desde</span>}{money(productStartingPrice(p))}</div>{Number(p.compare_price||0)>productStartingPrice(p)&&<div className="text-[10px] line-through" style={{color:t.colors.muted}}>{money(Number(p.compare_price))}</div>}</div><span className="grid h-9 w-9 shrink-0 place-items-center text-sm font-bold shadow-sm transition group-hover:scale-105" style={{...buttonStyle(t),borderRadius:t.shape.buttonRadius}}><Plus className="h-4 w-4"/></span></div>
+            <div className="mt-auto flex items-end justify-between gap-2 pt-4"><div className="min-w-0"><div className="text-base font-bold" style={{color:t.colors.primary}}>{p.variants?.length&&<span className="mr-1 text-[10px] font-semibold uppercase tracking-wide" style={{color:t.colors.muted}}>Desde</span>}{money(productStartingPrice(p))}{weightedCfg.enabled&&<span className="ml-1 text-[10px] font-semibold" style={{color:t.colors.muted}}>/ {weightedCfg.unit}</span>}</div>{Number(p.compare_price||0)>productStartingPrice(p)&&<div className="text-[10px] line-through" style={{color:t.colors.muted}}>{money(Number(p.compare_price))}</div>}{cartQty>0&&<div data-testid="product-cart-summary" className="mt-1 text-[10px] font-bold" style={{color:t.colors.primary}}>{weightedCfg.enabled?`${formatCartQuantity(cartQty,weightedCfg.unit)} en tu pedido`:`${formatCartQuantity(cartQty)} en tu pedido`}</div>}</div><span className="grid h-9 w-9 shrink-0 place-items-center text-sm font-bold shadow-sm transition group-hover:scale-105" style={{...buttonStyle(t),borderRadius:t.shape.buttonRadius}}>{cartQty>0&&cartLines.length===1?<Check className="h-4 w-4"/>:<Plus className="h-4 w-4"/>}</span></div>
           </div>
         </button>
       })}</div>
@@ -249,12 +287,35 @@ export default function Storefront(){
       <footer className="mt-10 flex flex-col gap-3 border-t py-6 text-xs sm:flex-row sm:items-center sm:justify-between" style={{borderColor:t.colors.border,color:t.colors.muted}}><div><strong style={{color:t.colors.text}}>{s.name}</strong><span className="mx-2 opacity-40">•</span><span>Catálogo y pedidos en línea</span></div><div className="flex flex-wrap items-center gap-3">{s.whatsapp&&<a href={`https://wa.me/${String(s.whatsapp).replace(/\D/g,'')}`} target="_blank" rel="noreferrer" className="font-semibold" style={{color:t.colors.primary}}>Escribir por WhatsApp</a>}<span>Impulsado por WAMERCIO</span></div></footer>
     </main>
 
-    {pick&&<div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"><button className="absolute inset-0 bg-slate-950/50" onClick={()=>setPick(null)}/><div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] sm:max-w-xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:t.shape.radius}}><button onClick={()=>setPick(null)} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow"><X className="h-4 w-4"/></button>{pick.image_url&&<img src={pick.image_url} alt={pick.name} className={`w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'}`}/>}<div className="p-5"><h3 className="text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>{pick.name}</h3><p className="mt-2 text-sm leading-6" style={{color:t.colors.muted}}>{pick.description}</p><div className="mt-3 text-xl font-bold" style={{color:t.colors.primary}}>{money(unit||pick.price)}</div>{pick.variants?.length>0&&<div className="mt-5"><p className="font-bold">Opciones</p><div className="mt-2 space-y-2">{pick.variants.map(v=><button key={v.name} onClick={()=>setVariant(v)} className="flex w-full items-center p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:variant?.name===v.name?t.colors.primary:t.colors.border}}><span className="mr-3 grid h-5 w-5 place-items-center rounded-full border" style={{borderColor:variant?.name===v.name?t.colors.primary:t.colors.border,background:variant?.name===v.name?t.colors.primary:'transparent',color:'#fff'}}>{variant?.name===v.name&&<Check className="h-3 w-3"/>}</span><span className="font-medium">{v.name}</span><strong className="ml-auto">{money(v.price||pick.price)}</strong></button>)}</div></div>}{pick.extras?.length>0&&<div className="mt-5"><p className="font-bold">Adicionales</p><div className="mt-2 space-y-2">{pick.extras.map(x=>{const on=extras.some(e=>e.name===x.name);return <button key={x.name} onClick={()=>toggleExtra(x)} className="flex w-full items-center p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:on?t.colors.primary:t.colors.border}}><span className="mr-3 grid h-5 w-5 place-items-center rounded-md border" style={{borderColor:on?t.colors.primary:t.colors.border,background:on?t.colors.primary:'transparent',color:'#fff'}}>{on&&<Check className="h-3 w-3"/>}</span><span>{x.name}</span><strong className="ml-auto">+ {money(x.price)}</strong></button>})}</div></div>}<div className="mt-6 flex items-center gap-3"><div className="flex items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button onClick={()=>setQty(Math.max(1,qty-1))} className="p-3"><Minus className="h-4 w-4"/></button><span className="w-8 text-center font-bold">{qty}</span><button onClick={()=>setQty(qty+1)} className="p-3"><Plus className="h-4 w-4"/></button></div><button disabled={!canOrder} onClick={add} className="flex-1 px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`Agregar · ${money(unit*qty)}`:'Pedidos no disponibles'}</button></div></div></div></div>}
+    {pick&&<div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
+      <button className="absolute inset-0 bg-slate-950/50" onClick={closeProduct}/>
+      <div className="relative max-h-[92vh] w-full overflow-y-auto rounded-t-[28px] sm:max-w-xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:t.shape.radius}}>
+        <button onClick={closeProduct} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/90 shadow"><X className="h-4 w-4"/></button>
+        {pick.image_url&&<img src={pick.image_url} alt={pick.name} className={`w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'}`}/>} 
+        <div className="p-5">
+          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>{pick.name}</h3><p className="mt-2 text-sm leading-6" style={{color:t.colors.muted}}>{pick.description}</p></div>{editingKey&&<span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase" style={{background:t.colors.background,color:t.colors.primary}}>En tu pedido</span>}</div>
+          <div className="mt-3 flex items-end justify-between gap-3"><div className="text-xl font-bold" style={{color:t.colors.primary}}>{money(unit||pick.price)}{weighted.enabled&&<span className="ml-1 text-xs font-semibold" style={{color:t.colors.muted}}>/ {weighted.unit}</span>}</div>{editingKey&&(pick.variants?.length>0||pick.extras?.length>0)&&<button type="button" onClick={resetAsNewCombination} className="text-xs font-semibold" style={{color:t.colors.primary}}>Agregar otra combinación</button>}</div>
+
+          {pick.variants?.length>0&&<div className="mt-5"><p className="font-bold">Opciones</p><div className="mt-2 space-y-2">{pick.variants.map(v=><button key={v.name} onClick={()=>setVariant(v)} className="flex w-full items-center p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:variant?.name===v.name?t.colors.primary:t.colors.border}}><span className="mr-3 grid h-5 w-5 place-items-center rounded-full border" style={{borderColor:variant?.name===v.name?t.colors.primary:t.colors.border,background:variant?.name===v.name?t.colors.primary:'transparent',color:'#fff'}}>{variant?.name===v.name&&<Check className="h-3 w-3"/>}</span><span className="font-medium">{v.name}</span><strong className="ml-auto">{money(v.price||pick.price)}</strong></button>)}</div></div>}
+
+          {pick.extras?.length>0&&<div className="mt-5"><p className="font-bold">Adicionales</p><div className="mt-2 space-y-2">{pick.extras.map(x=>{const on=extras.some(e=>e.name===x.name);return <button key={x.name} onClick={()=>toggleExtra(x)} className="flex w-full items-center p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:on?t.colors.primary:t.colors.border}}><span className="mr-3 grid h-5 w-5 place-items-center rounded-md border" style={{borderColor:on?t.colors.primary:t.colors.border,background:on?t.colors.primary:'transparent',color:'#fff'}}>{on&&<Check className="h-3 w-3"/>}</span><span>{x.name}</span><strong className="ml-auto">+ {money(x.price)}</strong></button>})}</div></div>}
+
+          {weighted.enabled?<div className="mt-5 space-y-3">
+            {weighted.allowAmount&&<div className="grid grid-cols-2 gap-1 rounded-2xl p-1" style={{background:t.colors.background,border:`1px solid ${t.colors.border}`}}><button type="button" onClick={()=>setPurchaseMode('weight')} className="rounded-xl px-3 py-2.5 text-sm font-bold" style={{background:purchaseMode==='weight'?t.colors.surface:'transparent',color:purchaseMode==='weight'?t.colors.primary:t.colors.muted}}>Libra</button><button type="button" onClick={()=>{setPurchaseMode('amount');if(!amountValue)setAmountValue(Math.max(1,Math.round(unit)))}} className="rounded-xl px-3 py-2.5 text-sm font-bold" style={{background:purchaseMode==='amount'?t.colors.surface:'transparent',color:purchaseMode==='amount'?t.colors.primary:t.colors.muted}}>Monto</button></div>}
+            <div className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="flex items-center justify-between gap-3"><div><p className="font-bold">Introduce la cantidad</p><p className="mt-1 text-xs" style={{color:t.colors.muted}}>{purchaseMode==='amount'?`WAMERCIO calcula el peso aproximado según ${money(unit)} / ${weighted.unit}.`:`Compra desde ${formatCartQuantity(weighted.minimum,weighted.unit)}.`}</p></div>{purchaseMode==='amount'?<div className="flex h-11 min-w-36 items-center gap-2 rounded-xl px-3" style={{border:`1px solid ${t.colors.border}`}}><span className="text-sm font-bold" style={{color:t.colors.primary}}>RD$</span><input aria-label="Monto que quieres comprar" inputMode="numeric" type="number" min="1" step="1" value={amountValue||''} onChange={e=>setAmountValue(Math.max(0,Number(e.target.value)))} className="w-24 bg-transparent text-center font-bold outline-none"/></div>:<div className="flex h-11 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" onClick={()=>setQty(roundQuantity(Math.max(weighted.minimum,qty-weighted.increment)))} className="p-3"><Minus className="h-4 w-4"/></button><input aria-label="Cantidad de libras" inputMode="decimal" type="number" min={weighted.minimum} step={weighted.increment} value={qty} onChange={e=>setQty(roundQuantity(Math.max(weighted.minimum,Number(e.target.value)||weighted.minimum)))} className="w-16 bg-transparent text-center font-bold outline-none"/><span className="pr-2 text-xs font-bold" style={{color:t.colors.primary}}>{weighted.unit}</span><button type="button" onClick={()=>setQty(roundQuantity(qty+weighted.increment))} className="p-3"><Plus className="h-4 w-4"/></button></div>}</div><div className="mt-3 flex items-center justify-between rounded-xl px-3 py-2" style={{background:t.colors.background}}><span className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>{purchaseMode==='amount'?'Peso aproximado':'Total'}</span><strong style={{color:t.colors.primary}}>{purchaseMode==='amount'?formatCartQuantity(selectedQuantity,weighted.unit):money(selectionTotal)}</strong></div></div>
+          </div>:<div className="mt-6 flex items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius,width:'fit-content'}}><button type="button" onClick={()=>setQty(Math.max(1,qty-1))} className="p-3"><Minus className="h-4 w-4"/></button><span className="w-10 text-center font-bold">{formatCartQuantity(qty)}</span><button type="button" onClick={()=>setQty(qty+1)} className="p-3"><Plus className="h-4 w-4"/></button></div>}
+
+          <button disabled={!canOrder||selectedQuantity<=0} onClick={saveProductSelection} className="mt-5 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi pedido':'Agregar a mi pedido'} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button>
+        </div>
+      </div>
+    </div>}
 
     {cartOpen&&<>
       <div data-testid="storefront-mobile-cart" className="fixed inset-0 z-40 bg-slate-950/40 lg:hidden" onClick={closeCart}/>
       <aside data-testid="storefront-desktop-cart" className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col overflow-hidden shadow-2xl lg:bottom-0 lg:top-[69px] lg:z-20 lg:w-[400px] lg:border-l lg:shadow-[-16px_0_40px_rgba(15,23,42,.08)]" style={{background:t.colors.surface,color:t.colors.text,borderColor:t.colors.border}}>{cartPanel}</aside>
     </>}
+
+    {cartNotice&&<div className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-[65] -translate-x-1/2 rounded-full bg-slate-950 px-4 py-2 text-xs font-semibold text-white shadow-xl lg:bottom-6">{cartNotice}</div>}
 
     <StorefrontMobileNav itemCount={itemCount} customer={customer} primaryColor={t.colors.primary} onSearch={()=>{window.scrollTo({top:0,behavior:'smooth'});window.setTimeout(()=>{const el=document.getElementById('storefront-search') as HTMLInputElement|null;el?.focus();setSearchOpen(true)},220)}} onCart={()=>{setCartOpen(true);setCheckout(false)}} onLogin={()=>setCustomerAuthOpen(true)}/>
     <CustomerAccessModal open={customerAuthOpen} onClose={()=>setCustomerAuthOpen(false)} onAuthenticated={c=>{applyCustomer(c);setCustomerAuthOpen(false);if(cart.length){setCartOpen(true);setCheckout(true)}}}/>

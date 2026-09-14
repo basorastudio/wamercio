@@ -1,6 +1,10 @@
-# WAMERCIO 2.5.5
+# WAMERCIO 2.5.6
 
 WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, SPA + PWA y multi-tenant.
+
+## Compra progresiva
+
+La tienda pública conserva el catálogo visible mientras el cliente arma su pedido: agregar o actualizar no fuerza la apertura del carrito, los productos muestran lo que ya está incluido y cada línea puede volver a editarse. Los productos configurados para venta por libra admiten compra por peso o por monto sin duplicar el modelo de datos.
 
 ## Publicación
 

@@ -24,7 +24,6 @@ need(Path('apps/web/components/storefront-mobile-nav.tsx'),'safe-area-inset-bott
 need(Path('services/domain-router/cmd/router/main.go'),'SELECT slug FROM stores WHERE is_active=true ORDER BY slug','exact tenant router discovery')
 need(Path('docker-compose.yml'),'domain-router','custom domain router sync service')
 need(Path('apps/web/app/admin/settings/page.tsx'),'https://{slug}.ltd.do','host based domain settings')
-need(Path('VERSION'),'2.5.5','version 2.5.5')
 
 need(Path('apps/web/components/store-domains-settings.tsx'),'Agregar dominio personalizado','store custom domain UI')
 need(Path('apps/web/components/settings-nav.tsx'),"id:'domains'",'store domain settings navigation')

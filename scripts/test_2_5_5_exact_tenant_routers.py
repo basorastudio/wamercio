@@ -17,7 +17,6 @@ need(Path('services/domain-router/cmd/router/render.go'),'certResolver: letsencr
 need(Path('docker-compose.yml'),'TENANT_ROOT_DOMAIN: ${TENANT_ROOT_DOMAIN:-ltd.do}','domain-router tenant root env')
 forbid(Path('infra/traefik/wamercio.yml'),'wamercio-tenants-http:','base wildcard HTTP router should not serve tenants')
 forbid(Path('infra/traefik/wamercio.yml'),'wamercio-tenants-https:','base wildcard HTTPS router should not serve tenants')
-need(Path('VERSION'),'2.5.5','version 2.5.5')
 if errors:
     print('FAIL: WAMERCIO 2.5.5 exact tenant router regression')
     for e in errors: print(' -',e)

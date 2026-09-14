@@ -1,3 +1,22 @@
+# WAMERCIO 2.5.6 — Flujo natural de compra
+
+## Storefront
+
+- Agregar o actualizar un producto ya no abre el carrito automáticamente; el cliente continúa recorriendo el catálogo y recibe una confirmación breve.
+- Las tarjetas muestran cuánta cantidad del producto ya está en el pedido.
+- Cuando un producto tiene una sola configuración en el carrito, abrirlo carga esa selección y permite **Actualizar mi pedido**.
+- Las líneas del carrito pueden editarse con el mismo detalle del producto; si al cambiar opciones una línea coincide con otra, WAMERCIO las fusiona en lugar de duplicarlas.
+- Los productos con variantes/adicionales permiten **Agregar otra combinación** sin perder la configuración existente.
+- Se incorpora venta por libra: el comercio puede activar **Vender por libra**, definir incremento/mínimo y permitir compra por **Monto**.
+- Las cantidades decimales se conservan hasta el checkout y se formatean correctamente en notificaciones de pedido.
+- Se mantiene el patrón mobile-first: detalle como bottom sheet en móvil, modal centrado en escritorio; carrito modal en móvil/tablet y panel estructural en escritorio.
+
+## Despliegue
+
+No requiere migraciones ni variables nuevas. Rebuild + Redeploy.
+
+---
+
 # WAMERCIO 2.5.5 — Storefront progresivo y carrito estructural
 
 ## Experiencia del cliente

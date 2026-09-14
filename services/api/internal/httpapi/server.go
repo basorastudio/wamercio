@@ -1546,6 +1546,15 @@ func firstNonEmpty(a, b string) string {
 	return b
 }
 
+func formatOrderQuantity(value float64) string {
+	text := strconv.FormatFloat(value, 'f', 3, 64)
+	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
+	if text == "" {
+		return "0"
+	}
+	return text
+}
+
 func (s *Server) listCoupons(w http.ResponseWriter, r *http.Request) {
 	sid, ok := s.assertStore(w, r)
 	if !ok {
@@ -2673,7 +2682,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	s.publishStoreEvent(r.Context(), storeID, "order", map[string]any{"id": orderID, "number": number, "source": "whatsapp"})
 	lines := make([]string, 0, len(resolvedItems))
 	for _, item := range resolvedItems {
-		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
+		lines = append(lines, fmt.Sprintf("• %sx %s — RD$ %.2f", formatOrderQuantity(item.qty), item.name, item.line))
 	}
 	trackingURL := s.storePublicURL(r.Context(), storeID, storeSlug) + "/order/" + publicToken
 	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
@@ -2961,7 +2970,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	trackingURL := s.requestOrigin(r) + "/order/" + publicToken
 	lines := make([]string, 0, len(resolvedItems))
 	for _, item := range resolvedItems {
-		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
+		lines = append(lines, fmt.Sprintf("• %sx %s — RD$ %.2f", formatOrderQuantity(item.qty), item.name, item.line))
 	}
 	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
 		"cliente":     customerName,
