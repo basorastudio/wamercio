@@ -1,6 +1,25 @@
-# WAMERCIO 2.3.0
+# WAMERCIO 2.4.0
 
 WAMERCIO es una plataforma SaaS de comercio conversacional para República Dominicana, construida con Next.js, Go, PostgreSQL, Redis y un bridge WhatsApp multisesión.
+
+## WAMERCIO 2.4.0 — Clientes globales y acceso por WhatsApp
+
+WAMERCIO incorpora identidad global de clientes: una persona se registra una sola vez con **WhatsApp + Cédula + PIN**, puede comprar en distintos negocios y conserva un panel único de pedidos, perfil y direcciones. Cada negocio mantiene únicamente su relación comercial local con ese cliente.
+
+Flujo de primera vez:
+
+```text
+WhatsApp → validar con whatsmeow → Cédula / Identidad Dominicana
+         → datos personales → dirección GEO RD MAP → PIN → cuenta global
+```
+
+Accesos posteriores:
+
+```text
+WhatsApp → PIN → catálogo / checkout / pedidos / perfil
+```
+
+El checkout público permite navegar y armar el pedido sin iniciar sesión; antes de confirmarlo solicita acceso o registro del cliente y después utiliza una dirección guardada.
 
 ## WAMERCIO 2.3.0 — Centro SaaS funcional
 

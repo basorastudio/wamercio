@@ -73,6 +73,14 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/store/login", s.storeLogin)
 		api.Post("/auth/store/register", s.register)
 		api.Post("/auth/store/logout", s.storeLogout)
+		// Global customer identity and access. This session is independent from
+		// merchant/store administration and follows the customer across stores.
+		api.Post("/auth/customer/lookup", s.customerLookup)
+		api.Post("/auth/customer/validate-whatsapp", s.customerValidateWhatsApp)
+		api.Post("/auth/customer/verify-identity", s.customerVerifyIdentity)
+		api.Post("/auth/customer/register", s.customerRegister)
+		api.Post("/auth/customer/login", s.customerLogin)
+		api.Post("/auth/customer/logout", s.customerLogout)
 		// Legacy aliases kept for clients created before 1.2.
 		api.Post("/auth/register", s.register)
 		api.Post("/auth/admin/login", s.adminLogin)
@@ -168,6 +176,18 @@ func (s *Server) Router() http.Handler {
 			p.Post("/whatsapp/{storeID}/disconnect", s.whatsappDisconnect)
 			p.Post("/whatsapp/{storeID}/send", s.whatsappSend)
 
+		})
+
+		api.Group(func(c chi.Router) {
+			c.Use(s.requireCustomerAuth)
+			c.Get("/customer/me", s.customerMe)
+			c.Put("/customer/me", s.customerUpdateMe)
+			c.Get("/customer/addresses", s.customerAddresses)
+			c.Post("/customer/addresses", s.customerCreateAddress)
+			c.Put("/customer/addresses/{id}", s.customerUpdateAddress)
+			c.Delete("/customer/addresses/{id}", s.customerDeleteAddress)
+			c.Get("/customer/orders", s.customerOrders)
+			c.Get("/customer/orders/{id}", s.customerOrder)
 		})
 
 		api.Group(func(a chi.Router) {
@@ -333,8 +353,11 @@ func (s *Server) validPINFor(ctx context.Context, audience, value string) (bool,
 	length := 4
 	access := s.platformSetting(ctx, "access")
 	key := "owner_pin_length"
-	if audience == "staff" {
+	switch audience {
+	case "staff":
 		key = "staff_pin_length"
+	case "customer":
+		key = "customer_pin_length"
 	}
 	if n := settingInt(access, key, 4); n >= 4 && n <= 8 {
 		length = n
@@ -402,6 +425,37 @@ func (s *Server) validOwnerLoginPIN(ctx context.Context, value string) (bool, []
 	return false, accepted
 }
 
+func (s *Server) acceptedCustomerPINLengths(ctx context.Context) []int {
+	access := s.platformSetting(ctx, "access")
+	current := settingInt(access, "customer_pin_length", 4)
+	if current < 4 || current > 8 {
+		current = 4
+	}
+	accepted := []int{current}
+	seen := map[int]bool{current: true}
+	for _, n := range pinLengthsFromSetting(access["legacy_customer_pin_lengths"]) {
+		if !seen[n] {
+			seen[n] = true
+			accepted = append(accepted, n)
+		}
+	}
+	sort.Ints(accepted)
+	return accepted
+}
+
+func (s *Server) validCustomerLoginPIN(ctx context.Context, value string) (bool, []int) {
+	if matched, _ := regexp.MatchString(`^[0-9]{4,8}$`, value); !matched {
+		return false, s.acceptedCustomerPINLengths(ctx)
+	}
+	accepted := s.acceptedCustomerPINLengths(ctx)
+	for _, n := range accepted {
+		if len(value) == n {
+			return true, accepted
+		}
+	}
+	return false, accepted
+}
+
 func pinLengthsMessage(lengths []int) string {
 	if len(lengths) == 0 {
 		return "4 dígitos"
@@ -429,6 +483,17 @@ func (s *Server) requireStoreAuth(next http.Handler) http.Handler {
 		c, err := s.claimsFromCookie(r, "wamercio_store_token")
 		if err != nil || c.Role != "owner" {
 			jsonErr(w, 401, "Sesión de tienda requerida")
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
+	})
+}
+
+func (s *Server) requireCustomerAuth(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c, err := s.claimsFromCookie(r, "wamercio_customer_token")
+		if err != nil || c.Role != "customer" {
+			jsonErr(w, 401, "Sesión de cliente requerida")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
@@ -916,7 +981,7 @@ func slugify(s string) string {
 
 var reservedStoreSlugs = map[string]bool{
 	"admin": true, "api": true, "catalog": true, "conversations": true, "coupons": true,
-	"customers": true, "dashboard": true, "delivery": true, "health": true, "login": true,
+	"customers": true, "cliente": true, "dashboard": true, "delivery": true, "health": true, "login": true,
 	"media": true, "order": true, "orders": true, "plans": true, "register": true, "pos": true, "staff": true, "payment-methods": true,
 	"settings": true, "store": true, "stores": true, "support": true, "transactions": true,
 	"favicon.ico": true, "icon.svg": true, "manifest.webmanifest": true, "sw.js": true,
@@ -2596,19 +2661,22 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	var in struct {
-		CustomerName    string         `json:"customer_name"`
-		CustomerPhone   string         `json:"customer_phone"`
-		DeliveryAddress string         `json:"delivery_address"`
-		DeliveryType    string         `json:"delivery_type"`
-		ShippingZoneID  string         `json:"shipping_zone_id"`
-		CouponCode      string         `json:"coupon_code"`
-		PaymentMethod   string         `json:"payment_method"`
-		Notes           string         `json:"notes"`
-		Items           []checkoutItem `json:"items"`
+	customerClaims, err := s.claimsFromCookie(r, "wamercio_customer_token")
+	if err != nil || customerClaims.Role != "customer" {
+		jsonErr(w, http.StatusUnauthorized, "Inicia sesión como cliente para confirmar el pedido")
+		return
 	}
-	if decode(r, &in) != nil || strings.TrimSpace(in.CustomerName) == "" || strings.TrimSpace(in.CustomerPhone) == "" || len(in.Items) == 0 {
-		jsonErr(w, 400, "Completa cliente, WhatsApp y productos")
+	var in struct {
+		AddressID      string         `json:"address_id"`
+		DeliveryType   string         `json:"delivery_type"`
+		ShippingZoneID string         `json:"shipping_zone_id"`
+		CouponCode     string         `json:"coupon_code"`
+		PaymentMethod  string         `json:"payment_method"`
+		Notes          string         `json:"notes"`
+		Items          []checkoutItem `json:"items"`
+	}
+	if decode(r, &in) != nil || len(in.Items) == 0 {
+		jsonErr(w, 400, "Agrega productos antes de confirmar el pedido")
 		return
 	}
 	var sid, ownerID, timezone, storeName string
@@ -2629,9 +2697,15 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = ownerID
 
-	in.CustomerName = strings.TrimSpace(in.CustomerName)
-	in.CustomerPhone = strings.TrimSpace(in.CustomerPhone)
-	in.DeliveryAddress = strings.TrimSpace(in.DeliveryAddress)
+	var customerFirstName, customerLastName, customerPhone, customerStatus string
+	if s.db.QueryRow(r.Context(), `SELECT name,coalesce(last_name,''),phone,status FROM global_customers WHERE id=$1`, customerClaims.UserID).Scan(&customerFirstName, &customerLastName, &customerPhone, &customerStatus) != nil || customerStatus != "active" {
+		jsonErr(w, http.StatusUnauthorized, "La sesión del cliente ya no está disponible")
+		return
+	}
+	customerName := strings.TrimSpace(strings.TrimSpace(customerFirstName) + " " + strings.TrimSpace(customerLastName))
+	if customerName == "" {
+		customerName = strings.TrimSpace(customerFirstName)
+	}
 	in.CouponCode = strings.ToUpper(strings.TrimSpace(in.CouponCode))
 	if in.DeliveryType == "" {
 		if in.ShippingZoneID != "" {
@@ -2652,9 +2726,24 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Esta tienda no permite recogida")
 		return
 	}
-	if in.DeliveryType == "delivery" && in.DeliveryAddress == "" {
-		jsonErr(w, 400, "Indica la dirección de entrega")
-		return
+	deliveryAddress := ""
+	selectedAddressID := strings.TrimSpace(in.AddressID)
+	if in.DeliveryType == "delivery" {
+		var label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string
+		var primary bool
+		query := `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),is_primary FROM customer_addresses WHERE global_customer_id=$1`
+		args := []any{customerClaims.UserID}
+		if selectedAddressID != "" {
+			query += ` AND id=$2`
+			args = append(args, selectedAddressID)
+		} else {
+			query += ` ORDER BY is_primary DESC,created_at DESC LIMIT 1`
+		}
+		if s.db.QueryRow(r.Context(), query, args...).Scan(&selectedAddressID, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &primary) != nil {
+			jsonErr(w, 400, "Selecciona una dirección de entrega válida")
+			return
+		}
+		deliveryAddress = customerAddressText(customerAddressInput{Label: label, ProvinceCode: provinceCode, Province: province, CityID: cityID, Municipality: municipality, NeighborhoodID: neighborhoodID, Neighborhood: neighborhood, Street: street, StreetNumber: streetNumber, Reference: reference, IsPrimary: primary})
 	}
 
 	allowedPayments := map[string]bool{"cash": cashEnabled, "bank_transfer": transferEnabled, "cash_on_delivery": codEnabled}
@@ -2678,20 +2767,20 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 
-	var customerID, customerStatus string
-	err = tx.QueryRow(r.Context(), `SELECT id,status FROM customers WHERE store_id=$1 AND phone=$2`, sid, in.CustomerPhone).Scan(&customerID, &customerStatus)
-	if err == nil && customerStatus == "blocked" {
-		jsonErr(w, 403, "Este contacto no puede realizar pedidos en esta tienda")
+	var customerID, localCustomerStatus string
+	err = tx.QueryRow(r.Context(), `SELECT id,status FROM customers WHERE store_id=$1 AND (global_customer_id=$2 OR phone=$3) ORDER BY (global_customer_id=$2) DESC LIMIT 1`, sid, customerClaims.UserID, customerPhone).Scan(&customerID, &localCustomerStatus)
+	if err == nil && localCustomerStatus == "blocked" {
+		jsonErr(w, 403, "Este cliente no puede realizar pedidos en esta tienda")
 		return
 	}
 	if err != nil {
-		err = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,name,phone,address,status) VALUES($1,$2,$3,$4,'active') RETURNING id,status`, sid, in.CustomerName, in.CustomerPhone, in.DeliveryAddress).Scan(&customerID, &customerStatus)
+		err = tx.QueryRow(r.Context(), `INSERT INTO customers(store_id,global_customer_id,name,phone,address,status) VALUES($1,$2,$3,$4,nullif($5,''),'active') RETURNING id,status`, sid, customerClaims.UserID, customerName, customerPhone, deliveryAddress).Scan(&customerID, &localCustomerStatus)
 		if err != nil {
-			jsonErr(w, 500, "No se pudo registrar el cliente")
+			jsonErr(w, 500, "No se pudo vincular el cliente con este negocio")
 			return
 		}
 	} else {
-		_, _ = tx.Exec(r.Context(), `UPDATE customers SET name=$1,address=coalesce(nullif($2,''),address),updated_at=now() WHERE id=$3`, in.CustomerName, in.DeliveryAddress, customerID)
+		_, _ = tx.Exec(r.Context(), `UPDATE customers SET global_customer_id=$1,name=$2,phone=$3,address=coalesce(nullif($4,''),address),updated_at=now() WHERE id=$5`, customerClaims.UserID, customerName, customerPhone, deliveryAddress, customerID)
 	}
 
 	type priceOption struct {
@@ -2815,7 +2904,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	total := subtotal - discount + shipping
 	var orderID, publicToken string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'web') RETURNING id,order_number,public_token::text`, sid, customerID, in.CustomerName, in.CustomerPhone, in.DeliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num, &publicToken)
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num, &publicToken)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
@@ -2842,14 +2931,14 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		lines = append(lines, fmt.Sprintf("• %.0fx %s — RD$ %.2f", item.qty, item.name, item.line))
 	}
 	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
-		"cliente":     in.CustomerName,
+		"cliente":     customerName,
 		"negocio":     storeName,
 		"pedido":      fmt.Sprint(num),
 		"total":       fmt.Sprintf("RD$ %.2f", total),
 		"detalle":     strings.Join(lines, "\n"),
 		"seguimiento": trackingURL,
 	})
-	_ = s.queueWhatsApp(context.Background(), sid, "", in.CustomerPhone, message, "order")
+	_ = s.queueWhatsApp(context.Background(), sid, "", customerPhone, message, "order")
 	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType})
 }
 
@@ -5178,9 +5267,11 @@ func (s *Server) publicPlatformSettings(w http.ResponseWriter, r *http.Request) 
 		"landing": s.platformSetting(r.Context(), "landing"),
 		"general": s.platformSetting(r.Context(), "general"),
 		"access": map[string]any{
-			"owner_pin_length":           settingInt(access, "owner_pin_length", 4),
-			"staff_pin_length":           settingInt(access, "staff_pin_length", 4),
-			"accepted_owner_pin_lengths": s.acceptedOwnerPINLengths(r.Context()),
+			"owner_pin_length":              settingInt(access, "owner_pin_length", 4),
+			"staff_pin_length":              settingInt(access, "staff_pin_length", 4),
+			"customer_pin_length":           settingInt(access, "customer_pin_length", 4),
+			"accepted_owner_pin_lengths":    s.acceptedOwnerPINLengths(r.Context()),
+			"accepted_customer_pin_lengths": s.acceptedCustomerPINLengths(r.Context()),
 		},
 		"identity": map[string]any{
 			"enabled":                    identityEnabled,
@@ -5378,6 +5469,25 @@ func (s *Server) savePlatformSetting(ctx context.Context, actorID, key string, i
 		}
 		sort.Ints(normalized)
 		in["legacy_owner_pin_lengths"] = normalized
+
+		previousCustomerLength := settingInt(current, "customer_pin_length", 4)
+		nextCustomerLength := settingInt(in, "customer_pin_length", previousCustomerLength)
+		customerLegacy := pinLengthsFromSetting(current["legacy_customer_pin_lengths"])
+		customerLegacy = append(customerLegacy, pinLengthsFromSetting(in["legacy_customer_pin_lengths"])...)
+		if previousCustomerLength >= 4 && previousCustomerLength <= 8 && nextCustomerLength != previousCustomerLength {
+			customerLegacy = append(customerLegacy, previousCustomerLength)
+		}
+		seenCustomer := map[int]bool{}
+		normalizedCustomer := make([]int, 0, len(customerLegacy))
+		for _, n := range customerLegacy {
+			if n < 4 || n > 8 || n == nextCustomerLength || seenCustomer[n] {
+				continue
+			}
+			seenCustomer[n] = true
+			normalizedCustomer = append(normalizedCustomer, n)
+		}
+		sort.Ints(normalizedCustomer)
+		in["legacy_customer_pin_lengths"] = normalizedCustomer
 	}
 	for _, field := range platformSecretFields[key] {
 		configuredField := field + "_configured"
@@ -5922,7 +6032,25 @@ func (s *Server) adminOwners(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT g.phone,g.name,count(DISTINCT c.store_id)::int stores,count(c.id)::int records,coalesce(sum(c.order_count),0)::int orders,coalesce(sum(c.total_spent),0),max(c.last_order_at),g.updated_at FROM global_customers g LEFT JOIN customers c ON c.global_customer_id=g.id GROUP BY g.id,g.phone,g.name,g.updated_at ORDER BY g.updated_at DESC`)
+	rows, err := s.db.Query(r.Context(), `
+		SELECT
+			g.id,
+			g.phone,
+			g.name,
+			coalesce(g.last_name,''),
+			coalesce(g.national_id,''),
+			coalesce(g.status,'active'),
+			g.identity_verified_at IS NOT NULL,
+			g.whatsapp_verified_at IS NOT NULL,
+			(SELECT count(DISTINCT c.store_id)::int FROM customers c WHERE c.global_customer_id=g.id),
+			(SELECT count(c.id)::int FROM customers c WHERE c.global_customer_id=g.id),
+			(SELECT coalesce(sum(c.order_count),0)::int FROM customers c WHERE c.global_customer_id=g.id),
+			(SELECT coalesce(sum(c.total_spent),0) FROM customers c WHERE c.global_customer_id=g.id),
+			(SELECT max(c.last_order_at) FROM customers c WHERE c.global_customer_id=g.id),
+			(SELECT count(a.id)::int FROM customer_addresses a WHERE a.global_customer_id=g.id),
+			g.updated_at
+		FROM global_customers g
+		ORDER BY g.updated_at DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los clientes globales")
 		return
@@ -5930,12 +6058,32 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var phone, name string
-		var stores, records, orders int
+		var id, phone, name, lastName, nationalID, status string
+		var identityVerified, whatsappVerified bool
+		var stores, records, orders, addressCount int
 		var spent float64
-		var last, updated *time.Time
-		if rows.Scan(&phone, &name, &stores, &records, &orders, &spent, &last, &updated) == nil {
-			out = append(out, map[string]any{"phone": phone, "name": name, "businesses": stores, "records": records, "orders": orders, "total_spent": spent, "last_order_at": last, "updated_at": updated})
+		var last *time.Time
+		var updated time.Time
+		if rows.Scan(&id, &phone, &name, &lastName, &nationalID, &status, &identityVerified, &whatsappVerified, &stores, &records, &orders, &spent, &last, &addressCount, &updated) == nil {
+			fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
+			out = append(out, map[string]any{
+				"id":                id,
+				"phone":             phone,
+				"name":              name,
+				"last_name":         lastName,
+				"full_name":         fullName,
+				"national_id":       nationalID,
+				"status":            status,
+				"identity_verified": identityVerified,
+				"whatsapp_verified": whatsappVerified,
+				"businesses":        stores,
+				"records":           records,
+				"orders":            orders,
+				"total_spent":       spent,
+				"last_order_at":     last,
+				"address_count":     addressCount,
+				"updated_at":        updated,
+			})
 		}
 	}
 	jsonOut(w, 200, out)

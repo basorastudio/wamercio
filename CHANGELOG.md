@@ -1,3 +1,17 @@
+# WAMERCIO 2.4.0 — Identidad global y panel de clientes
+
+- Registro global de clientes con WhatsApp validado mediante la sesión SaaS `support` de whatsmeow.
+- Cédula dominicana obligatoria, formateada y verificada con Identidad Dominicana; autocompleta nombre, apellido, fecha de nacimiento y género.
+- Dirección principal estructurada con Provincia, Municipio/Distrito, Barrio, Calle y Número, usando GEO RD MAP cuando está disponible.
+- Acceso posterior únicamente mediante WhatsApp + PIN de cliente configurable e independiente del PIN administrativo.
+- Sesión global del cliente mediante `wamercio_customer_token`, válida al navegar entre distintos negocios de WAMERCIO.
+- Checkout autenticado: nombre, WhatsApp y dirección salen del perfil global y de las direcciones guardadas, no de campos libres enviados por el navegador.
+- Panel de cliente con **Mis pedidos**, **Mi perfil**, identidad verificada y CRUD de direcciones.
+- Pedidos enlazados mediante `orders.global_customer_id` y relación comercial local conservada en `customers` por negocio.
+- Superadmin → Clientes globales muestra Cédula, verificación, estado, negocios vinculados, pedidos, total comprado y direcciones.
+- Centro SaaS → Acceso incorpora una política independiente `customer_pin_length` con compatibilidad de longitudes históricas.
+- Migración `000018_customer_global_auth` compatible con clientes y pedidos históricos.
+
 # WAMERCIO 2.3.3
 
 ## Registro público enriquecido

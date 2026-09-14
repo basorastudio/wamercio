@@ -1,52 +1,28 @@
-# Despliegue WAMERCIO 2.0.2 en Dokploy
+# Despliegue WAMERCIO 2.4.0 en Dokploy
 
-Esta versión actualiza WAMERCIO 1.9.0 y conserva la infraestructura actual de Cloudflare, Traefik, gateway, PostgreSQL, Redis y WhatsApp.
+Esta versión agrega identidad global, autenticación y panel de clientes sobre la infraestructura existente de WAMERCIO.
 
 ## Actualización
 
-1. Reemplaza el contenido del repositorio por WAMERCIO 2.0.2.
-2. Commit y push:
+1. Sustituye el código por WAMERCIO 2.4.0.
+2. Conserva el `.env` actual; esta versión no necesita variables nuevas.
+3. Haz commit/push al repositorio usado por Dokploy.
+4. En Dokploy ejecuta **Rebuild** y después **Redeploy**.
+5. No uses **Fresh Volumes** y no elimines PostgreSQL, Redis ni uploads.
 
-```bash
-git add .
-git commit -m "fix: WAMERCIO 2.0.2 storefront archive icon build"
-git push
-```
+## Migración
 
-3. En Dokploy pulsa **Rebuild**.
-4. **No uses Fresh Volumes**.
-
-No requiere nuevas variables `.env`.
-
-## Base de datos
-
-El API ejecutará después de la migración 1.9:
-
-```text
-000010_commerce_flow
-000011_business_templates
-```
-
-`000011_business_templates` crea el catálogo maestro de plantillas y añade a tiendas/productos los campos necesarios para clonar configuraciones sectoriales. No borra pedidos, clientes, conversaciones ni productos existentes.
+El API aplicará `000018_customer_global_auth` mediante el mecanismo normal de migraciones. La migración amplía `global_customers`, crea `customer_addresses` y enlaza pedidos históricos mediante `orders.global_customer_id` cuando existe una relación previa.
 
 ## Pruebas recomendadas
 
-Después del Rebuild:
-
-1. Abre `https://wamercio.com` con un WhatsApp que no tenga cuenta.
-2. Verifica que aparezca **¿Qué tipo de negocio tienes?**.
-3. Crea una tienda usando, por ejemplo, `Boutique` o `Pizzería`.
-4. Comprueba categorías, productos demo y respuestas rápidas en WhatsApp.
-5. Crea una segunda tienda desde **Mis tiendas** y confirma que también permite elegir plantilla.
-6. Entra como SuperAdmin y abre `/admin/templates`.
-7. Edita una plantilla maestra y confirma que una tienda ya creada no cambia automáticamente.
-
-## Persistencia
-
-No elimines:
-
-```text
-postgres_data
-redis_data
-uploads_data
-```
+1. Abre una tienda sin sesión, agrega productos y pulsa **Completar pedido**.
+2. Usa un WhatsApp nuevo: confirma que se valide mediante whatsmeow y aparezca el registro.
+3. Introduce una Cédula válida: confirma formato y autocompletado desde Identidad Dominicana.
+4. Completa Provincia → Municipio/Distrito → Barrio → Calle → Número y crea el PIN.
+5. Confirma el pedido con una dirección guardada.
+6. Cierra sesión y vuelve a entrar usando solamente WhatsApp + PIN.
+7. Abre `/cliente/pedidos` y `/cliente/perfil`.
+8. Desde otra tienda, confirma que la misma sesión global sigue activa y que no pide registrarse otra vez.
+9. En Superadmin → Clientes globales, verifica la identidad y los indicadores agregados.
+10. En Centro SaaS → Acceso, confirma el selector **PIN clientes**.
