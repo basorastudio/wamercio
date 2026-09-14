@@ -2689,7 +2689,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
-	resolved, err := s.resolveStoreHost(r.Context(), s.requestHostname(r))
+	tenantStore, err := s.resolveStoreHost(r.Context(), s.requestHostname(r))
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -2716,7 +2716,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	var minimum float64
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
 	var hoursRaw []byte
-	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE id=$1 AND is_active=true`, resolved.StoreID).Scan(&sid, &ownerID, &storeName, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
+	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,minimum_order,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE id=$1 AND is_active=true`, tenantStore.StoreID).Scan(&sid, &ownerID, &storeName, &minimum, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}

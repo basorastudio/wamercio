@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
-	"time"
 
 	authpkg "wamercio/services/api/internal/auth"
 )

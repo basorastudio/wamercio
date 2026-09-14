@@ -1,3 +1,12 @@
+# WAMERCIO 2.5.1 — Corrección de compilación API
+
+- Corrige la colisión de identificador `resolved` en el checkout multi-tenant, separando el resultado de resolución del host (`tenantStore`) del tipo local de líneas resueltas del pedido.
+- Elimina el import `time` no utilizado en `customer_sso.go`.
+- Añade una regresión específica para ambos fallos de compilación.
+- Sin cambios de base de datos, ENV, routing, UI ni comportamiento funcional respecto a 2.5.0.
+
+---
+
 # WAMERCIO 2.5.0 — Multi-tenant por host, dominios propios y PWA por negocio
 
 - Reemplaza la publicación `wamercio.com/{slug}` por `https://{slug}.ltd.do` como URL canónica de cada negocio, sin capa de compatibilidad por ruta.
