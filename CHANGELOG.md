@@ -1,3 +1,23 @@
+# WAMERCIO 2.5.8 — Identidad protegida y landing editable completa
+
+- Después de verificar una Cédula, los campos de identidad recuperados (Cédula, nombre, apellido, fecha de nacimiento y género) quedan bloqueados para evitar modificaciones manuales.
+- El **WhatsApp comercial** se hereda automáticamente del WhatsApp del propietario al crear un negocio; continúa siendo editable si el negocio utiliza otro número.
+- La sección **Página comercial** separa el desplazamiento del editor y de **Vista previa** en escritorio, evitando que el visor se mueva junto con el lienzo.
+- Se amplía el editor de la landing para administrar navegación, hero, beneficios, cómo funciona, planes, demo, bloque final, footer y mantenimiento, incluyendo los textos de las simulaciones visuales.
+- No requiere migraciones, cambios de API ni variables de entorno.
+
+---
+
+# WAMERCIO 2.5.8 — Scroll independiente en Configuración SaaS
+
+- En escritorio, el menú interno de **Configuración** y el lienzo de contenido quedan limitados al alto disponible de la ventana.
+- El menú lateral de secciones ahora desplaza su propio contenido sin arrastrar verticalmente el lienzo de la sección activa.
+- El lienzo solo obtiene desplazamiento vertical cuando su contenido realmente supera el espacio disponible; las secciones cortas permanecen visualmente estables.
+- En móvil y tablet se conserva el flujo vertical natural existente.
+- No requiere migraciones, cambios de API ni nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Hotfix de compilación Dokploy
 
 - Corrige el `sid` no utilizado en `saveConversationCustomer`, detectado por el compilador Go durante el build de la API.

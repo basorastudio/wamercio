@@ -14,6 +14,8 @@ python3 scripts/test_2_5_8_catalog_customer_fixes.py
 python3 scripts/test_2_5_8_whatsapp_session_hygiene.py
 python3 scripts/test_2_5_8_customer_contact_profiles.py
 python3 scripts/test_2_5_8_api_build_regressions.py
+python3 scripts/test_2_5_8_admin_settings_independent_scroll.py
+python3 scripts/test_2_5_8_owner_identity_landing_editor.py
 python3 scripts/test_2_5_6_natural_purchase.py
 python3 scripts/test_2_5_7_api_imports.py
 python3 scripts/test_2_5_5_storefront_ux.py
