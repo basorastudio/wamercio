@@ -1,3 +1,12 @@
+# WAMERCIO 2.5.8 — Hotfix de compilación Next.js de Página comercial
+
+- Corrige el fallo de `next build` provocado por exportar `landingDefaults` desde `app/admin/landing/page.tsx`.
+- `landingDefaults` permanece como constante interna del módulo y conserva exactamente el mismo comportamiento del editor y del botón **Restaurar valores base**.
+- Añade una prueba de regresión para impedir que un export no permitido vuelva a romper una página del App Router.
+- Sin cambios de interfaz, API, base de datos, migraciones ni variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Identidad protegida y landing editable completa
 
 - Después de verificar una Cédula, los campos de identidad recuperados (Cédula, nombre, apellido, fecha de nacimiento y género) quedan bloqueados para evitar modificaciones manuales.

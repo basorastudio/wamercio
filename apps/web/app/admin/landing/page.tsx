@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {Alert,Loading} from '@/components/ui'
 import {Eye,RotateCcw,Save,ShieldCheck} from 'lucide-react'
 
-export const landingDefaults={
+const landingDefaults={
  brand_name:'WAMERCIO',
  brand_subtitle:'Comercio conversacional',
  nav_features_label:'Funciones',
