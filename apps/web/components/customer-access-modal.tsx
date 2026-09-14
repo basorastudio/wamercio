@@ -7,6 +7,7 @@ import PinInput from '@/components/pin-input'
 import {ArrowLeft,CheckCircle2,IdCard,LoaderCircle,MapPin,MessageCircleMore,ShieldCheck,UserRound,X} from 'lucide-react'
 
 type Step='phone'|'pin'|'register'
+type AccountType='customer'|'owner'
 type VerifyState='idle'|'checking'|'valid'|'invalid'
 type PhoneAutoState='idle'|'waiting'|'checking'|'account'|'new'|'error'
 type CustomerForm={
@@ -24,12 +25,15 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   const[phone,setPhone]=useState('')
   const[phoneValid,setPhoneValid]=useState(false)
   const[phoneAutoState,setPhoneAutoState]=useState<PhoneAutoState>('idle')
+  const[accountType,setAccountType]=useState<AccountType>('customer')
   const[pin,setPin]=useState('')
   const[busy,setBusy]=useState(false)
   const[error,setError]=useState('')
   const[form,setForm]=useState<CustomerForm>(emptyForm)
   const[pinLength,setPinLength]=useState(4)
   const[acceptedPinLengths,setAcceptedPinLengths]=useState<number[]>([4])
+  const[ownerPinLength,setOwnerPinLength]=useState(4)
+  const[acceptedOwnerPinLengths,setAcceptedOwnerPinLengths]=useState<number[]>([4])
   const[identityEnabled,setIdentityEnabled]=useState(false)
   const[cedulaState,setCedulaState]=useState<VerifyState>('idle')
   const[cedulaMessage,setCedulaMessage]=useState('')
@@ -51,6 +55,11 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
       const accepted=Array.from(new Set<number>(raw.map((v:any)=>Number(v)).filter((v:number)=>v>=4&&v<=8))).sort((a,b)=>a-b)
       setPinLength(current)
       setAcceptedPinLengths(accepted.length?accepted:[current])
+      const ownerCurrent=Math.max(4,Math.min(8,Number(x?.access?.owner_pin_length)||4))
+      const ownerRaw=Array.isArray(x?.access?.accepted_owner_pin_lengths)?x.access.accepted_owner_pin_lengths:[ownerCurrent]
+      const ownerAccepted=Array.from(new Set<number>(ownerRaw.map((v:any)=>Number(v)).filter((v:number)=>v>=4&&v<=8))).sort((a,b)=>a-b)
+      setOwnerPinLength(ownerCurrent)
+      setAcceptedOwnerPinLengths(ownerAccepted.length?ownerAccepted:[ownerCurrent])
       setIdentityEnabled(!!x?.identity?.enabled)
       setTerritoryEnabled(!!x?.territory?.enabled)
     }).catch(()=>{})
@@ -73,7 +82,11 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   const currentHost=typeof window!=='undefined'?window.location.hostname.toLowerCase():''
   const customDomain=!!currentHost&&!currentHost.endsWith('.'+tenantRoot)&&currentHost!==tenantRoot&&currentHost!==(process.env.NEXT_PUBLIC_PLATFORM_DOMAIN||'wamercio.com').toLowerCase()
   const ssoURL=customDomain?`https://cliente.${tenantRoot}/customer-sso?target=${encodeURIComponent(currentHost)}`:''
-  const loginPinLength=Math.max(pinLength,...acceptedPinLengths)
+  const activePinLength=accountType==='owner'?ownerPinLength:pinLength
+  const activeAcceptedPinLengths=accountType==='owner'?acceptedOwnerPinLengths:acceptedPinLengths
+  const loginPinLength=Math.max(activePinLength,...activeAcceptedPinLengths)
+  const hasLegacyPinLengths=activeAcceptedPinLengths.length>1
+  const identityLocked=cedulaState==='valid'
 
   const finish=async()=>{
     const customer=await api('/customer/me')
@@ -87,8 +100,10 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
     setPhoneAutoState('checking')
     setError('')
     try{
-      const out=await api<{exists:boolean}>('/auth/customer/lookup',{method:'POST',body:JSON.stringify({phone:expectedPhone})})
+      const out=await api<{exists:boolean;account_type?:AccountType}>('/auth/customer/lookup',{method:'POST',body:JSON.stringify({phone:expectedPhone})})
       if(seq!==phoneLookupSeq.current)return
+      const resolvedType:AccountType=out.account_type==='owner'?'owner':'customer'
+      setAccountType(resolvedType)
       if(out.exists){
         setPhoneAutoState('account')
         setPin('')
@@ -132,6 +147,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
     setPhone('')
     setPhoneValid(false)
     setPhoneAutoState('idle')
+    setAccountType('customer')
     setPin('')
     setForm({...emptyForm})
     setError('')
@@ -151,14 +167,21 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
     setPhone('')
     setPhoneValid(false)
     setPhoneAutoState('idle')
+    setAccountType('customer')
     setStep('phone')
   }
 
   const doLogin=async(value:string)=>{
-    if(!acceptedPinLengths.includes(value.length)||busy)return
+    if(!activeAcceptedPinLengths.includes(value.length)||busy)return
     setBusy(true)
     setError('')
     try{
+      if(accountType==='owner'){
+        const out=await api<{redirect_url?:string}>('/auth/store/login',{method:'POST',body:JSON.stringify({phone,pin:value})})
+        const platform=(process.env.NEXT_PUBLIC_PLATFORM_DOMAIN||'wamercio.com').toLowerCase()
+        window.location.assign(out.redirect_url||`https://${platform}/dashboard`)
+        return
+      }
       await api('/auth/customer/login',{method:'POST',body:JSON.stringify({phone,pin:value})})
       await finish()
     }catch(e:any){
@@ -168,6 +191,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   }
 
   const setCedula=(value:string)=>{
+    if(identityLocked)return
     const c=digits(value).slice(0,11)
     setForm(v=>({...v,cedula:c}))
     if(c!==lastVerifiedCedula){setCedulaState('idle');setCedulaMessage('')}
@@ -241,7 +265,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
     <div className={`relative w-full overflow-hidden rounded-[26px] bg-white shadow-2xl ${step==='register'?'max-w-3xl':'max-w-md'}`}>
       <div className="flex items-center border-b border-slate-100 px-5 py-4">
         <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500 text-sm font-bold text-white">W</div>
-        <div className="ml-3"><div className="font-bold text-[#26304f]">WAMERCIO</div><div className="text-[10px] font-semibold uppercase tracking-[.18em] text-emerald-600">Cliente</div></div>
+        <div className="ml-3"><div className="font-bold text-[#26304f]">WAMERCIO</div><div className="text-[10px] font-semibold uppercase tracking-[.18em] text-emerald-600">{accountType==='owner'&&step==='pin'?'Propietario':'Cliente'}</div></div>
         <button onClick={close} className="ml-auto rounded-full bg-slate-50 p-2 text-slate-400"><X className="h-4 w-4"/></button>
       </div>
       <div className={`scroll-clean max-h-[calc(100vh-9rem)] overflow-y-auto p-5 sm:p-6 ${step==='register'?'sm:p-7':''}`}>
@@ -260,10 +284,11 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
         </div>}
         {step==='pin'&&<div>
           <div className="mb-4 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><ShieldCheck/></div>
-          <h2 className="text-2xl font-semibold text-[#26304f]">Ingresa tu PIN</h2>
-          <p className="mt-2 text-sm text-[#8d92aa]">Este WhatsApp ya está registrado. Escribe tu PIN para continuar.</p>
+          <h2 className="text-2xl font-semibold text-[#26304f]">{accountType==='owner'?'Ingresa tu PIN de propietario':'Ingresa tu PIN'}</h2>
+          <p className="mt-2 text-sm text-[#8d92aa]">{accountType==='owner'?'Este WhatsApp corresponde al propietario de este negocio. Escribe tu PIN para abrir el panel de administración.':'Este WhatsApp ya está registrado. Escribe tu PIN para continuar.'}</p>
           <div className="mt-5 rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-sm font-semibold text-emerald-700">WhatsApp verificado · {phone}</div>
-          <div className="mt-5"><label className="label">Tu PIN</label><PinInput value={pin} onChange={setPin} onComplete={doLogin} autoFocus length={loginPinLength}/></div>
+          <div className="mt-5"><label className="label">Tu PIN</label><PinInput value={pin} onChange={setPin} onComplete={hasLegacyPinLengths?undefined:doLogin} autoFocus length={loginPinLength}/></div>
+          {hasLegacyPinLengths&&<button type="button" disabled={busy||!activeAcceptedPinLengths.includes(pin.length)} onClick={()=>doLogin(pin)} className="mt-4 w-full rounded-xl bg-emerald-500 px-4 py-3 font-semibold text-white disabled:opacity-50">Entrar</button>}
           {error&&<p className="mt-3 text-sm text-rose-600">{error}</p>}
           {busy&&<p className="mt-3 flex items-center gap-2 text-xs text-emerald-600"><LoaderCircle className="h-4 w-4 animate-spin"/>Verificando acceso...</p>}
         </div>}
@@ -273,12 +298,13 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
             <div className="mb-4"><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Identidad</div><h3 className="font-semibold text-[#26304f]">Datos personales</h3></div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div><label className="label">WhatsApp *</label><PhoneInput value={phone} onChange={setPhone} onValidityChange={setPhoneValid} required disabled/><p className="mt-1 text-xs text-emerald-600">✓ WhatsApp validado</p></div>
-              <div><label className="label">Cédula *</label><div className="relative"><IdCard className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input className="field pl-9" inputMode="numeric" value={formatCedula(form.cedula)} onChange={e=>setCedula(e.target.value)} placeholder="000-0000000-0"/></div><div className="mt-1 flex items-center gap-2 text-xs">{cedulaState==='checking'&&<><LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-600"/><span>Verificando...</span></>}{cedulaState==='valid'&&<><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600"/><span className="text-emerald-600">{cedulaMessage}</span></>}{cedulaState==='invalid'&&<span className="text-rose-600">{cedulaMessage}</span>}</div></div>
-              <div><label className="label">Nombre *</label><input className="field" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))}/></div>
-              <div><label className="label">Apellido *</label><input className="field" value={form.last_name} onChange={e=>setForm(v=>({...v,last_name:e.target.value}))}/></div>
-              <div><label className="label">Fecha de nacimiento</label><input type="date" className="field" value={form.birth_date} onChange={e=>setForm(v=>({...v,birth_date:e.target.value}))}/></div>
-              <div><label className="label">Género</label><select className="field" value={form.gender} onChange={e=>setForm(v=>({...v,gender:e.target.value}))}><option value="">Seleccionar género</option><option value="masculino">Masculino</option><option value="femenino">Femenino</option><option value="otro">Otro</option></select></div>
+              <div><label className="label">Cédula *</label><div className="relative"><IdCard className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input className="field pl-9 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" inputMode="numeric" value={formatCedula(form.cedula)} onChange={e=>setCedula(e.target.value)} placeholder="000-0000000-0" disabled={identityLocked}/></div><div className="mt-1 flex items-center gap-2 text-xs">{cedulaState==='checking'&&<><LoaderCircle className="h-3.5 w-3.5 animate-spin text-emerald-600"/><span>Verificando...</span></>}{cedulaState==='valid'&&<><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600"/><span className="text-emerald-600">{cedulaMessage}</span></>}{cedulaState==='invalid'&&<span className="text-rose-600">{cedulaMessage}</span>}</div></div>
+              <div><label className="label">Nombre *</label><input className="field disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" value={form.name} onChange={e=>setForm(v=>({...v,name:e.target.value}))} disabled={identityLocked}/></div>
+              <div><label className="label">Apellido *</label><input className="field disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" value={form.last_name} onChange={e=>setForm(v=>({...v,last_name:e.target.value}))} disabled={identityLocked}/></div>
+              <div><label className="label">Fecha de nacimiento</label><input type="date" className="field disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" value={form.birth_date} onChange={e=>setForm(v=>({...v,birth_date:e.target.value}))} disabled={identityLocked}/></div>
+              <div><label className="label">Género</label><select className="field disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500" value={form.gender} onChange={e=>setForm(v=>({...v,gender:e.target.value}))} disabled={identityLocked}><option value="">Seleccionar género</option><option value="masculino">Masculino</option><option value="femenino">Femenino</option><option value="otro">Otro</option></select></div>
             </div>
+            {identityLocked&&<div className="mt-4 flex items-start gap-2 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2.5 text-xs leading-5 text-emerald-700"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0"/><span>Datos protegidos. La información validada por Identidad Dominicana no puede modificarse manualmente.</span></div>}
           </section>
           <section className="rounded-2xl border border-slate-100 p-4 sm:p-5">
             <div className="mb-4 flex items-start gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><MapPin className="h-4 w-4"/></div><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Dirección principal</div><h3 className="font-semibold text-[#26304f]">¿Dónde recibirás tus pedidos?</h3></div></div>

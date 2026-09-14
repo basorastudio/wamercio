@@ -22,10 +22,10 @@ func customerAddressRow(id, label, provinceCode, province, cityID, municipality,
 
 func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	var id, phone, name, lastName, nationalID, birthDate, gender, status string
+	var id, phone, name, lastName, nationalID, birthDate, gender, status, whatsappName, profilePictureURL, profilePictureID string
 	var whatsappVerified, identityVerified bool
 	var created time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT id::text,phone,name,coalesce(last_name,''),coalesce(national_id,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),status,whatsapp_verified_at IS NOT NULL,identity_verified_at IS NOT NULL,created_at FROM global_customers WHERE id=$1`, c.UserID).Scan(&id, &phone, &name, &lastName, &nationalID, &birthDate, &gender, &status, &whatsappVerified, &identityVerified, &created)
+	err := s.db.QueryRow(r.Context(), `SELECT id::text,phone,name,coalesce(last_name,''),coalesce(national_id,''),coalesce(to_char(birth_date,'YYYY-MM-DD'),''),coalesce(gender,''),status,whatsapp_verified_at IS NOT NULL,identity_verified_at IS NOT NULL,created_at,coalesce(whatsapp_name,''),coalesce(profile_picture_url,''),coalesce(profile_picture_id,'') FROM global_customers WHERE id=$1`, c.UserID).Scan(&id, &phone, &name, &lastName, &nationalID, &birthDate, &gender, &status, &whatsappVerified, &identityVerified, &created, &whatsappName, &profilePictureURL, &profilePictureID)
 	if err != nil || status != "active" {
 		jsonErr(w, http.StatusNotFound, "Cliente no encontrado")
 		return
@@ -46,7 +46,8 @@ func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, http.StatusOK, map[string]any{
 		"id": id, "phone": phone, "name": name, "last_name": lastName, "national_id": nationalID,
 		"birth_date": birthDate, "gender": gender, "status": status, "whatsapp_verified": whatsappVerified,
-		"identity_verified": identityVerified, "created_at": created, "addresses": addresses,
+		"identity_verified": identityVerified, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL,
+		"profile_picture_id": profilePictureID, "created_at": created, "addresses": addresses,
 	})
 }
 

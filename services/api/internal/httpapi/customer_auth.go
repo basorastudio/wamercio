@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -55,6 +56,39 @@ func customerAddressText(in customerAddressInput) string {
 	return strings.Join(parts, ", ")
 }
 
+func (s *Server) syncGlobalCustomerWhatsAppProfile(ctx context.Context, r *http.Request, customerID, phone string) {
+	phone = normalizePhone(phone)
+	if customerID == "" || phone == "" {
+		return
+	}
+	var updatedAt *time.Time
+	var currentURL string
+	if err := s.db.QueryRow(ctx, `SELECT coalesce(profile_picture_url,''),profile_picture_updated_at FROM global_customers WHERE id=$1`, customerID).Scan(&currentURL, &updatedAt); err == nil && updatedAt != nil && time.Since(*updatedAt) < 6*time.Hour {
+		return
+	}
+	// Customer identity is global, so prefer the platform WhatsApp session. It is
+	// also the session already used to validate WhatsApp during registration.
+	// Fall back to the current store session because contact privacy may allow
+	// the business session to see a picture hidden from the platform session.
+	profileCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	out, err := s.bridgeReq(profileCtx, http.MethodPost, "/sessions/support/profile", map[string]any{"phone": phone})
+	resolved, resolveErr := s.resolveStoreHost(ctx, s.requestHostname(r))
+	if err != nil && resolveErr == nil && resolved.StoreID != "" {
+		out, err = s.bridgeReq(profileCtx, http.MethodPost, "/sessions/"+resolved.StoreID+"/profile", map[string]any{"phone": phone})
+	}
+	if err != nil {
+		return
+	}
+	whatsappName := strings.TrimSpace(str(out["whatsapp_name"]))
+	pictureURL := strings.TrimSpace(str(out["profile_picture_url"]))
+	pictureID := strings.TrimSpace(str(out["profile_picture_id"]))
+	_, _ = s.db.Exec(ctx, `UPDATE global_customers SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=now(),updated_at=now() WHERE id=$4`, whatsappName, pictureURL, pictureID, customerID)
+	if resolveErr == nil && resolved.StoreID != "" {
+		_, _ = s.db.Exec(ctx, `UPDATE conversations SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=now(),updated_at=now() WHERE store_id=$4 AND regexp_replace(coalesce(whatsapp_phone,''),'[^0-9]','','g')=$5`, whatsappName, pictureURL, pictureID, resolved.StoreID, phone)
+	}
+}
+
 func (s *Server) customerLookup(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Phone string `json:"phone"`
@@ -72,6 +106,25 @@ func (s *Server) customerLookup(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusTooManyRequests, "Demasiados intentos. Espera un momento e inténtalo de nuevo")
 		return
 	}
+
+	// On a tenant storefront, the business owner takes precedence over the
+	// global-customer flow. This keeps the public "Entrar" button role-aware.
+	if resolved, resolveErr := s.resolveStoreHost(r.Context(), s.requestHostname(r)); resolveErr == nil && resolved.StoreID != "" {
+		var ownerID, ownerPIN, ownerStatus string
+		ownerErr := s.db.QueryRow(r.Context(), `SELECT u.id::text,coalesce(u.pin_hash,''),u.status FROM stores st JOIN users u ON u.id=st.user_id WHERE st.id=$1 AND u.role='owner' AND regexp_replace(coalesce(u.phone,''),'[^0-9]','','g')=$2 LIMIT 1`, resolved.StoreID, phone).Scan(&ownerID, &ownerPIN, &ownerStatus)
+		if ownerErr == nil && ownerStatus == "active" {
+			jsonOut(w, http.StatusOK, map[string]any{
+				"exists":             true,
+				"needs_registration": false,
+				"profile_exists":     true,
+				"account_type":       "owner",
+				"owner_id":           ownerID,
+				"pin_configured":     ownerPIN != "",
+			})
+			return
+		}
+	}
+
 	var id, pinHash, status string
 	err := s.db.QueryRow(r.Context(), `SELECT id::text,coalesce(pin_hash,''),status FROM global_customers WHERE phone=$1`, phone).Scan(&id, &pinHash, &status)
 	if err != nil && err != pgx.ErrNoRows {
@@ -83,6 +136,7 @@ func (s *Server) customerLookup(w http.ResponseWriter, r *http.Request) {
 		"exists":             exists,
 		"needs_registration": !exists,
 		"profile_exists":     err == nil,
+		"account_type":       "customer",
 	})
 }
 
@@ -272,6 +326,7 @@ func (s *Server) customerRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.syncGlobalCustomerWhatsAppProfile(r.Context(), r, customerID, phone)
 	tok, err := authpkg.Sign(s.cfg.JWTSecret, customerID, "customer")
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "Cuenta creada, pero no se pudo iniciar sesión")
@@ -317,6 +372,7 @@ func (s *Server) customerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `UPDATE global_customers SET last_login_at=now(),updated_at=now() WHERE id=$1`, id)
+	s.syncGlobalCustomerWhatsAppProfile(r.Context(), r, id, storedPhone)
 	s.setCustomerSessionCookie(w, r, tok, 7*24*3600)
 	jsonOut(w, http.StatusOK, map[string]any{"customer": map[string]any{"id": id, "name": name, "last_name": lastName, "phone": storedPhone}})
 }

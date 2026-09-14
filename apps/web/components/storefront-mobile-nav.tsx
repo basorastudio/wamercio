@@ -9,7 +9,7 @@ export default function StorefrontMobileNav({itemCount,customer,primaryColor,onS
       <button type="button" className={item} onClick={()=>window.scrollTo({top:0,behavior:'smooth'})}><Home className="h-5 w-5" style={{color:primaryColor}}/><span>Inicio</span></button>
       <button type="button" className={item} onClick={onSearch}><Search className="h-5 w-5"/><span>Buscar</span></button>
       <button type="button" className={`${item} relative`} onClick={onCart}><ShoppingBag className="h-5 w-5"/>{itemCount>0&&<span className="absolute left-1/2 top-1 ml-2 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] text-white" style={{background:primaryColor}}>{itemCount}</span>}<span>Pedido</span></button>
-      {customer?<Link className={item} href="/cliente/perfil"><UserRound className="h-5 w-5"/><span>Cuenta</span></Link>:<button type="button" className={item} onClick={onLogin}><UserRound className="h-5 w-5"/><span>Entrar</span></button>}
+      {customer?<Link className={item} href="/cliente/perfil">{customer.profile_picture_url?<span className="h-6 w-6 overflow-hidden rounded-full"><img src={customer.profile_picture_url} alt={customer.whatsapp_name||customer.name||'Perfil de WhatsApp'} className="h-full w-full object-cover"/></span>:<UserRound className="h-5 w-5"/>}<span>Cuenta</span></Link>:<button type="button" className={item} onClick={onLogin}><UserRound className="h-5 w-5"/><span>Entrar</span></button>}
     </div>
   </nav>
 }

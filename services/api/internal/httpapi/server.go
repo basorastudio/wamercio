@@ -72,6 +72,7 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/store/validate-whatsapp", s.publicValidateRegistrationWhatsApp)
 		api.Post("/auth/store/verify-identity", s.publicVerifyRegistrationIdentity)
 		api.Post("/auth/store/login", s.storeLogin)
+		api.Post("/auth/store/sso/exchange", s.ownerSSOExchange)
 		api.Post("/auth/store/register", s.register)
 		api.Post("/auth/store/logout", s.storeLogout)
 		// Global customer identity and access. This session is independent from
@@ -644,8 +645,19 @@ func (s *Server) storeLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `UPDATE users SET last_login_at=now() WHERE id=$1`, id)
+	host := normalizeHostname(s.requestHostname(r))
+	platformHost := normalizeHostname(s.cfg.PlatformDomain)
+	if host != "" && platformHost != "" && host != platformHost && host != "www."+platformHost {
+		redirectURL, handoffErr := s.createOwnerSSOHandoff(r.Context(), id)
+		if handoffErr != nil {
+			jsonErr(w, 500, "No se pudo abrir el panel del negocio")
+			return
+		}
+		jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": storedPhone, "role": "owner"}, "redirect_url": redirectURL})
+		return
+	}
 	s.setSessionCookie(w, "wamercio_store_token", tok, 30*24*3600)
-	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": storedPhone, "role": "owner"}})
+	jsonOut(w, 200, map[string]any{"user": map[string]any{"id": id, "name": name, "phone": storedPhone, "role": "owner"}, "redirect_url": "/dashboard"})
 }
 
 func (s *Server) adminLogin(w http.ResponseWriter, r *http.Request) {

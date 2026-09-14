@@ -231,6 +231,8 @@ func (m *Manager) handleSession(w http.ResponseWriter, r *http.Request) {
 		m.disconnect(w, r, sessionKey)
 	case r.Method == "POST" && action == "check":
 		m.checkNumber(w, r, sessionKey)
+	case r.Method == "POST" && action == "profile":
+		m.resolveProfile(w, r, sessionKey)
 	case r.Method == "POST" && action == "messages":
 		m.send(w, r, sessionKey)
 	case r.Method == "POST" && action == "media":
@@ -543,6 +545,54 @@ func (m *Manager) checkNumber(w http.ResponseWriter, r *http.Request, sessionKey
 		"query":      query,
 		"jid":        jid,
 	})
+}
+
+func (m *Manager) resolveProfile(w http.ResponseWriter, r *http.Request, sessionKey string) {
+	var in struct {
+		Phone string `json:"phone"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in) != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "phone es obligatorio"})
+		return
+	}
+	digits := nonDigits.ReplaceAllString(in.Phone, "")
+	if len(digits) < 8 || len(digits) > 15 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Número de WhatsApp inválido"})
+		return
+	}
+	s, err := m.sessionForSend(sessionKey)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	results, err := s.Client.IsOnWhatsApp(ctx, []string{"+" + digits})
+	if err != nil || len(results) == 0 || !results[0].IsIn || results[0].JID.IsEmpty() {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "El número no está disponible en WhatsApp"})
+		return
+	}
+	jid := results[0].JID.ToNonAD()
+	name := m.whatsappContactName(s, jid, "")
+	out := map[string]any{
+		"ok":                  true,
+		"phone":               digits,
+		"jid":                 jid.String(),
+		"whatsapp_name":       name,
+		"profile_picture_url": "",
+		"profile_picture_id":  "",
+		"picture_available":   false,
+	}
+	pic, picErr := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: true})
+	if picErr == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
+		if localURL, saveErr := m.persistProfilePicture(sessionKey, jid, pic.URL); saveErr == nil {
+			out["profile_picture_url"] = localURL
+			out["profile_picture_id"] = pic.ID
+			out["picture_available"] = true
+		}
+	}
+	m.touchSession(s)
+	writeJSON(w, http.StatusOK, out)
 }
 
 func (m *Manager) sessionForSend(sessionKey string) (*Session, error) {

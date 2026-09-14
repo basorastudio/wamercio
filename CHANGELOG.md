@@ -1,3 +1,19 @@
+# WAMERCIO 2.5.8 — Acceso del propietario y perfil WhatsApp del cliente
+
+- El botón **Entrar** de cada tienda distingue ahora al propietario del negocio antes de iniciar el flujo de cliente. Si el WhatsApp corresponde al propietario de esa tienda, muestra su PIN y abre el panel administrativo en `wamercio.com`.
+- Se incorpora un handoff SSO de un solo uso y corta duración para trasladar de forma segura la sesión del propietario desde el dominio/subdominio de la tienda al panel central, sin compartir cookies entre dominios.
+- Después de validar la Cédula durante el registro del cliente quedan bloqueados Cédula, nombre, apellido, fecha de nacimiento y género; el backend continúa tomando como autoritativos los datos devueltos por Identidad Dominicana.
+- Los clientes globales guardan el nombre y la foto de perfil de WhatsApp. La sincronización utiliza primero la sesión WhatsApp global de plataforma y, cuando corresponde, la sesión del negocio como fallback.
+- La foto sincronizada se muestra en el botón de cuenta de la tienda, navegación móvil, cabecera del panel del cliente y dentro de **Mi perfil**.
+- La implementación reutiliza `GetProfilePictureInfo` de whatsmeow y copia la imagen al volumen compartido de medios de WAMERCIO para no depender de URLs temporales de WhatsApp.
+- Añade la migración `000022_owner_access_customer_profiles` y una prueba de regresión específica para acceso por rol, bloqueo de identidad, SSO del propietario y foto de perfil.
+
+## Despliegue
+
+Requiere ejecutar la migración `000022_owner_access_customer_profiles` y reconstruir/redeployar API, Web y WhatsApp Bridge. No añade nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Hotfix de compilación Next.js de Página comercial
 
 - Corrige el fallo de `next build` provocado por exportar `landingDefaults` desde `app/admin/landing/page.tsx`.
