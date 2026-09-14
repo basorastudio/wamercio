@@ -1,4 +1,4 @@
-# Despliegue WAMERCIO 2.5.2 en Dokploy
+# Despliegue WAMERCIO 2.5.3 en Dokploy
 
 ## Variables
 
@@ -16,7 +16,7 @@ El DNS wildcard `*.ltd.do` debe apuntar al servidor de Dokploy. `ltd.do` ya es e
 
 ## Actualización
 
-1. Sustituye el código por WAMERCIO 2.5.2.
+1. Sustituye el código por WAMERCIO 2.5.3.
 2. Conserva PostgreSQL, Redis y uploads; no uses Fresh Volumes.
 3. Haz **Rebuild** y después **Redeploy**.
 4. El API aplica la migración `000019_multitenant_domains`.
