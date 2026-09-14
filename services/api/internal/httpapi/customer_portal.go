@@ -241,11 +241,12 @@ func (s *Server) customerOrder(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
 	var number int64
-	var total, subtotal, discount, shipping float64
+	var total, subtotal, discount, shipping, cashTendered float64
 	var status, paymentStatus, paymentMethod, deliveryType, address, notes, storeName, storeSlug string
+	var cashChangeRequested bool
 	var created time.Time
 	var storeID string
-	err := s.db.QueryRow(r.Context(), `SELECT o.order_number,o.subtotal,o.discount,o.shipping,o.total,o.status,o.payment_status,o.payment_method,o.delivery_type,coalesce(o.delivery_address,''),coalesce(o.notes,''),o.created_at,s.id::text,s.name,s.slug FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.id=$1 AND o.global_customer_id=$2`, id, c.UserID).Scan(&number, &subtotal, &discount, &shipping, &total, &status, &paymentStatus, &paymentMethod, &deliveryType, &address, &notes, &created, &storeID, &storeName, &storeSlug)
+	err := s.db.QueryRow(r.Context(), `SELECT o.order_number,o.subtotal,o.discount,o.shipping,o.total,o.status,o.payment_status,o.payment_method,o.cash_change_requested,coalesce(o.cash_tendered,0),o.delivery_type,coalesce(o.delivery_address,''),coalesce(o.notes,''),o.created_at,s.id::text,s.name,s.slug FROM orders o JOIN stores s ON s.id=o.store_id WHERE o.id=$1 AND o.global_customer_id=$2`, id, c.UserID).Scan(&number, &subtotal, &discount, &shipping, &total, &status, &paymentStatus, &paymentMethod, &cashChangeRequested, &cashTendered, &deliveryType, &address, &notes, &created, &storeID, &storeName, &storeSlug)
 	if err != nil {
 		jsonErr(w, http.StatusNotFound, "Pedido no encontrado")
 		return
@@ -263,5 +264,5 @@ func (s *Server) customerOrder(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	jsonOut(w, http.StatusOK, map[string]any{"id": id, "number": number, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": status, "payment_status": paymentStatus, "payment_method": paymentMethod, "delivery_type": deliveryType, "delivery_address": address, "notes": notes, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "store_public_url": s.storePublicURL(r.Context(), storeID, storeSlug), "items": items})
+	jsonOut(w, http.StatusOK, map[string]any{"id": id, "number": number, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": status, "payment_status": paymentStatus, "payment_method": paymentMethod, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "delivery_type": deliveryType, "delivery_address": address, "notes": notes, "created_at": created, "store_name": storeName, "store_slug": storeSlug, "store_public_url": s.storePublicURL(r.Context(), storeID, storeSlug), "items": items})
 }

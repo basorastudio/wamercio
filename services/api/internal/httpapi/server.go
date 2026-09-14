@@ -1857,7 +1857,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,order_number,customer_name,customer_phone,total,payment_method,payment_status,status,source,delivery_type,created_at FROM orders WHERE store_id=$1 ORDER BY created_at DESC LIMIT 500`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT id,order_number,customer_name,customer_phone,total,payment_method,payment_status,cash_change_requested,coalesce(cash_tendered,0),status,source,delivery_type,created_at FROM orders WHERE store_id=$1 ORDER BY created_at DESC LIMIT 500`, sid)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
 		return
@@ -1867,10 +1867,11 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, name, phone, pm, ps, st, source, deliveryType string
 		var num int64
-		var total float64
+		var total, cashTendered float64
+		var cashChangeRequested bool
 		var cr time.Time
-		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &st, &source, &deliveryType, &cr)
-		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "status": st, "source": source, "delivery_type": deliveryType, "created_at": cr})
+		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &st, &source, &deliveryType, &cr)
+		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "status": st, "source": source, "delivery_type": deliveryType, "created_at": cr})
 	}
 	jsonOut(w, 200, out)
 }
@@ -1879,9 +1880,10 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var sid, customerID, name, phone, address, deliveryType, coupon, pm, ps, status, notes, source, proof string
 	var num int64
-	var subtotal, discount, shipping, total float64
+	var subtotal, discount, shipping, total, cashTendered float64
+	var cashChangeRequested bool
 	var cr time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.created_at FROM orders o WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &status, &notes, &source, &proof, &cr)
+	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.created_at FROM orders o WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &cr)
 	if err != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
@@ -1900,7 +1902,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 			items = append(items, map[string]any{"id": iid, "product_id": pid, "product_name": pn, "variant_name": vn, "extras": ex, "unit_price": unit, "quantity": qty, "line_total": line})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "created_at": cr, "items": items})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "created_at": cr, "items": items})
 }
 func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -2489,9 +2491,10 @@ func (s *Server) publicOrder(w http.ResponseWriter, r *http.Request) {
 	}
 	var id, storeName, storeWhatsapp, customerName, deliveryType, paymentMethod, paymentStatus, status, paymentProof string
 	var number int64
-	var subtotal, discount, shipping, total float64
+	var subtotal, discount, shipping, total, cashTendered float64
+	var cashChangeRequested bool
 	var created, updated time.Time
-	err := s.db.QueryRow(r.Context(), `SELECT o.id::text,st.name,coalesce(st.whatsapp,''),o.order_number,o.customer_name,o.delivery_type,o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.status,coalesce(o.payment_proof_url,''),o.created_at,o.updated_at FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.public_token::text=$1`, token).Scan(&id, &storeName, &storeWhatsapp, &number, &customerName, &deliveryType, &subtotal, &discount, &shipping, &total, &paymentMethod, &paymentStatus, &status, &paymentProof, &created, &updated)
+	err := s.db.QueryRow(r.Context(), `SELECT o.id::text,st.name,coalesce(st.whatsapp,''),o.order_number,o.customer_name,o.delivery_type,o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.payment_proof_url,''),o.created_at,o.updated_at FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.public_token::text=$1`, token).Scan(&id, &storeName, &storeWhatsapp, &number, &customerName, &deliveryType, &subtotal, &discount, &shipping, &total, &paymentMethod, &paymentStatus, &cashChangeRequested, &cashTendered, &status, &paymentProof, &created, &updated)
 	if err != nil {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
@@ -2513,7 +2516,7 @@ func (s *Server) publicOrder(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 200, map[string]any{
 		"id": id, "number": number, "store_name": storeName, "store_whatsapp": storeWhatsapp, "customer_name": customerName,
 		"delivery_type": deliveryType, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total,
-		"payment_method": paymentMethod, "payment_status": paymentStatus, "payment_proof_url": paymentProof, "status": status, "created_at": created, "updated_at": updated,
+		"payment_method": paymentMethod, "payment_status": paymentStatus, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": paymentProof, "status": status, "created_at": created, "updated_at": updated,
 		"items": items,
 	})
 }
@@ -2836,6 +2839,8 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		ShippingZoneID string         `json:"shipping_zone_id"`
 		CouponCode     string         `json:"coupon_code"`
 		PaymentMethod  string         `json:"payment_method"`
+		NeedsChange    *bool          `json:"needs_change"`
+		CashTendered   *float64       `json:"cash_tendered"`
 		Notes          string         `json:"notes"`
 		Items          []checkoutItem `json:"items"`
 	}
@@ -3062,9 +3067,21 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	total := subtotal - discount + shipping
+	cashChangeRequested := false
+	var cashTendered any
+	if in.PaymentMethod == "cash" && in.DeliveryType == "delivery" && in.NeedsChange != nil {
+		cashChangeRequested = *in.NeedsChange
+	}
+	if cashChangeRequested {
+		if in.CashTendered == nil || *in.CashTendered <= total {
+			jsonErr(w, 400, "Indica un monto mayor al total para calcular el cambio")
+			return
+		}
+		cashTendered = *in.CashTendered
+	}
 	var orderID, publicToken string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, in.Notes).Scan(&orderID, &num, &publicToken)
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,cash_change_requested,cash_tendered,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, cashChangeRequested, cashTendered, in.Notes).Scan(&orderID, &num, &publicToken)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
@@ -3101,7 +3118,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		"seguimiento": trackingURL,
 	})
 	_ = s.queueWhatsApp(context.Background(), sid, "", customerPhone, message, "order")
-	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType})
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered})
 }
 
 func (s *Server) listPlans(w http.ResponseWriter, r *http.Request) {

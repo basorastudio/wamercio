@@ -11,7 +11,7 @@ open_item_body=open_item_match.group('body') if open_item_match else ''
 checks={
     'edited saved address is hidden while its inline form is open': 'addresses.filter(a=>!(showForm&&editing?.id===a.id)).map' in profile,
     'cart is rendered as a dedicated full page': 'data-testid="storefront-cart-page"' in store,
-    'cart page uses a desktop two-column layout like the ColmaPro reference': 'lg:grid-cols-[minmax(0,1fr)_400px]' in store or 'lg:grid-cols-[minmax(0,1fr)_420px]' in store,
+    'cart page uses a desktop two-column layout like the ColmaPro reference': 'lg:grid-cols-[minmax(0,1fr)_390px]' in store or 'lg:grid-cols-[minmax(0,1fr)_400px]' in store or 'lg:grid-cols-[minmax(0,1fr)_420px]' in store,
     'cart page has a dedicated products area': 'data-testid="storefront-cart-products"' in store,
     'cart page has an order summary column': 'data-testid="storefront-cart-summary-column"' in store,
     'editing a cart item keeps the full cart page mounted': bool(open_item_match) and 'setCartOpen(false)' not in open_item_body,

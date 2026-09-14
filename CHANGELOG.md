@@ -1,3 +1,20 @@
+# WAMERCIO 2.5.8 — Experiencia cliente refinada y cambio en efectivo
+
+- Refina la aplicación cliente tomando como referencia el patrón móvil de ColmaPro: navegación inferior **Catálogo / Mi pedido / Pedidos / WhatsApp**, tarjetas compactas y continuidad entre catálogo, carrito, pedidos y perfil.
+- Mantiene el carrito como página completa y reduce la columna de checkout en escritorio para una lectura más limpia, conservando el tema visual configurable de cada negocio.
+- Implementa **¿Necesita cambio?** únicamente para pedidos **Delivery + Efectivo**. El cliente indica **Sí / No**, puede elegir montos sugeridos o **Otro**, y WAMERCIO calcula el **Vuelto estimado** antes de confirmar.
+- El checkout bloquea la confirmación cuando el cliente solicita cambio pero no ha indicado un monto superior al total.
+- Guarda `cash_change_requested` y `cash_tendered` en cada pedido mediante la migración `000024_cash_change_checkout`.
+- El detalle administrativo del pedido, el seguimiento público y el centro de **Entregas** muestran la información de cambio para que el negocio y el repartidor sepan con cuánto pagará el cliente.
+- La navegación móvil del panel del cliente adopta el mismo patrón de acceso rápido y conserva acceso al perfil/cierre de sesión desde la cabecera.
+- No añade nuevas variables de entorno.
+
+## Despliegue
+
+Requiere ejecutar la migración `000024_cash_change_checkout` y reconstruir/redeployar API y Web. WhatsApp Bridge no requiere cambios para esta entrega.
+
+---
+
 # WAMERCIO 2.5.8 — Checkout limpio y métodos de pago refinados
 
 - Elimina del carrito los textos redundantes **Finalizar pedido / Entrega y forma de pago** y la tarjeta duplicada con la identidad del cliente.
