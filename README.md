@@ -1,8 +1,8 @@
-# WAMERCIO 2.5.1
+# WAMERCIO 2.5.2
 
 WAMERCIO es una plataforma SaaS de comercio conversacional mobile-first para República Dominicana, construida con Next.js, Go, PostgreSQL, Redis y un bridge WhatsApp multisesión.
 
-## Arquitectura 2.5.1 — Negocios por subdominio y dominio propio
+## Arquitectura 2.5.2 — Negocios por subdominio y dominio propio
 
 La plataforma central vive exclusivamente en `wamercio.com`. Cada negocio se publica en su propio host:
 

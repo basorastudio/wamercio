@@ -1,3 +1,12 @@
+# WAMERCIO 2.5.2 — Corrección de compilación Web
+
+- Corrige el contrato TypeScript de `Store`: el API ya devolvía `public_url`, pero `apps/web/lib/types.ts` no declaraba esa propiedad.
+- Elimina el error de `next build` en `app/stores/page.tsx` al acceder a `s.public_url`.
+- Añade una regresión que verifica que el tipo `Store` permanezca sincronizado con el payload real del API.
+- Sin cambios de base de datos, ENV, routing, UI ni comportamiento funcional respecto a 2.5.1.
+
+---
+
 # WAMERCIO 2.5.1 — Corrección de compilación API
 
 - Corrige la colisión de identificador `resolved` en el checkout multi-tenant, separando el resultado de resolución del host (`tenantStore`) del tipo local de líneas resueltas del pedido.
