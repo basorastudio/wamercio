@@ -1,8 +1,8 @@
-# Despliegue WAMERCIO 2.5.3 en Dokploy
+# Despliegue WAMERCIO 2.5.4 en Dokploy
 
-## Variables
+## ENV
 
-Conserva el ENV existente y añade/confirma:
+Conserva el ENV actual y confirma:
 
 ```env
 APP_URL=https://wamercio.com
@@ -12,23 +12,24 @@ TENANT_ROOT_DOMAIN=ltd.do
 CUSTOM_DOMAIN_CNAME_TARGET=domains.ltd.do
 ```
 
-El DNS wildcard `*.ltd.do` debe apuntar al servidor de Dokploy. `ltd.do` ya es el dominio raíz reservado para los negocios.
+No se añade ninguna variable nueva en 2.5.4.
+
+## DNS
+
+Mantén el registro wildcard `*.ltd.do` apuntando al servidor/Dokploy. El wildcard es DNS; WAMERCIO publica en Traefik routers exactos para cada tienda activa.
 
 ## Actualización
 
-1. Sustituye el código por WAMERCIO 2.5.3.
+1. Sustituye el código por WAMERCIO 2.5.4.
 2. Conserva PostgreSQL, Redis y uploads; no uses Fresh Volumes.
-3. Haz **Rebuild** y después **Redeploy**.
-4. El API aplica la migración `000019_multitenant_domains`.
-5. `traefik-config` instala los routers base y `domain-router` publica routers exactos para negocios y dominios propios.
+3. Ejecuta **Rebuild** y después **Redeploy**.
+4. Espera unos segundos a que `domain-router` lea las tiendas activas y escriba `/etc/dokploy/traefik/dynamic/wamercio-store-hosts.yml`.
+5. Abre `https://pizzeria-juan.ltd.do`.
 
-## Pruebas recomendadas
+## Qué debes observar
 
-1. Abre `wamercio.com` y confirma que muestra únicamente la plataforma central.
-2. Abre `pizzeria-juan.ltd.do` y confirma que resuelve el negocio por Host.
-3. Comprueba el menú inferior en móvil, carrito, acceso y panel del cliente.
-4. Instala la PWA desde el subdominio y confirma que usa nombre/identidad del negocio.
-5. En Configuración → Dominios agrega un dominio propio, configura el CNAME a `domains.ltd.do`, verifica y ábrelo por HTTPS.
-6. Comprueba que `wamercio.com/dashboard` sigue siendo el panel central del comerciante.
-7. Inicia sesión como cliente en un negocio `*.ltd.do` y comprueba que la sesión continúa en otro subdominio.
-8. En un dominio personalizado prueba “Ya tengo sesión en WAMERCIO” y confirma el SSO mediante `cliente.ltd.do`.
+- `pizzeria-juan.ltd.do` deja de caer en el 404 por ausencia de router.
+- El router HTTPS exacto solicita/usa certificado mediante `letsencrypt`.
+- `wamercio.com` continúa siendo exclusivamente plataforma y backoffice.
+- `proyecto.ltd.do`, `geo.ltd.do`, `id.ltd.do`, `waxum.ltd.do`, `domains.ltd.do` y `cliente.ltd.do` continúan reservados.
+- Los dominios personalizados activos siguen apuntando al mismo `wamercio-gateway`.

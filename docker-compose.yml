@@ -152,6 +152,7 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: ${DATABASE_URL}
+      TENANT_ROOT_DOMAIN: ${TENANT_ROOT_DOMAIN:-ltd.do}
       TRAEFIK_DYNAMIC_DIR: /target
       TZ: ${TZ:-America/Santo_Domingo}
     volumes:

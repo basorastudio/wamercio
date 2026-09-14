@@ -52,20 +52,6 @@ http:
       tls:
         certResolver: letsencrypt
 
-    wamercio-tenants-http:
-      rule: "HostRegexp(`[a-z0-9-]+\\.ltd\\.do`) && !Host(`proyecto.ltd.do`) && !Host(`geo.ltd.do`) && !Host(`id.ltd.do`) && !Host(`waxum.ltd.do`) && !Host(`domains.ltd.do`)"
-      entryPoints:
-        - web
-      service: wamercio-file-service
-      priority: 100
-
-    wamercio-tenants-https:
-      rule: "HostRegexp(`[a-z0-9-]+\\.ltd\\.do`) && !Host(`proyecto.ltd.do`) && !Host(`geo.ltd.do`) && !Host(`id.ltd.do`) && !Host(`waxum.ltd.do`) && !Host(`domains.ltd.do`)"
-      entryPoints:
-        - websecure
-      service: wamercio-file-service
-      priority: 100
-      tls: {}
 
   middlewares:
     wamercio-tenant-root-redirect:
