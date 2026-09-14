@@ -30,13 +30,14 @@ import (
 const SupportSessionKey = "support"
 
 type Session struct {
-	StoreID string
-	Client  *whatsmeow.Client
-	Status  string
-	QR      string
-	Phone   string
-	Updated time.Time
-	stop    chan struct{}
+	StoreID  string
+	Client   *whatsmeow.Client
+	Status   string
+	QR       string
+	Phone    string
+	Updated  time.Time
+	stop     chan struct{}
+	qrCancel context.CancelFunc
 }
 
 type Manager struct {
@@ -82,6 +83,9 @@ func (m *Manager) Close() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, s := range m.sessions {
+		if s.qrCancel != nil {
+			s.qrCancel()
+		}
 		select {
 		case <-s.stop:
 		default:
@@ -102,6 +106,51 @@ func configureClient(client *whatsmeow.Client) {
 	client.AutoTrustIdentity = true
 	client.EnableDecryptedEventBuffer = true
 	client.UseRetryMessageStore = true
+}
+
+func sessionLinked(s *Session) bool {
+	return s != nil && s.Client != nil && s.Client.Store != nil && s.Client.Store.ID != nil && s.Status != "logged_out"
+}
+
+func isDirectUserJID(jid types.JID) bool {
+	jid = jid.ToNonAD()
+	if jid.User == "" {
+		return false
+	}
+	return jid.Server == types.DefaultUserServer || jid.Server == types.HiddenUserServer
+}
+
+func isDirectUserMessage(v *events.Message) bool {
+	return v != nil && !v.Info.IsGroup && isDirectUserJID(v.Info.Chat)
+}
+
+func (m *Manager) isCurrentSession(s *Session) bool {
+	if s == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sessions[s.StoreID] == s
+}
+
+func (m *Manager) stopLocalSession(s *Session, logout bool, ctx context.Context) {
+	if s == nil {
+		return
+	}
+	if s.qrCancel != nil {
+		s.qrCancel()
+	}
+	select {
+	case <-s.stop:
+	default:
+		close(s.stop)
+	}
+	if s.Client != nil {
+		if logout {
+			_ = s.Client.Logout(ctx)
+		}
+		s.Client.Disconnect()
+	}
 }
 
 func (m *Manager) Restore(ctx context.Context) error {
@@ -132,7 +181,7 @@ func (m *Manager) Restore(ctx context.Context) error {
 		m.mu.Unlock()
 		go func(ss *Session) {
 			if err := ss.Client.Connect(); err != nil {
-				m.setState(ss.StoreID, "disconnected", "")
+				m.setSessionState(ss, "reconnecting", "")
 			}
 		}(s)
 	}
@@ -194,63 +243,84 @@ func (m *Manager) status(w http.ResponseWriter, sessionKey string) {
 	s := m.sessions[sessionKey]
 	m.mu.RUnlock()
 	if s == nil {
-		writeJSON(w, 200, map[string]any{"status": "disconnected", "connected": false})
+		var jid string
+		if err := m.db.QueryRow(`SELECT jid FROM whatsapp_bridge_sessions_v2 WHERE session_key=$1`, sessionKey).Scan(&jid); err == nil && jid != "" {
+			writeJSON(w, 200, map[string]any{"status": "reconnecting", "connected": false, "linked": true})
+			return
+		}
+		writeJSON(w, 200, map[string]any{"status": "disconnected", "connected": false, "linked": false})
 		return
 	}
-	writeJSON(w, 200, map[string]any{"status": s.Status, "connected": s.Client != nil && s.Client.IsConnected() && s.Client.IsLoggedIn(), "qr": s.QR, "phone": s.Phone, "updated_at": s.Updated})
+	linked := sessionLinked(s)
+	connected := linked && s.Client.IsConnected() && s.Client.IsLoggedIn()
+	status := s.Status
+	if connected {
+		status = "connected"
+	} else if linked && status != "logged_out" {
+		status = "reconnecting"
+	}
+	writeJSON(w, 200, map[string]any{"status": status, "connected": connected, "linked": linked, "qr": s.QR, "phone": s.Phone, "updated_at": s.Updated})
 }
 
 func (m *Manager) connect(w http.ResponseWriter, r *http.Request, sessionKey string) {
 	m.mu.RLock()
 	existing := m.sessions[sessionKey]
 	m.mu.RUnlock()
-	if existing != nil && existing.Client != nil && existing.Client.IsLoggedIn() {
-		if !existing.Client.IsConnected() {
-			_ = existing.Client.Connect()
+	if sessionLinked(existing) {
+		connected := existing.Client.IsConnected() && existing.Client.IsLoggedIn()
+		if !connected {
+			m.setSessionState(existing, "reconnecting", "")
+			go func(ss *Session) {
+				if err := ss.Client.Connect(); err != nil {
+					m.setSessionState(ss, "reconnecting", "")
+				}
+			}(existing)
 		}
-		writeJSON(w, 200, map[string]any{"status": "connected", "connected": true})
+		writeJSON(w, 200, map[string]any{"status": map[bool]string{true: "connected", false: "reconnecting"}[connected], "connected": connected, "linked": true})
 		return
+	}
+	if existing != nil {
+		m.stopLocalSession(existing, false, r.Context())
 	}
 	dev := m.container.NewDevice()
 	client := whatsmeow.NewClient(dev, nil)
 	configureClient(client)
-	s := &Session{StoreID: sessionKey, Client: client, Status: "starting", Updated: time.Now(), stop: make(chan struct{})}
+	qrCtx, qrCancel := context.WithCancel(context.Background())
+	s := &Session{StoreID: sessionKey, Client: client, Status: "starting", Updated: time.Now(), stop: make(chan struct{}), qrCancel: qrCancel}
 	m.installHandler(s)
 	m.mu.Lock()
 	m.sessions[sessionKey] = s
 	m.mu.Unlock()
-	qrChan, err := client.GetQRChannel(context.Background())
+	qrChan, err := client.GetQRChannel(qrCtx)
 	if err != nil {
-		m.setState(sessionKey, "error", "")
+		qrCancel()
+		m.setSessionState(s, "error", "")
 		writeJSON(w, 500, map[string]string{"error": err.Error()})
 		return
 	}
-	go func() {
+	go func(ss *Session) {
 		for evt := range qrChan {
+			if !m.isCurrentSession(ss) {
+				return
+			}
 			switch evt.Event {
 			case "code":
-				m.mu.Lock()
-				if cur := m.sessions[sessionKey]; cur != nil {
-					cur.QR = evt.Code
-					cur.Status = "qr"
-					cur.Updated = time.Now()
-				}
-				m.mu.Unlock()
+				m.setSessionState(ss, "qr", evt.Code)
 			case "success":
-				m.setState(sessionKey, "connected", "")
+				m.setSessionState(ss, "connecting", "")
 			case "timeout":
-				m.setState(sessionKey, "timeout", "")
+				m.setSessionState(ss, "timeout", "")
 			default:
 				log.Printf("whatsapp %s qr event: %s", sessionKey, evt.Event)
 			}
 		}
-	}()
+	}(s)
 	if err := client.Connect(); err != nil {
-		m.setState(sessionKey, "error", "")
+		m.setSessionState(s, "error", "")
 		writeJSON(w, 502, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, 202, map[string]any{"status": "starting", "message": "Escanea el QR cuando aparezca"})
+	writeJSON(w, 202, map[string]any{"status": "starting", "connected": false, "linked": false, "message": "Escanea el QR cuando aparezca"})
 }
 
 func (m *Manager) installHandler(s *Session) {
@@ -259,33 +329,47 @@ func (m *Manager) installHandler(s *Session) {
 		case *events.Connected:
 			m.onConnected(s)
 		case *events.Disconnected:
-			m.setState(s.StoreID, "disconnected", "")
+			if !m.setSessionState(s, "reconnecting", "") {
+				return
+			}
 			if s.StoreID == SupportSessionKey {
-				_, _ = m.db.Exec(`UPDATE support_whatsapp_session SET status='disconnected',updated_at=now() WHERE singleton=true`)
+				_, _ = m.db.Exec(`UPDATE support_whatsapp_session SET status='reconnecting',updated_at=now() WHERE singleton=true`)
 			} else {
-				_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET status='disconnected',updated_at=now() WHERE store_id=$1`, s.StoreID)
+				_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET status='reconnecting',updated_at=now() WHERE store_id=$1`, s.StoreID)
 			}
 		case *events.KeepAliveTimeout:
-			if v.ErrorCount >= 2 && s.Client != nil && s.Client.IsLoggedIn() {
+			if v.ErrorCount >= 2 && s.Client != nil && sessionLinked(s) {
 				go s.Client.ResetConnection()
 			}
 		case *events.KeepAliveRestored:
-			m.touchSession(s)
+			if m.isCurrentSession(s) {
+				m.touchSession(s)
+			}
 		case *events.Message:
 			m.forwardMessage(s, v)
 		case *events.Receipt:
-			m.forwardReceipt(s.StoreID, v)
+			if m.isCurrentSession(s) {
+				m.forwardReceipt(s.StoreID, v)
+			}
 		case *events.HistorySync:
 			go m.forwardHistory(s, v)
 		case *events.LoggedOut:
-			m.setState(s.StoreID, "logged_out", "")
+			m.markLoggedOut(s)
 		}
 	})
 	go m.maintainSession(s)
 }
 
 func (m *Manager) onConnected(s *Session) {
-	m.setState(s.StoreID, "connected", "")
+	if !m.setSessionState(s, "connected", "") {
+		return
+	}
+	m.mu.Lock()
+	if m.sessions[s.StoreID] == s && s.qrCancel != nil {
+		s.qrCancel()
+		s.qrCancel = nil
+	}
+	m.mu.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	// Reinforce the non-passive companion state after every connection. A very short
@@ -339,7 +423,7 @@ func (m *Manager) maintainSession(s *Session) {
 				_ = s.Client.SendPresence(ctx, types.PresenceUnavailable)
 				cancel()
 				m.touchSession(s)
-				m.setState(s.StoreID, "connected", "")
+				m.setSessionState(s, "connected", "")
 			}
 		case <-s.stop:
 			return
@@ -353,30 +437,45 @@ func (m *Manager) touchSession(s *Session) {
 		_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET last_seen_at=now(),updated_at=now(),status='connected' WHERE store_id=$1`, s.StoreID)
 	}
 }
-func (m *Manager) setState(sessionKey, status, qr string) {
+func (m *Manager) setSessionState(s *Session, status, qr string) bool {
+	if s == nil {
+		return false
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if s := m.sessions[sessionKey]; s != nil {
-		s.Status = status
-		s.QR = qr
-		s.Updated = time.Now()
+	if m.sessions[s.StoreID] != s {
+		return false
+	}
+	s.Status = status
+	s.QR = qr
+	s.Updated = time.Now()
+	return true
+}
+
+func (m *Manager) markLoggedOut(s *Session) {
+	if !m.setSessionState(s, "logged_out", "") {
+		return
+	}
+	m.mu.Lock()
+	if m.sessions[s.StoreID] == s {
+		s.Phone = ""
+	}
+	m.mu.Unlock()
+	_, _ = m.db.Exec(`DELETE FROM whatsapp_bridge_sessions_v2 WHERE session_key=$1`, s.StoreID)
+	if s.StoreID == SupportSessionKey {
+		_, _ = m.db.Exec(`UPDATE support_whatsapp_session SET jid=NULL,whatsapp=NULL,status='disconnected',updated_at=now() WHERE singleton=true`)
+	} else {
+		_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET jid=NULL,phone=NULL,status='disconnected',updated_at=now() WHERE store_id=$1`, s.StoreID)
 	}
 }
+
 func (m *Manager) disconnect(w http.ResponseWriter, r *http.Request, sessionKey string) {
 	m.mu.Lock()
 	s := m.sessions[sessionKey]
 	delete(m.sessions, sessionKey)
 	m.mu.Unlock()
 	if s != nil {
-		select {
-		case <-s.stop:
-		default:
-			close(s.stop)
-		}
-		if s.Client != nil {
-			_ = s.Client.Logout(r.Context())
-			s.Client.Disconnect()
-		}
+		m.stopLocalSession(s, true, r.Context())
 	}
 	_, _ = m.db.ExecContext(r.Context(), `DELETE FROM whatsapp_bridge_sessions_v2 WHERE session_key=$1`, sessionKey)
 	if sessionKey == SupportSessionKey {
@@ -924,6 +1023,9 @@ func directPhone(s *Session, v *events.Message) string {
 }
 
 func (m *Manager) forwardMessage(s *Session, v *events.Message) {
+	if !m.isCurrentSession(s) || !isDirectUserMessage(v) {
+		return
+	}
 	meta := m.extractMedia(s, v)
 	direction := "in"
 	if v.Info.IsFromMe {
@@ -946,12 +1048,12 @@ func (m *Manager) forwardReceipt(sessionKey string, v *events.Receipt) {
 	m.postCore("/api/v1/internal/whatsapp/receipts", map[string]any{"session_key": sessionKey, "message_ids": ids, "type": string(v.Type), "occurred_at": v.Timestamp})
 }
 func (m *Manager) forwardHistory(s *Session, v *events.HistorySync) {
-	if v == nil || v.Data == nil {
+	if !m.isCurrentSession(s) || v == nil || v.Data == nil {
 		return
 	}
 	for _, conv := range v.Data.GetConversations() {
 		jid, err := types.ParseJID(conv.GetID())
-		if err != nil {
+		if err != nil || !isDirectUserJID(jid) {
 			continue
 		}
 		for _, hm := range conv.GetMessages() {

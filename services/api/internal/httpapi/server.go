@@ -1990,7 +1990,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT c.id,c.remote_jid,coalesce(cu.name,nullif(c.display_name,''),''),c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,coalesce(c.customer_id::text,''),coalesce(c.status,'open'),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.store_id=$1 ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC LIMIT 300`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT c.id,c.remote_jid,coalesce(cu.name,nullif(c.display_name,''),''),c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,coalesce(c.customer_id::text,''),coalesce(c.status,'open'),coalesce(cu.phone,'') FROM conversations c LEFT JOIN customers cu ON cu.id=c.customer_id WHERE c.store_id=$1 AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid') ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC LIMIT 300`, sid)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las conversaciones")
 		return
@@ -2009,12 +2009,20 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) conversationOwned(ctx context.Context, c *authpkg.Claims, id string) (string, string, bool) {
 	var sid, jid string
-	err := s.db.QueryRow(ctx, `SELECT store_id,remote_jid FROM conversations WHERE id=$1`, id).Scan(&sid, &jid)
+	err := s.db.QueryRow(ctx, `SELECT store_id,remote_jid FROM conversations WHERE id=$1 AND split_part(lower(remote_jid),'@',2) IN ('s.whatsapp.net','lid')`, id).Scan(&sid, &jid)
 	if err != nil || !queryStoreOwned(ctx, s.db, c.UserID, c.Role, sid) {
 		return "", "", false
 	}
 	return sid, jid, true
 }
+func isDirectWhatsAppJID(jid string) bool {
+	parts := strings.SplitN(strings.ToLower(strings.TrimSpace(jid)), "@", 2)
+	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" {
+		return false
+	}
+	return parts[1] == "s.whatsapp.net" || parts[1] == "lid"
+}
+
 func conversationPhone(jid string) string {
 	base := strings.SplitN(jid, "@", 2)[0]
 	return normalizePhone(base)
@@ -3225,6 +3233,10 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if decode(r, &in) != nil || in.RemoteJID == "" {
 		jsonErr(w, 400, "Evento inválido")
+		return
+	}
+	if !isDirectWhatsAppJID(in.RemoteJID) {
+		jsonOut(w, 200, map[string]any{"ok": true, "ignored": true})
 		return
 	}
 	if in.SessionKey == "" {

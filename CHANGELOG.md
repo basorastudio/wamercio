@@ -1,3 +1,15 @@
+# WAMERCIO 2.5.8 — Higiene de WhatsApp y sesión vinculada
+
+- La bandeja de WhatsApp ahora admite únicamente conversaciones directas con personas; grupos, estados, listas de difusión, canales/newsletters y otros JID no directos se descartan tanto en tiempo real como durante `HistorySync`.
+- La API aplica una segunda barrera para impedir que conversaciones no directas entren o vuelvan a mostrarse aunque el bridge envíe un evento inesperado.
+- La migración `000020_whatsapp_direct_chat_hygiene` elimina conversaciones no directas ya importadas; sus mensajes asociados se eliminan mediante las relaciones existentes.
+- El flujo QR queda ligado a la instancia concreta de sesión: un QR anterior ya no puede marcar como `timeout` una vinculación nueva.
+- Se separa **vinculado** de **conectado**. Una caída temporal del socket se muestra como **Reconectando** sin obligar a escanear otro QR.
+- `LoggedOut` representa la desvinculación real y limpia la asociación persistente; `Disconnected` conserva la sesión para la reconexión automática.
+- Los paneles de tienda y SuperAdmin mantienen visible la sesión vinculada durante una reconexión y conservan la misma estructura visual.
+
+---
+
 # WAMERCIO 2.5.8 — Corrección de compilación API
 
 ## 2.5.8 - Tarjeta de producto en dos columnas y cantidades unitarias

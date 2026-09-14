@@ -39,3 +39,15 @@ La pestaña de registros incluye:
 ## Tipos de mensaje
 
 WAMERCIO reconoce texto, imagen, video, audio, documento, sticker, ubicación, contacto y reacción. Cuando un adjunto aún no se descarga, se muestra una etiqueta clara de su tipo en vez de `[Mensaje no textual]`.
+
+## Conversaciones admitidas
+
+El Centro de Conversaciones procesa únicamente chats directos entre la cuenta vinculada y una persona. WAMERCIO descarta antes de persistir y también al listar:
+
+- estados de WhatsApp (`status@broadcast`);
+- grupos;
+- listas de difusión/broadcast;
+- canales/newsletters;
+- cualquier otro JID que no corresponda a un usuario directo (`s.whatsapp.net` o `lid`).
+
+La misma regla se aplica a los mensajes en tiempo real y al historial que WhatsApp sincroniza al vincular el dispositivo.
