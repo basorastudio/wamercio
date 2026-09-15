@@ -1,7 +1,19 @@
+# WAMERCIO 2.5.8 — Compra directa, opciones en tarjetas y detalle de pedidos
+
+- Recupera **Mi compra** en la cabecera de escritorio con contador, manteniendo **Mi compra** en la navegación inferior móvil.
+- Renombra el CTA inicial del producto de **Agregar a mi pedido** a **Comprar**; al editar una línea existente se conserva **Actualizar mi pedido**.
+- Convierte **Opciones** y **Adicionales** del modal de producto en tarjetas de dos columnas/filas, usando el borde y un solo cotejo como estado seleccionado para eliminar controles visuales duplicados.
+- Sustituye **Ver negocio** por **Ver detalles** en **Mis pedidos** y abre un detalle del pedido dentro del panel del cliente, cargado desde `/customer/orders/{id}`.
+- El detalle muestra productos, variantes, adicionales, entrega/recogida, método de pago, cambio en efectivo cuando aplica, indicaciones y desglose de totales.
+- Actualiza las regresiones del carrito para permitir el acceso **Mi compra** de escritorio sin reintroducir el antiguo drawer lateral.
+- No requiere migraciones ni nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Pulido móvil de catálogo, carrito y pagos
 
 - Convierte las tarjetas informativas **Recibiendo pedidos / Delivery / Compra fácil** en un carrusel horizontal automático en móvil, manteniéndolas en una sola fila de tres columnas en escritorio.
-- Elimina el botón superior **Mi pedido** y concentra ese acceso en la navegación móvil, renombrado como **Mi compra**.
+- Sustituye el antiguo rótulo superior **Mi pedido** y renombra el acceso móvil como **Mi compra**; una revisión posterior recupera **Mi compra** también en escritorio.
 - Compacta las líneas del carrito en móvil para aprovechar mejor el ancho y reducir espacios vacíos.
 - Mueve **3 · Notas** debajo de los productos del carrito, separándolo del bloque de modalidad/pago.
 - Reestructura el pie de cada tarjeta de producto para reservar una columna fija al botón `+`/cotejo y evitar que tape el precio.

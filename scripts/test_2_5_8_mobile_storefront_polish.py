@@ -10,7 +10,7 @@ payments = (root/'apps/web/app/payment-methods/page.tsx').read_text(encoding='ut
 assert 'data-testid="storefront-perk-carousel"' in store
 assert 'setPerkIndex' in store and 'setInterval' in store
 
-# The header cart CTA is removed; the mobile navigation owns the cart entry and calls it Mi compra.
+# The legacy desktop label Mi pedido stays removed; mobile navigation calls the cart Mi compra.
 assert '<span className="hidden lg:inline">Mi pedido</span>' not in store
 assert '<span>Mi compra</span>' in mobile
 assert '<span>Mi compra</span>' in customer

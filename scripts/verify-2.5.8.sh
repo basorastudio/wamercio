@@ -15,6 +15,7 @@ python3 scripts/test_2_5_8_cart_address_experience.py
 python3 scripts/test_2_5_8_payment_checkout_cleanup.py
 python3 scripts/test_2_5_8_colmapro_customer_experience.py
 python3 scripts/test_2_5_8_mobile_storefront_polish.py
+python3 scripts/test_2_5_8_storefront_purchase_order_details.py
 python3 scripts/test_2_5_8_whatsapp_session_hygiene.py
 python3 scripts/test_2_5_8_customer_contact_profiles.py
 python3 scripts/test_2_5_8_api_build_regressions.py

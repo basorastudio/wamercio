@@ -24,7 +24,7 @@ checks={
     'cart checkout has an explicit payment step card': 'data-testid="storefront-cart-step-payment"' in store,
     'payment methods are rendered as direct-choice buttons instead of a select': 'data-testid="storefront-payment-option"' in store and 'value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})' not in store,
     'cart has a dedicated order total summary': 'data-testid="storefront-cart-summary"' in store,
-    'legacy lateral cart drawer was removed': 'data-testid="storefront-desktop-cart"' not in store and 'data-testid="storefront-mobile-cart"' not in store,
+    'legacy lateral cart drawer was removed': 'fixed inset-y-0 right-0' not in store and 'data-testid="storefront-mobile-cart"' not in store,
     'ColmaPro-like cart header exists': 'data-testid="storefront-cart-header"' in store,
 }
 failed=[name for name,ok in checks.items() if not ok]
