@@ -1,3 +1,11 @@
+## 2.5.8 · Punto de Venta fijo y filtros por categorías
+- La barra de búsqueda del POS permanece visible debajo de la cabecera mientras se recorre el catálogo.
+- Añade chips dinámicos de categorías (`Todos` + categorías activas con productos) y combina el filtro con la búsqueda por nombre, código o descripción.
+- La **Venta actual** ocupa el lateral de escritorio desde la cabecera hasta el borde inferior del viewport; el contenido interno puede desplazarse sin mover el panel y el total/CTA permanecen accesibles.
+- Elimina la tarjeta redundante **Actividad / Pedidos recientes** y deja de solicitar esos pedidos únicamente para esa sección.
+- Añade una regresión específica del espacio de trabajo POS a `verify-2.5.8.sh`.
+- No requiere migraciones ni nuevas variables de entorno.
+
 
 ## 2.5.8 · URLs compactas y acceso unificado
 - Los nuevos identificadores públicos de negocios eliminan separadores entre tipo y nombre: `Pizzería Demo` genera `pizzeriademo`, disponible como acceso corto `wamercio.com/pizzeriademo` y subdominio `pizzeriademo.ltd.do`.
