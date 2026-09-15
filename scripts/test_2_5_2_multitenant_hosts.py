@@ -16,7 +16,6 @@ need(Path('services/api/internal/httpapi/store_hosts.go'),'resolveStoreHost','ho
 need(Path('services/api/internal/httpapi/server.go'),'api.Get("/public/store", s.publicStore)','host public store route')
 need(Path('services/api/internal/httpapi/server.go'),'api.Post("/public/store/checkout", s.checkout)','host checkout route')
 forbid(Path('services/api/internal/httpapi/server.go'),'api.Get("/public/stores/{slug}"','legacy slug API route removed')
-if (root/'apps/web/app/[slug]/page.tsx').exists(): errors.append('legacy app/[slug]/page.tsx must be removed')
 if (root/'apps/web/app/store/[slug]/page.tsx').exists(): errors.append('legacy app/store/[slug]/page.tsx must be removed')
 need(Path('apps/web/app/page.tsx'),'headers','root host boundary')
 need(Path('apps/web/app/manifest.webmanifest/route.ts'),'manifest','dynamic tenant manifest')

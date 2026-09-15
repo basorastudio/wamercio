@@ -20,6 +20,7 @@ python3 scripts/test_2_5_8_whatsapp_session_hygiene.py
 python3 scripts/test_2_5_8_customer_contact_profiles.py
 python3 scripts/test_2_5_8_api_build_regressions.py
 python3 scripts/test_2_5_8_compact_store_slug_access.py
+python3 scripts/test_2_5_8_dynamic_route_collision.py
 python3 scripts/test_2_5_8_admin_settings_independent_scroll.py
 python3 scripts/test_2_5_8_owner_identity_landing_editor.py
 python3 scripts/test_2_5_8_whatsapp_tables_pos.py

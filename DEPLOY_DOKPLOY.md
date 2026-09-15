@@ -63,3 +63,30 @@ Después del despliegue comprueba:
 Esta revisión agrega la migración `000028_compact_store_urls_unified_access`.
 Los negocios nuevos usan identificadores compactos sin separadores (por ejemplo `Pizzería Demo` → `pizzeriademo`) y la cabecera pública utiliza una sola acción `ACCESO` para iniciar sesión o registrarse según corresponda.
 Los slugs de negocios ya existentes no se renombran automáticamente para no romper enlaces previamente compartidos.
+
+## Hotfix de ruta dinámica compacta (Next.js)
+
+Antes de subir esta versión sobre un repositorio existente, elimina por completo la ruta obsoleta:
+
+```text
+apps/web/app/[storeSlug]/
+```
+
+La única ruta dinámica raíz válida debe ser:
+
+```text
+apps/web/app/[slug]/page.tsx
+```
+
+Next.js no permite dos segmentos dinámicos distintos para la misma profundidad (`[slug]` y `[storeSlug]`). Si ambos permanecen en Git, el `next build` falla con `You cannot use different slug names for the same dynamic path`.
+
+Después de reemplazar los archivos ejecuta:
+
+```bash
+git rm -r --ignore-unmatch 'apps/web/app/[storeSlug]'
+git add -A
+git commit -m "fix: canonical compact store route"
+git push
+```
+
+Luego realiza Rebuild + Redeploy en Dokploy.

@@ -285,3 +285,9 @@ No requiere migraciones ni variables nuevas. Conserva el ENV de WAMERCIO 2.5.4 y
 ## Despliegue
 
 No requiere migraciones ni variables nuevas. Conserva `TENANT_ROOT_DOMAIN=ltd.do`, el DNS wildcard `*.ltd.do` y realiza Rebuild + Redeploy.
+
+### 2.5.8 hotfix — conflicto de ruta dinámica compacta
+- Se elimina la ruta raíz duplicada `[storeSlug]`.
+- Se reutiliza `[slug]` como único segmento dinámico raíz para `wamercio.com/{slug}`.
+- `[slug]` actúa solamente como acceso corto de la plataforma y redirige a `https://{slug}.ltd.do`.
+- Se agrega una regresión que impide volver a introducir dos nombres distintos de slug al mismo nivel del App Router.
