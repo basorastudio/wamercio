@@ -6,8 +6,10 @@ import {api,dateTime,money} from '@/lib/api'
 import {CalendarClock,MapPin,Package,ReceiptText,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
 
 const labels:any={pending:'Pendiente',confirmed:'Confirmado',processing:'Preparando',preparing:'Preparando',ready:'Listo',out_for_delivery:'En camino',delivered:'Entregado',completed:'Completado',canceled:'Cancelado',cancelled:'Cancelado'}
-const paymentLabels:any={cash:'Efectivo',cash_on_delivery:'Tarjeta en terminal',bank_transfer:'Transferencia electrónica'}
+const paymentLabels:any={cash:'Efectivo',cash_on_delivery:'Tarjeta en terminal',bank_transfer:'Transferencia electrónica',pending_quote:'Pendiente de cotización'}
 const deliveryLabels:any={delivery:'Delivery',pickup:'Recoger',dine_in:'Mesa'}
+const flowLabel=(v?:string)=>v==='reservation'?'Reserva':v==='quote'?'Solicitud':'Pedido'
+const fieldLabel=(key:string)=>key.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase())
 
 function extrasText(value:any){
  let parsed=value
@@ -49,7 +51,7 @@ export default function CustomerOrdersPage(){
   setDetailError('')
   setDetailLoading(true)
   try{setDetail(await api<any>(`/customer/orders/${id}`))}
-  catch(e:any){setDetailError(e?.message||'No se pudo cargar el detalle del pedido')}
+  catch(e:any){setDetailError(e?.message||'No se pudo cargar el detalle de la operación')}
   finally{setDetailLoading(false)}
  }
  const closeDetail=()=>{setDetailId(null);setDetail(null);setDetailError('')}
@@ -58,21 +60,21 @@ export default function CustomerOrdersPage(){
  return <CustomerShell active="orders">
   <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-    <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Compras</p><h1 className="mt-1 text-2xl font-semibold">Mis pedidos</h1><p className="mt-1 text-sm text-slate-400">Todos tus pedidos de WAMERCIO en un solo lugar.</p></div>
+    <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Compras</p><h1 className="mt-1 text-2xl font-semibold">Mis compras y solicitudes</h1><p className="mt-1 text-sm text-slate-400">Consulta pedidos, reservas y solicitudes de todos los negocios donde compras.</p></div>
     <div className="flex flex-wrap gap-2">{[['all','Todos'],['pending','Pendiente'],['preparing','Preparando'],['ready','Listo'],['out_for_delivery','En camino'],['delivered','Entregado'],['canceled','Cancelado']].map(([k,l])=><button key={k} onClick={()=>setFilter(k)} className={`rounded-full px-3 py-2 text-xs font-semibold ${filter===k?'bg-emerald-500 text-white':'border border-slate-200 bg-white text-slate-500'}`}>{l}</button>)}</div>
    </div>
   </section>
 
   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-   <div className="card p-4 text-center"><strong className="text-xl">{orders.length}</strong><div className="text-xs text-slate-400">Total pedidos</div></div>
+   <div className="card p-4 text-center"><strong className="text-xl">{orders.length}</strong><div className="text-xs text-slate-400">Total</div></div>
    <div className="card p-4 text-center"><strong className="text-xl text-emerald-600">{completed}</strong><div className="text-xs text-slate-400">Completados</div></div>
    <div className="card p-4 text-center"><strong className="text-xl text-violet-600">{active}</strong><div className="text-xs text-slate-400">En proceso · {canceled} cancelados</div></div>
   </div>
 
   <div className="mt-4 space-y-3">
-   {loading?<div className="card p-10 text-center text-slate-400">Cargando pedidos...</div>:rows.length===0?<div className="card grid min-h-52 place-items-center p-8 text-center"><div><Package className="mx-auto h-10 w-10 text-slate-200"/><h3 className="mt-3 font-semibold">No hay pedidos en esta vista</h3></div></div>:rows.map(o=><article key={o.id} className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
+   {loading?<div className="card p-10 text-center text-slate-400">Cargando compras y solicitudes...</div>:rows.length===0?<div className="card grid min-h-52 place-items-center p-8 text-center"><div><Package className="mx-auto h-10 w-10 text-slate-200"/><h3 className="mt-3 font-semibold">No hay compras ni solicitudes en esta vista</h3></div></div>:rows.map(o=><article key={o.id} className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><Package className="h-4 w-4"/></div>
-    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong>#{o.number}</strong><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[o.status]||o.status}</span></div><div className="mt-1 text-sm text-slate-500">{o.store_name} · {o.item_count} producto(s){o.delivery_type==='dine_in'&&o.table_name?` · ${o.table_name}`:''}</div><div className="mt-1 text-xs text-slate-400">{o.delivery_type==='dine_in'&&o.reservation_at?`Reserva ${dateTime(o.reservation_at)} · `:''}{dateTime(o.created_at)}</div></div>
+    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong>{flowLabel(o.flow_type)} #{o.number}</strong><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[o.status]||o.status}</span></div><div className="mt-1 text-sm text-slate-500">{o.store_name} · {o.item_count} producto(s){o.delivery_type==='dine_in'&&o.table_name?` · ${o.table_name}`:''}</div><div className="mt-1 text-xs text-slate-400">{o.delivery_type==='dine_in'&&o.reservation_at?`Reserva ${dateTime(o.reservation_at)} · `:''}{dateTime(o.created_at)}</div></div>
     <div className="flex items-center justify-between gap-3 sm:justify-end"><strong className="text-emerald-600">{money(o.total)}</strong><button type="button" onClick={()=>openDetail(o.id)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50">Ver detalles</button></div>
    </article>)}
   </div>
@@ -81,7 +83,7 @@ export default function CustomerOrdersPage(){
    <div className="max-h-[92vh] w-full overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-3xl">
     <div className="flex items-start gap-3 border-b border-slate-100 px-5 py-4 sm:px-6">
      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><ReceiptText className="h-5 w-5"/></div>
-     <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-600">Detalle del pedido</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">Pedido #{detail?.number||rowForDetail?.number||''}</h2>{(detail?.status||rowForDetail?.status)&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[detail?.status||rowForDetail?.status]||detail?.status||rowForDetail?.status}</span>}</div><p className="mt-1 text-xs text-slate-400">{detail?.store_name||rowForDetail?.store_name||''}{(detail?.created_at||rowForDetail?.created_at)?` · ${dateTime(detail?.created_at||rowForDetail?.created_at)}`:''}</p></div>
+     <div className="min-w-0 flex-1"><p className="text-[10px] font-bold uppercase tracking-[.16em] text-emerald-600">Detalle de {flowLabel(detail?.flow_type||rowForDetail?.flow_type).toLowerCase()}</p><div className="mt-1 flex flex-wrap items-center gap-2"><h2 className="text-xl font-semibold">{flowLabel(detail?.flow_type||rowForDetail?.flow_type)} #{detail?.number||rowForDetail?.number||''}</h2>{(detail?.status||rowForDetail?.status)&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[detail?.status||rowForDetail?.status]||detail?.status||rowForDetail?.status}</span>}</div><p className="mt-1 text-xs text-slate-400">{detail?.store_name||rowForDetail?.store_name||''}{(detail?.created_at||rowForDetail?.created_at)?` · ${dateTime(detail?.created_at||rowForDetail?.created_at)}`:''}</p></div>
      <button type="button" aria-label="Cerrar" onClick={closeDetail} className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500"><X className="h-4 w-4"/></button>
     </div>
 
@@ -96,6 +98,8 @@ export default function CustomerOrdersPage(){
        <section className="rounded-2xl border border-slate-100 p-4">{detail.delivery_type==='dine_in'?<><div className="flex items-center gap-2 text-emerald-600"><UtensilsCrossed className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Reserva de mesa</span></div><div className="mt-2 font-semibold">{detail.table_name||'Mesa reservada'}</div>{detail.reservation_at&&<p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5"/>{dateTime(detail.reservation_at)}</p>}{Number(detail.party_size||0)>0&&<p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><UsersRound className="h-3.5 w-3.5"/>{detail.party_size} persona(s)</p>}</>:<><div className="flex items-center gap-2 text-emerald-600"><MapPin className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Entrega</span></div><div className="mt-2 font-semibold">{deliveryLabels[detail.delivery_type]||detail.delivery_type}</div>{detail.delivery_address&&<p className="mt-1 text-xs leading-5 text-slate-500">{detail.delivery_address}</p>}</>}</section>
        <section className="rounded-2xl border border-slate-100 p-4"><div className="flex items-center gap-2 text-emerald-600"><WalletCards className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Pago</span></div><div className="mt-2 font-semibold">{paymentLabels[detail.payment_method]||detail.payment_method}</div>{detail.payment_method==='cash'&&<p className="mt-1 text-xs text-slate-500">{detail.cash_change_requested?`Paga con ${money(detail.cash_tendered||0)} · cambio estimado ${money(Math.max(0,Number(detail.cash_tendered||0)-Number(detail.total||0)))}`:'Pago exacto'}</p>}</section>
       </div>
+
+      {detail.custom_fields&&Object.keys(detail.custom_fields).length>0&&<section className="rounded-2xl border border-slate-100 p-4"><div className="flex items-center gap-2 text-emerald-600"><ReceiptText className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Datos de {flowLabel(detail.flow_type).toLowerCase()}</span></div><div className="mt-3 grid gap-3 sm:grid-cols-2">{Object.entries(detail.custom_fields).map(([key,value])=><div key={key}><div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">{fieldLabel(key)}</div><div className="mt-1 text-sm font-medium text-slate-700">{String(value)}</div></div>)}</div></section>}
 
       {detail.notes&&<section className="rounded-2xl border border-slate-100 p-4"><div className="flex items-center gap-2 text-emerald-600"><ReceiptText className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Indicaciones</span></div><p className="mt-2 text-sm leading-6 text-slate-600">{detail.notes}</p></section>}
 

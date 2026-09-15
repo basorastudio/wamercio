@@ -1,3 +1,18 @@
+# WAMERCIO 2.5.8 — Auditoría integral de coherencia y comercio conversacional
+
+- Unifica las capacidades del negocio mediante `business_engine` + `template_config` para que catálogo, tienda, checkout, POS, entregas, WhatsApp asistido y backoffice respondan al mismo modelo.
+- Variantes, adicionales, inventario, Delivery, Recoger, Mesa/Reserva, citas, cotización, personalización, mayorista y campos dinámicos de checkout se muestran y validan únicamente cuando la plantilla los soporta.
+- El backend aplica las mismas restricciones que la interfaz, evitando activar capacidades no permitidas mediante llamadas manipuladas.
+- Introduce flujos contextuales `order`, `reservation` y `quote`; las solicitudes de cotización usan `pending_quote`, no exigen forma de pago anticipada y conservan sus campos específicos.
+- Corrige la distinción **Clientes / Contactos**: una cotización pendiente no convierte por sí sola un contacto en cliente ni incrementa compras, ingresos o métricas comerciales.
+- Mejora **Pedidos y solicitudes**, **Actividad reciente**, el portal global del cliente y el historial de conversaciones para identificar Pedido / Reserva / Solicitud sin duplicidades de etiquetas.
+- Amplía **SuperAdmin → Tipos de negocio** con las capacidades existentes de la plataforma y campos dinámicos de checkout, evitando configuraciones dispersas.
+- Añade `000026_business_capabilities_coherence` y `000027_quote_customer_metrics`, preservando capacidades explícitas existentes y corrigiendo estadísticas históricas afectadas por cotizaciones.
+- Integra nuevas regresiones de capacidades, flujos contextuales, métricas de cotización y coherencia global en `verify-2.5.8.sh`.
+- No agrega variables de entorno nuevas.
+
+---
+
 # WAMERCIO 2.5.8 — Sincronización WhatsApp, Mesas y POS asistido
 
 - WhatsApp permite elegir **Sincronización manual** o **Automática** y limitar el historial por **Fecha desde / Fecha hasta**. Una vinculación nueva ya no importa silenciosamente todo el historial: el full sync queda desactivado y los rangos se respetan al solicitar páginas antiguas.
@@ -14,7 +29,7 @@
 # WAMERCIO 2.5.8 — Compra directa, opciones en tarjetas y detalle de pedidos
 
 - Recupera **Mi compra** en la cabecera de escritorio con contador, manteniendo **Mi compra** en la navegación inferior móvil.
-- Renombra el CTA inicial del producto de **Agregar a mi pedido** a **Comprar**; al editar una línea existente se conserva **Actualizar mi pedido**.
+- Renombra el CTA inicial del producto de **Agregar a mi pedido** a **Comprar**; al editar una línea existente se conserva **Actualizar mi compra**.
 - Convierte **Opciones** y **Adicionales** del modal de producto en tarjetas de dos columnas/filas, usando el borde y un solo cotejo como estado seleccionado para eliminar controles visuales duplicados.
 - Sustituye **Ver negocio** por **Ver detalles** en **Mis pedidos** y abre un detalle del pedido dentro del panel del cliente, cargado desde `/customer/orders/{id}`.
 - El detalle muestra productos, variantes, adicionales, entrega/recogida, método de pago, cambio en efectivo cuando aplica, indicaciones y desglose de totales.

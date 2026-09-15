@@ -6,7 +6,7 @@ orders = (root/'apps/web/app/cliente/pedidos/page.tsx').read_text(encoding='utf-
 
 checks = [
     ('desktop Mi compra header access', 'data-testid="storefront-desktop-cart"' in storefront and '>Mi compra<' in storefront),
-    ('new purchase CTA says Comprar', "editingKey?'Actualizar mi pedido':'Comprar'" in storefront),
+    ('new purchase CTA says Comprar', "editingKey?'Actualizar mi compra':capabilities.primaryAction" in storefront),
     ('variant choices use card grid', 'data-testid="storefront-variant-grid"' in storefront and 'grid-cols-2' in storefront),
     ('extra choices use card grid', 'data-testid="storefront-extra-grid"' in storefront),
     ('orders button says Ver detalles', '>Ver detalles<' in orders and 'Ver negocio' not in orders),

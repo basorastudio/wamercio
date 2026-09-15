@@ -986,13 +986,13 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	var revenueToday float64
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM stores WHERE user_id=$1`, c.UserID).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM products p JOIN stores s ON s.id=p.store_id WHERE s.user_id=$1`, c.UserID).Scan(&products)
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM customers cu JOIN stores s ON s.id=cu.store_id WHERE s.user_id=$1 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=cu.id AND o.status<>'canceled')`, c.UserID).Scan(&customers)
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*),coalesce(sum(o.total) FILTER (WHERE o.status<>'canceled'),0) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.created_at>=date_trunc('day',now())`, c.UserID).Scan(&ordersToday, &revenueToday)
-	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.status IN ('pending','confirmed','processing','preparing','ready','out_for_delivery')`, c.UserID).Scan(&pendingOrders)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM customers cu JOIN stores s ON s.id=cu.store_id WHERE s.user_id=$1 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=cu.id AND o.status<>'canceled' AND o.flow_type<>'quote')`, c.UserID).Scan(&customers)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FILTER (WHERE o.flow_type<>'quote'),coalesce(sum(o.total) FILTER (WHERE o.status<>'canceled' AND o.flow_type<>'quote'),0) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.created_at>=date_trunc('day',now())`, c.UserID).Scan(&ordersToday, &revenueToday)
+	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 AND o.flow_type<>'quote' AND o.status IN ('pending','confirmed','processing','preparing','ready','out_for_delivery')`, c.UserID).Scan(&pendingOrders)
 	_ = s.db.QueryRow(r.Context(), `SELECT coalesce(sum(c.unread_count),0) FROM conversations c JOIN stores s ON s.id=c.store_id WHERE s.user_id=$1`, c.UserID).Scan(&unreadChats)
 	_ = s.db.QueryRow(r.Context(), `SELECT COUNT(*) FROM products p JOIN stores s ON s.id=p.store_id WHERE s.user_id=$1 AND p.track_stock=true AND coalesce(p.stock,0)<=5`, c.UserID).Scan(&lowStock)
 
-	rows, _ := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.total,o.status,o.created_at,s.name,o.source FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 ORDER BY o.created_at DESC LIMIT 8`, c.UserID)
+	rows, _ := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.total,o.status,o.created_at,s.name,o.source,o.flow_type FROM orders o JOIN stores s ON s.id=o.store_id WHERE s.user_id=$1 ORDER BY o.created_at DESC LIMIT 8`, c.UserID)
 	defer func() {
 		if rows != nil {
 			rows.Close()
@@ -1001,12 +1001,12 @@ func (s *Server) dashboard(w http.ResponseWriter, r *http.Request) {
 	recent := []map[string]any{}
 	if rows != nil {
 		for rows.Next() {
-			var id, customer, status, store, source string
+			var id, customer, status, store, source, flowType string
 			var num int64
 			var total float64
 			var created time.Time
-			_ = rows.Scan(&id, &num, &customer, &total, &status, &created, &store, &source)
-			recent = append(recent, map[string]any{"id": id, "number": num, "customer": customer, "total": total, "status": status, "created_at": created, "store": store, "source": source})
+			_ = rows.Scan(&id, &num, &customer, &total, &status, &created, &store, &source, &flowType)
+			recent = append(recent, map[string]any{"id": id, "number": num, "customer": customer, "total": total, "status": status, "created_at": created, "store": store, "source": source, "flow_type": flowType})
 		}
 	}
 	jsonOut(w, 200, map[string]any{
@@ -1470,6 +1470,17 @@ func (s *Server) createProduct(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
+	productCaps, capsOK := s.businessCapabilityFlagsForStore(r.Context(), in.StoreID)
+	if !capsOK {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	if !productCaps.SupportsVariants {
+		in.Variants = []byte("[]")
+	}
+	if !productCaps.SupportsExtras {
+		in.Extras = []byte("[]")
+	}
 	if c.Role != "superadmin" {
 		limits := s.limitsForUser(r.Context(), c.UserID)
 		var count int
@@ -1534,6 +1545,17 @@ func (s *Server) updateProduct(w http.ResponseWriter, r *http.Request) {
 	if !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
+	}
+	productCaps, capsOK := s.businessCapabilityFlagsForStore(r.Context(), in.StoreID)
+	if !capsOK {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	if !productCaps.SupportsVariants {
+		in.Variants = []byte("[]")
+	}
+	if !productCaps.SupportsExtras {
+		in.Extras = []byte("[]")
 	}
 	if len(in.Variants) == 0 {
 		in.Variants = []byte("[]")
@@ -1957,7 +1979,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,o.source,o.delivery_type,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.store_id=$1 ORDER BY o.created_at DESC LIMIT 500`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,o.source,o.flow_type,o.delivery_type,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.store_id=$1 ORDER BY o.created_at DESC LIMIT 500`, sid)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
 		return
@@ -1965,33 +1987,36 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, pm, ps, st, source, deliveryType, tableID, tableName string
+		var id, name, phone, pm, ps, st, source, flowType, deliveryType, tableID, tableName string
 		var num int64
 		var total, cashTendered float64
 		var cashChangeRequested bool
 		var cr time.Time
 		var reservationAt *time.Time
 		var partySize int
-		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &st, &source, &deliveryType, &cr, &tableID, &tableName, &reservationAt, &partySize)
-		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "status": st, "source": source, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "created_at": cr})
+		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &st, &source, &flowType, &deliveryType, &cr, &tableID, &tableName, &reservationAt, &partySize)
+		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "status": st, "source": source, "flow_type": flowType, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "created_at": cr})
 	}
 	jsonOut(w, 200, out)
 }
 func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	c := claims(r)
-	var sid, customerID, name, phone, address, deliveryType, coupon, pm, ps, status, notes, source, proof, tableID, tableName string
+	var sid, customerID, name, phone, address, deliveryType, coupon, pm, ps, status, notes, source, proof, flowType, tableID, tableName string
 	var num int64
 	var subtotal, discount, shipping, total, cashTendered float64
 	var cashChangeRequested bool
 	var cr time.Time
 	var reservationAt *time.Time
 	var partySize int
-	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &cr, &tableID, &tableName, &reservationAt, &partySize)
+	var customFieldsRaw []byte
+	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.flow_type,o.custom_fields,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &flowType, &customFieldsRaw, &cr, &tableID, &tableName, &reservationAt, &partySize)
 	if err != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
 	}
+	customFields := map[string]any{}
+	_ = json.Unmarshal(customFieldsRaw, &customFields)
 	rows, _ := s.db.Query(r.Context(), `SELECT id,coalesce(product_id::text,''),product_name,coalesce(variant_name,''),extras,unit_price,quantity,line_total FROM order_items WHERE order_id=$1`, id)
 	items := []map[string]any{}
 	if rows != nil {
@@ -2006,7 +2031,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 			items = append(items, map[string]any{"id": iid, "product_id": pid, "product_name": pn, "variant_name": vn, "extras": ex, "unit_price": unit, "quantity": qty, "line_total": line})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "created_at": cr, "items": items})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "flow_type": flowType, "custom_fields": customFields, "created_at": cr, "items": items})
 }
 func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -2129,7 +2154,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.db.Query(r.Context(), `
 		SELECT c.id,c.remote_jid,
-		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled')
+		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote')
 		            THEN coalesce(nullif(cu.name,''),nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'')
 		            ELSE coalesce(nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'') END,
 		       c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,
@@ -2137,7 +2162,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 		       coalesce(nullif(c.whatsapp_phone,''),nullif(cu.phone,''),
 		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
 		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),
-		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled') THEN 'customer' ELSE 'contact' END
+		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote') THEN 'customer' ELSE 'contact' END
 		FROM conversations c
 		LEFT JOIN customers cu ON cu.id=c.customer_id
 		WHERE c.store_id=$1
@@ -2227,7 +2252,7 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 	orders := []map[string]any{}
 	isCustomer := false
 	if customerID != "" {
-		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled')`, customerID).Scan(&isCustomer)
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled' AND flow_type<>'quote')`, customerID).Scan(&isCustomer)
 		var name, cphone, address, notes, cstatus string
 		var count int
 		var spent float64
@@ -2237,16 +2262,16 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 			if phone == "" {
 				phone = normalizePhone(cphone)
 			}
-			orows, _ := s.db.Query(r.Context(), `SELECT id,order_number,total,status,payment_status,created_at FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 20`, customerID)
+			orows, _ := s.db.Query(r.Context(), `SELECT id,order_number,total,status,payment_status,flow_type,created_at FROM orders WHERE customer_id=$1 ORDER BY created_at DESC LIMIT 20`, customerID)
 			if orows != nil {
 				defer orows.Close()
 				for orows.Next() {
-					var oid, ost, ps string
+					var oid, ost, ps, flowType string
 					var num int64
 					var total float64
 					var at time.Time
-					_ = orows.Scan(&oid, &num, &total, &ost, &ps, &at)
-					orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": ost, "payment_status": ps, "created_at": at})
+					_ = orows.Scan(&oid, &num, &total, &ost, &ps, &flowType, &at)
+					orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": ost, "payment_status": ps, "flow_type": flowType, "created_at": at})
 				}
 			}
 			if isCustomer {
@@ -2333,7 +2358,7 @@ func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request
 	}
 	isCustomer := false
 	if linkedCustomerID != "" {
-		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled')`, linkedCustomerID).Scan(&isCustomer)
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled' AND flow_type<>'quote')`, linkedCustomerID).Scan(&isCustomer)
 	}
 	name := strings.TrimSpace(in.Name)
 	address := strings.TrimSpace(in.Address)
@@ -2653,6 +2678,151 @@ type checkoutItem struct {
 	Extras      []map[string]any `json:"extras"`
 }
 
+func normalizeCheckoutFieldKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = regexp.MustCompile(`[^a-z0-9_]+`).ReplaceAllString(value, "_")
+	return strings.Trim(value, "_")
+}
+
+func templateBool(config map[string]any, key string) bool {
+	value, ok := config[key]
+	if !ok || value == nil {
+		return false
+	}
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return strings.EqualFold(strings.TrimSpace(fmt.Sprint(value)), "true")
+}
+
+type businessCapabilityFlags struct {
+	SupportsVariants bool
+	SupportsExtras   bool
+	SupportsDineIn   bool
+	SupportsDelivery bool
+	SupportsPickup   bool
+	RequiresPayment  bool
+}
+
+func templateBoolDefault(config map[string]any, key string, fallback bool) bool {
+	value, ok := config[key]
+	if !ok || value == nil {
+		return fallback
+	}
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	text := strings.TrimSpace(fmt.Sprint(value))
+	if strings.EqualFold(text, "true") {
+		return true
+	}
+	if strings.EqualFold(text, "false") {
+		return false
+	}
+	return fallback
+}
+
+func businessCapabilityFlagsFromRaw(engine string, raw []byte) businessCapabilityFlags {
+	config := map[string]any{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &config)
+	}
+	engine = strings.ToLower(strings.TrimSpace(engine))
+	isService := engine == "services"
+	requiresLeadTime := templateBoolDefault(config, "requires_lead_time", false)
+	return businessCapabilityFlags{
+		SupportsVariants: templateBoolDefault(config, "supports_variants", !isService),
+		SupportsExtras:   templateBoolDefault(config, "supports_extras", engine == "food"),
+		SupportsDineIn:   templateBoolDefault(config, "supports_dine_in", engine == "food" && !requiresLeadTime),
+		SupportsDelivery: templateBoolDefault(config, "delivery_enabled", !isService),
+		SupportsPickup:   templateBoolDefault(config, "pickup_enabled", true),
+		RequiresPayment:  !templateBoolDefault(config, "quotation", engine == "quotation"),
+	}
+}
+
+func (s *Server) businessCapabilityFlagsForStore(ctx context.Context, storeID string) (businessCapabilityFlags, bool) {
+	var engine string
+	var raw []byte
+	if s.db.QueryRow(ctx, `SELECT business_engine,template_config FROM stores WHERE id=$1`, storeID).Scan(&engine, &raw) != nil {
+		return businessCapabilityFlags{}, false
+	}
+	return businessCapabilityFlagsFromRaw(engine, raw), true
+}
+
+func contextualCheckoutData(templateConfigRaw []byte, submitted map[string]any, deliveryType string) (map[string]any, string, error) {
+	config := map[string]any{}
+	if len(templateConfigRaw) > 0 {
+		_ = json.Unmarshal(templateConfigRaw, &config)
+	}
+	flowType := "order"
+	if templateBool(config, "appointments") || deliveryType == "dine_in" {
+		flowType = "reservation"
+	}
+	if templateBool(config, "quotation") {
+		flowType = "quote"
+	}
+	clean := map[string]any{}
+	rawFields, _ := config["checkout_fields"].([]any)
+	for _, raw := range rawFields {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		label := strings.TrimSpace(fmt.Sprint(item["label"]))
+		key := normalizeCheckoutFieldKey(fmt.Sprint(item["key"]))
+		if key == "" {
+			key = normalizeCheckoutFieldKey(label)
+		}
+		if key == "" || label == "" {
+			continue
+		}
+		fieldType := strings.ToLower(strings.TrimSpace(fmt.Sprint(item["type"])))
+		switch fieldType {
+		case "text", "number", "date", "time", "textarea", "select":
+		default:
+			fieldType = "text"
+		}
+		required, _ := item["required"].(bool)
+		value, exists := submitted[key]
+		if !exists || strings.TrimSpace(fmt.Sprint(value)) == "" {
+			if required {
+				return nil, flowType, fmt.Errorf("completa %s", label)
+			}
+			continue
+		}
+		switch fieldType {
+		case "number":
+			n, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(value)), 64)
+			if err != nil {
+				return nil, flowType, fmt.Errorf("%s debe ser un número válido", label)
+			}
+			clean[key] = n
+		case "select":
+			choice := strings.TrimSpace(fmt.Sprint(value))
+			valid := false
+			if options, ok := item["options"].([]any); ok {
+				for _, option := range options {
+					if choice == strings.TrimSpace(fmt.Sprint(option)) {
+						valid = true
+						break
+					}
+				}
+			}
+			if !valid {
+				return nil, flowType, fmt.Errorf("selecciona una opción válida para %s", label)
+			}
+			clean[key] = choice
+		default:
+			text := strings.TrimSpace(fmt.Sprint(value))
+			if len(text) > 500 {
+				text = text[:500]
+			}
+			clean[key] = text
+		}
+	}
+	return clean, flowType, nil
+}
+
 func allowedPaymentProof(h *multipart.FileHeader) bool {
 	t := strings.ToLower(h.Header.Get("Content-Type"))
 	return (strings.HasPrefix(t, "image/") || t == "application/pdf") && h.Size <= 8<<20
@@ -2717,6 +2887,45 @@ func (s *Server) publicOrderProof(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, 201, map[string]any{"ok": true, "url": url})
 }
 
+func contextualCheckoutLines(templateConfigRaw []byte, values map[string]any) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	config := map[string]any{}
+	_ = json.Unmarshal(templateConfigRaw, &config)
+	labels := map[string]string{}
+	if fields, ok := config["checkout_fields"].([]any); ok {
+		for _, raw := range fields {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			label := strings.TrimSpace(fmt.Sprint(item["label"]))
+			key := normalizeCheckoutFieldKey(fmt.Sprint(item["key"]))
+			if key == "" {
+				key = normalizeCheckoutFieldKey(label)
+			}
+			if key != "" && label != "" {
+				labels[key] = label
+			}
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	lines := make([]string, 0, len(keys))
+	for _, key := range keys {
+		label := labels[key]
+		if label == "" {
+			label = strings.ReplaceAll(strings.Title(strings.ReplaceAll(key, "_", " ")), "  ", " ")
+		}
+		lines = append(lines, fmt.Sprintf("%s: %v", label, values[key]))
+	}
+	return lines
+}
+
 func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	conversationID := chi.URLParam(r, "id")
@@ -2732,6 +2941,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		ShippingZoneID  string         `json:"shipping_zone_id"`
 		PaymentMethod   string         `json:"payment_method"`
 		Notes           string         `json:"notes"`
+		CustomFields    map[string]any `json:"custom_fields"`
 		Items           []checkoutItem `json:"items"`
 	}
 	if decode(r, &in) != nil || len(in.Items) == 0 {
@@ -2756,8 +2966,9 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	}
 
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
-	var storeName, storeSlug string
-	if s.db.QueryRow(r.Context(), `SELECT name,slug,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&storeName, &storeSlug, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders) != nil {
+	var storeName, storeSlug, businessEngine string
+	var templateConfigRaw []byte
+	if s.db.QueryRow(r.Context(), `SELECT name,slug,pickup_enabled,delivery_enabled,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_engine,template_config FROM stores WHERE id=$1 AND is_active=true`, storeID).Scan(&storeName, &storeSlug, &pickupEnabled, &deliveryEnabled, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &businessEngine, &templateConfigRaw) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2765,6 +2976,9 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		jsonErr(w, 409, "La tienda tiene los pedidos pausados")
 		return
 	}
+	storeCaps := businessCapabilityFlagsFromRaw(businessEngine, templateConfigRaw)
+	deliveryEnabled = deliveryEnabled && storeCaps.SupportsDelivery
+	pickupEnabled = pickupEnabled && storeCaps.SupportsPickup
 	if in.DeliveryType == "" {
 		if deliveryEnabled {
 			in.DeliveryType = "delivery"
@@ -2780,18 +2994,29 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		jsonErr(w, 400, "Recogida no disponible")
 		return
 	}
-	allowedPayments := map[string]bool{"cash": cashEnabled, "cash_on_delivery": codEnabled, "bank_transfer": transferEnabled}
-	if !allowedPayments[in.PaymentMethod] {
-		for _, method := range []string{"cash_on_delivery", "cash", "bank_transfer"} {
-			if allowedPayments[method] {
-				in.PaymentMethod = method
-				break
+	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType)
+	if customFieldErr != nil {
+		jsonErr(w, 400, customFieldErr.Error())
+		return
+	}
+	customFieldsJSON, _ := json.Marshal(customFields)
+
+	if flowType == "quote" || !storeCaps.RequiresPayment {
+		in.PaymentMethod = "pending_quote"
+	} else {
+		allowedPayments := map[string]bool{"cash": cashEnabled, "cash_on_delivery": codEnabled, "bank_transfer": transferEnabled}
+		if !allowedPayments[in.PaymentMethod] {
+			for _, method := range []string{"cash", "cash_on_delivery", "bank_transfer"} {
+				if allowedPayments[method] {
+					in.PaymentMethod = method
+					break
+				}
 			}
 		}
-	}
-	if in.PaymentMethod == "" || !allowedPayments[in.PaymentMethod] {
-		jsonErr(w, 400, "No hay un método de pago disponible")
-		return
+		if in.PaymentMethod == "" || !allowedPayments[in.PaymentMethod] {
+			jsonErr(w, 400, "No hay un método de pago disponible")
+			return
+		}
 	}
 
 	tx, err := s.db.Begin(r.Context())
@@ -2845,7 +3070,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		_ = json.Unmarshal(extrasRaw, &allowedExtras)
 		unit := base
 		variantName := ""
-		if strings.TrimSpace(item.VariantName) != "" {
+		if storeCaps.SupportsVariants && strings.TrimSpace(item.VariantName) != "" {
 			found := false
 			for _, variant := range variants {
 				if variant.Name == item.VariantName {
@@ -2863,6 +3088,9 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 			}
 		}
 		normalizedExtras := []map[string]any{}
+		if !storeCaps.SupportsExtras {
+			item.Extras = nil
+		}
 		for _, requested := range item.Extras {
 			reqName := strings.TrimSpace(fmt.Sprint(requested["name"]))
 			if reqName == "" {
@@ -2909,7 +3137,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	total := subtotal + shipping
 	var orderID, publicToken string
 	var number int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,conversation_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,subtotal,discount,shipping,total,payment_method,notes,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,'whatsapp') RETURNING id,order_number,public_token::text`, storeID, customerID, conversationID, strings.TrimSpace(in.CustomerName), phone, strings.TrimSpace(in.DeliveryAddress), in.DeliveryType, zone, subtotal, shipping, total, in.PaymentMethod, strings.TrimSpace(in.Notes)).Scan(&orderID, &number, &publicToken)
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,conversation_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,subtotal,discount,shipping,total,payment_method,notes,custom_fields,flow_type,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,0,$10,$11,$12,$13,$14,$15,'whatsapp') RETURNING id,order_number,public_token::text`, storeID, customerID, conversationID, strings.TrimSpace(in.CustomerName), phone, strings.TrimSpace(in.DeliveryAddress), in.DeliveryType, zone, subtotal, shipping, total, in.PaymentMethod, strings.TrimSpace(in.Notes), customFieldsJSON, flowType).Scan(&orderID, &number, &publicToken)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
@@ -2934,17 +3162,29 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	for _, item := range resolvedItems {
 		lines = append(lines, fmt.Sprintf("• %sx %s — RD$ %.2f", formatOrderQuantity(item.qty), item.name, item.line))
 	}
+	flowNoun := "pedido"
+	if flowType == "reservation" {
+		flowNoun = "reserva"
+	} else if flowType == "quote" {
+		flowNoun = "solicitud"
+	}
+	contextLines := contextualCheckoutLines(templateConfigRaw, customFields)
+	detailLines := append([]string{}, lines...)
+	if len(contextLines) > 0 {
+		detailLines = append(detailLines, "", strings.Join(contextLines, "\n"))
+	}
 	trackingURL := s.storePublicURL(r.Context(), storeID, storeSlug) + "/order/" + publicToken
-	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
+	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu {tipo} #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
 		"cliente":     strings.TrimSpace(in.CustomerName),
 		"negocio":     strings.TrimSpace(storeName),
+		"tipo":        flowNoun,
 		"pedido":      fmt.Sprint(number),
 		"total":       fmt.Sprintf("RD$ %.2f", total),
-		"detalle":     strings.Join(lines, "\n"),
+		"detalle":     strings.Join(detailLines, "\n"),
 		"seguimiento": trackingURL,
 	})
 	_ = s.queueWhatsApp(context.Background(), storeID, conversationID, remoteJID, message, "order")
-	jsonOut(w, 201, map[string]any{"id": orderID, "number": number, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "shipping": shipping, "total": total, "status": "pending", "payment_status": "pending", "source": "whatsapp"})
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": number, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "shipping": shipping, "total": total, "status": "pending", "payment_status": "pending", "flow_type": flowType, "source": "whatsapp"})
 }
 
 func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
@@ -2970,18 +3210,19 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		ReservationAt  string         `json:"reservation_at"`
 		PartySize      int            `json:"party_size"`
 		Notes          string         `json:"notes"`
+		CustomFields   map[string]any `json:"custom_fields"`
 		Items          []checkoutItem `json:"items"`
 	}
 	if decode(r, &in) != nil || len(in.Items) == 0 {
 		jsonErr(w, 400, "Agrega productos antes de confirmar el pedido")
 		return
 	}
-	var sid, ownerID, timezone, storeName, storeAddress string
+	var sid, ownerID, timezone, storeName, storeAddress, businessEngine string
 	var minimum float64
 	var reservationDuration int
 	var pickupEnabled, deliveryEnabled, dineInEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
-	var hoursRaw []byte
-	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,coalesce(address,''),minimum_order,pickup_enabled,delivery_enabled,dine_in_enabled,reservation_duration_minutes,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone FROM stores WHERE id=$1 AND is_active=true`, tenantStore.StoreID).Scan(&sid, &ownerID, &storeName, &storeAddress, &minimum, &pickupEnabled, &deliveryEnabled, &dineInEnabled, &reservationDuration, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone) != nil {
+	var hoursRaw, templateConfigRaw []byte
+	if s.db.QueryRow(r.Context(), `SELECT id,user_id,name,coalesce(address,''),minimum_order,pickup_enabled,delivery_enabled,dine_in_enabled,reservation_duration_minutes,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,business_hours,timezone,business_engine,template_config FROM stores WHERE id=$1 AND is_active=true`, tenantStore.StoreID).Scan(&sid, &ownerID, &storeName, &storeAddress, &minimum, &pickupEnabled, &deliveryEnabled, &dineInEnabled, &reservationDuration, &cashEnabled, &codEnabled, &transferEnabled, &acceptingOrders, &hoursRaw, &timezone, &businessEngine, &templateConfigRaw) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
@@ -2993,6 +3234,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 409, "La tienda está fuera de su horario de pedidos")
 		return
 	}
+	storeCaps := businessCapabilityFlagsFromRaw(businessEngine, templateConfigRaw)
+	deliveryEnabled = deliveryEnabled && storeCaps.SupportsDelivery
+	pickupEnabled = pickupEnabled && storeCaps.SupportsPickup
+	dineInEnabled = dineInEnabled && storeCaps.SupportsDineIn
 	_ = ownerID
 
 	var customerFirstName, customerLastName, customerPhone, customerStatus string
@@ -3052,18 +3297,29 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		deliveryAddress = strings.TrimSpace(storeAddress)
 	}
 
-	allowedPayments := map[string]bool{"cash": cashEnabled, "bank_transfer": transferEnabled, "cash_on_delivery": codEnabled}
-	if !allowedPayments[in.PaymentMethod] {
-		for _, candidate := range []string{"cash_on_delivery", "cash", "bank_transfer"} {
-			if allowedPayments[candidate] {
-				in.PaymentMethod = candidate
-				break
+	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType)
+	if customFieldErr != nil {
+		jsonErr(w, 400, customFieldErr.Error())
+		return
+	}
+	customFieldsJSON, _ := json.Marshal(customFields)
+
+	if flowType == "quote" || !storeCaps.RequiresPayment {
+		in.PaymentMethod = "pending_quote"
+	} else {
+		allowedPayments := map[string]bool{"cash": cashEnabled, "bank_transfer": transferEnabled, "cash_on_delivery": codEnabled}
+		if !allowedPayments[in.PaymentMethod] {
+			for _, candidate := range []string{"cash", "cash_on_delivery", "bank_transfer"} {
+				if allowedPayments[candidate] {
+					in.PaymentMethod = candidate
+					break
+				}
 			}
 		}
-	}
-	if in.PaymentMethod == "" || !allowedPayments[in.PaymentMethod] {
-		jsonErr(w, 400, "La tienda no tiene un método de pago disponible")
-		return
+		if in.PaymentMethod == "" || !allowedPayments[in.PaymentMethod] {
+			jsonErr(w, 400, "La tienda no tiene un método de pago disponible")
+			return
+		}
 	}
 
 	tx, err := s.db.Begin(r.Context())
@@ -3160,7 +3416,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(extrasRaw, &allowedExtras)
 		variantName := ""
 		unit := base
-		if strings.TrimSpace(it.VariantName) != "" {
+		if storeCaps.SupportsVariants && strings.TrimSpace(it.VariantName) != "" {
 			found := false
 			for _, v := range variants {
 				if v.Name == it.VariantName {
@@ -3178,6 +3434,9 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		normalizedExtras := []map[string]any{}
+		if !storeCaps.SupportsExtras {
+			it.Extras = nil
+		}
 		for _, requested := range it.Extras {
 			reqName := strings.TrimSpace(fmt.Sprint(requested["name"]))
 			if reqName == "" {
@@ -3256,7 +3515,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	var orderID, publicToken string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,cash_change_requested,cash_tendered,notes,table_id,reservation_at,party_size,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, cashChangeRequested, cashTendered, in.Notes, reservedTableID, reservationAt, func() any {
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,cash_change_requested,cash_tendered,notes,custom_fields,flow_type,table_id,reservation_at,party_size,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, cashChangeRequested, cashTendered, in.Notes, customFieldsJSON, flowType, reservedTableID, reservationAt, func() any {
 		if in.DeliveryType == "dine_in" {
 			return partySize
 		}
@@ -3692,7 +3951,7 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	phone := normalizePhone(in.Phone)
 	if phone != "" {
 		var cid string
-		if tx.QueryRow(r.Context(), `SELECT id FROM customers WHERE store_id=$1 AND phone=$2 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=customers.id AND o.status<>'canceled') ORDER BY last_order_at DESC NULLS LAST,created_at DESC LIMIT 1`, in.StoreID, phone).Scan(&cid) == nil {
+		if tx.QueryRow(r.Context(), `SELECT id FROM customers WHERE store_id=$1 AND phone=$2 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=customers.id AND o.status<>'canceled' AND o.flow_type<>'quote') ORDER BY last_order_at DESC NULLS LAST,created_at DESC LIMIT 1`, in.StoreID, phone).Scan(&cid) == nil {
 			customerID = cid
 		}
 	}
@@ -4015,6 +4274,11 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
+	storeCaps, capsOK := s.businessCapabilityFlagsForStore(r.Context(), id)
+	if !capsOK {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
 	var in struct {
 		Name                       string         `json:"name"`
 		Slug                       string         `json:"slug"`
@@ -4063,6 +4327,15 @@ func (s *Server) updateStoreSettings(w http.ResponseWriter, r *http.Request) {
 	if in.MinimumOrder < 0 {
 		in.MinimumOrder = 0
 	}
+	if !storeCaps.SupportsDelivery {
+		in.DeliveryEnabled = false
+	}
+	if !storeCaps.SupportsPickup {
+		in.PickupEnabled = false
+	}
+	if !storeCaps.SupportsDineIn {
+		in.DineInEnabled = false
+	}
 	if in.ReservationDurationMinutes < 15 || in.ReservationDurationMinutes > 480 {
 		in.ReservationDurationMinutes = 90
 	}
@@ -4098,7 +4371,7 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 		WHERE cu.store_id=$1
 		  AND EXISTS (
 			SELECT 1 FROM orders o
-			WHERE o.customer_id=cu.id AND o.status<>'canceled'
+			WHERE o.customer_id=cu.id AND o.status<>'canceled' AND o.flow_type<>'quote'
 		  )
 		ORDER BY cu.last_order_at DESC NULLS LAST,cu.created_at DESC`, sid)
 	if err != nil {
@@ -4144,7 +4417,7 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
 		  AND NOT EXISTS (
 			SELECT 1 FROM orders o
-			WHERE o.customer_id=c.customer_id AND o.status<>'canceled'
+			WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote'
 		  )
 		ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
 		LIMIT 500`, sid)
@@ -4238,7 +4511,7 @@ func (s *Server) refreshCustomerStats(ctx context.Context, customerID string) {
 	if customerID == "" {
 		return
 	}
-	_, _ = s.db.Exec(ctx, `UPDATE customers c SET order_count=x.cnt,total_spent=x.spent,last_order_at=x.last_at,updated_at=now() FROM (SELECT count(*) FILTER (WHERE status<>'canceled')::int cnt,coalesce(sum(total) FILTER (WHERE status<>'canceled'),0) spent,max(created_at) FILTER (WHERE status<>'canceled') last_at FROM orders WHERE customer_id=$1) x WHERE c.id=$1`, customerID)
+	_, _ = s.db.Exec(ctx, `UPDATE customers c SET order_count=x.cnt,total_spent=x.spent,last_order_at=x.last_at,updated_at=now() FROM (SELECT count(*) FILTER (WHERE status<>'canceled' AND flow_type<>'quote')::int cnt,coalesce(sum(total) FILTER (WHERE status<>'canceled' AND flow_type<>'quote'),0) spent,max(created_at) FILTER (WHERE status<>'canceled' AND flow_type<>'quote') last_at FROM orders WHERE customer_id=$1) x WHERE c.id=$1`, customerID)
 }
 
 func (s *Server) updateOrderPayment(w http.ResponseWriter, r *http.Request) {
@@ -4374,7 +4647,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner'`).Scan(&users)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM stores`).Scan(&stores)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM products`).Scan(&products)
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*),coalesce(sum(total) FILTER (WHERE status<>'canceled'),0) FROM orders`).Scan(&orders, &revenue)
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FILTER (WHERE flow_type<>'quote'),coalesce(sum(total) FILTER (WHERE status<>'canceled' AND flow_type<>'quote'),0) FROM orders`).Scan(&orders, &revenue)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM subscription_requests WHERE status='pending'`).Scan(&pending)
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM support_tickets WHERE status<>'closed'`).Scan(&openTickets)
 	jsonOut(w, 200, map[string]any{"users": users, "stores": stores, "products": products, "orders": orders, "revenue": revenue, "pending_plan_requests": pending, "open_tickets": openTickets})
@@ -7160,6 +7433,29 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Venta inválida")
 		return
 	}
+	productCaps, capsOK := s.businessCapabilityFlagsForStore(r.Context(), in.StoreID)
+	if !capsOK {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	var cashEnabled, terminalEnabled, transferEnabled bool
+	if s.db.QueryRow(r.Context(), `SELECT cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled FROM stores WHERE id=$1`, in.StoreID).Scan(&cashEnabled, &terminalEnabled, &transferEnabled) != nil {
+		jsonErr(w, 404, "Tienda no encontrada")
+		return
+	}
+	allowedPayments := map[string]bool{"cash": cashEnabled, "cash_on_delivery": terminalEnabled, "bank_transfer": transferEnabled}
+	if strings.TrimSpace(in.PaymentMethod) == "" {
+		for _, candidate := range []string{"cash", "cash_on_delivery", "bank_transfer"} {
+			if allowedPayments[candidate] {
+				in.PaymentMethod = candidate
+				break
+			}
+		}
+	}
+	if !allowedPayments[in.PaymentMethod] {
+		jsonErr(w, 400, "Método de pago no habilitado para este negocio")
+		return
+	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
 		jsonErr(w, 500, "No se pudo iniciar la venta")
@@ -7226,7 +7522,7 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		_ = json.Unmarshal(extrasRaw, &allowedExtras)
 		unit := base
 		variantName := ""
-		if strings.TrimSpace(item.VariantName) != "" {
+		if productCaps.SupportsVariants && strings.TrimSpace(item.VariantName) != "" {
 			found := false
 			for _, option := range variants {
 				if option.Name == item.VariantName {
@@ -7244,6 +7540,9 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		normalizedExtras := []map[string]any{}
+		if !productCaps.SupportsExtras {
+			item.Extras = nil
+		}
 		for _, requested := range item.Extras {
 			reqName := strings.TrimSpace(fmt.Sprint(requested["name"]))
 			if reqName == "" {
@@ -7272,9 +7571,6 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 	}
 
 	method := strings.TrimSpace(in.PaymentMethod)
-	if method == "" {
-		method = "cash"
-	}
 	var orderID string
 	var num int64
 	if err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,subtotal,discount,shipping,total,payment_method,payment_status,status,source,delivery_type) VALUES($1,$2,$3,$4,$5,0,0,$5,$6,'paid','completed','pos','pickup') RETURNING id,order_number`, in.StoreID, customerID, name, phone, subtotal, method).Scan(&orderID, &num); err != nil {

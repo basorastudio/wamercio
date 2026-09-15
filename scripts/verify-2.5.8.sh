@@ -22,6 +22,10 @@ python3 scripts/test_2_5_8_api_build_regressions.py
 python3 scripts/test_2_5_8_admin_settings_independent_scroll.py
 python3 scripts/test_2_5_8_owner_identity_landing_editor.py
 python3 scripts/test_2_5_8_whatsapp_tables_pos.py
+node scripts/test_2_5_8_business_capabilities.js
+python3 scripts/test_2_5_8_platform_coherence.py
+python3 scripts/test_2_5_8_contextual_order_flows.py
+python3 scripts/test_2_5_8_customer_quote_distinction.py
 python3 scripts/test_2_5_8_next_page_exports.py
 python3 scripts/test_2_5_8_owner_customer_access_profile.py
 python3 scripts/test_2_5_8_whatsapp_identity_user_profiles.py
@@ -46,6 +50,10 @@ down=$(find services/api/migrations -maxdepth 1 -name '*.down.sql' | wc -l | tr 
 [ "$up" = "$down" ] || fail "migration pairs ($up/$down)"
 [ -f services/api/migrations/000019_multitenant_domains.up.sql ] || fail 'migration 000019 up'
 [ -f services/api/migrations/000019_multitenant_domains.down.sql ] || fail 'migration 000019 down'
+[ -f services/api/migrations/000026_business_capabilities_coherence.up.sql ] || fail 'migration 000026 up'
+[ -f services/api/migrations/000026_business_capabilities_coherence.down.sql ] || fail 'migration 000026 down'
+[ -f services/api/migrations/000027_quote_customer_metrics.up.sql ] || fail 'migration 000027 up'
+[ -f services/api/migrations/000027_quote_customer_metrics.down.sql ] || fail 'migration 000027 down'
 
 if grep -R -i -q 'colmapro\|col\.do' apps services --exclude-dir=node_modules; then fail 'legacy brand reference'; fi
 if grep -R -q 'wamercio.com/{slug}' apps services; then fail 'legacy path-based tenant URL'; fi

@@ -16,6 +16,12 @@ details_block = func_block('conversationDetails', 'saveConversationCustomer')
 save_block = func_block('saveConversationCustomer', 'updateConversationStatus')
 profile_block = func_block('whatsappProfile', 'supportWhatsAppEvent')
 
+contextual_start = server.find('func contextualCheckoutData(')
+contextual_end = server.find('func allowedPaymentProof(', contextual_start)
+if contextual_start < 0 or contextual_end < 0:
+    raise SystemExit('FAIL: contextualCheckoutData boundary not found')
+contextual_block = server[contextual_start:contextual_end]
+
 checks = {
     'conversationDetails keeps store id used in response': re.search(
         r'\n\s*sid,\s*jid,\s*ok\s*:=\s*s\.conversationOwned\(', details_block
@@ -27,6 +33,7 @@ checks = {
         r'\n\s*rows\s*:=\s*result\.RowsAffected\(\)', profile_block
     ) is not None,
     'pgx CommandTag RowsAffected is not treated as (value,error)': 'rows, _ := result.RowsAffected()' not in profile_block,
+    'contextual checkout switch has no duplicate default clause': '\n\t\tdefault:\n\t\tdefault:' not in contextual_block,
 }
 
 failed = [name for name, ok in checks.items() if not ok]

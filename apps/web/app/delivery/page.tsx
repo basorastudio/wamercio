@@ -1,23 +1,27 @@
 'use client'
 import {useEffect,useMemo,useState} from 'react'
+import Link from 'next/link'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money} from '@/lib/api'
+import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
 import {Alert,Loading,Modal,PageEmpty,Status,Switch} from '@/components/ui'
 import type {Shipping,Order} from '@/lib/types'
 import {Plus,Pencil,Trash2,Truck,MapPin,PackageCheck,Clock3,Route} from 'lucide-react'
 
 const blank={name:'',charge:0,estimated_minutes:30,is_active:true}
 export default function Delivery(){
- const[store,setStore]=useState(''),[zones,setZones]=useState<Shipping[]>([]),[orders,setOrders]=useState<Order[]>([]),[loading,setLoading]=useState(false),[open,setOpen]=useState(false),[edit,setEdit]=useState<Shipping|null>(null),[form,setForm]=useState<any>(blank),[err,setErr]=useState('')
- const load=()=>{if(!store){setZones([]);setOrders([]);return};setLoading(true);Promise.all([api<Shipping[]>(`/shipping?store_id=${store}`),api<Order[]>(`/orders?store_id=${store}`)]).then(([z,o])=>{setZones(z);setOrders(o)}).finally(()=>setLoading(false))}
+ const[store,setStore]=useState(''),[zones,setZones]=useState<Shipping[]>([]),[orders,setOrders]=useState<Order[]>([]),[storeConfig,setStoreConfig]=useState<any>(null),[loading,setLoading]=useState(false),[open,setOpen]=useState(false),[edit,setEdit]=useState<Shipping|null>(null),[form,setForm]=useState<any>(blank),[err,setErr]=useState('')
+ const load=()=>{if(!store){setZones([]);setOrders([]);setStoreConfig(null);return};setLoading(true);Promise.all([api<Shipping[]>(`/shipping?store_id=${store}`),api<Order[]>(`/orders?store_id=${store}`),api<any>(`/stores/${store}/settings`)]).then(([z,o,cfg])=>{setZones(z);setOrders(o);setStoreConfig(cfg)}).finally(()=>setLoading(false))}
  useEffect(load,[store])
+ const capabilities=useMemo(()=>resolveBusinessCapabilities(storeConfig),[storeConfig])
+ const supportsDelivery=!!storeConfig?.delivery_enabled&&capabilities.supportsDelivery
  const active=useMemo(()=>orders.filter(o=>o.delivery_type==='delivery'&&['pending','confirmed','processing','preparing','ready','out_for_delivery'].includes(o.status)),[orders])
  const counts={pending:active.filter(o=>['pending','confirmed','processing','preparing'].includes(o.status)).length,ready:active.filter(o=>o.status==='ready').length,route:active.filter(o=>o.status==='out_for_delivery').length}
  const start=(x?:Shipping)=>{setEdit(x||null);setForm(x?{...x}:blank);setErr('');setOpen(true)}
  const save=async(e:React.FormEvent)=>{e.preventDefault();setErr('');try{const body={...form,store_id:store,estimated_minutes:Number(form.estimated_minutes||30)};if(edit)await api(`/shipping/${edit.id}`,{method:'PUT',body:JSON.stringify(body)});else await api('/shipping',{method:'POST',body:JSON.stringify(body)});setOpen(false);load()}catch(e:any){setErr(e.message)}}
  const del=async(x:Shipping)=>{if(!confirm(`¿Eliminar zona ${x.name}?`))return;await api(`/shipping/${x.id}`,{method:'DELETE'});load()}
- return <StoreShell title="Entregas" subtitle="Supervisa la operación en vivo y administra la cobertura del negocio desde un solo lugar" context={<StoreSelector value={store} onChange={setStore}/>} actions={<button disabled={!store} onClick={()=>start()} className="btn-primary"><Plus className="h-4 w-4"/>Nueva zona</button>}>
-  {!store?<PageEmpty title="Selecciona un negocio" detail="Elige el negocio para supervisar entregas y cobertura."/>:loading?<Loading/>:<div className="space-y-5">
+ return <StoreShell title="Entregas" subtitle="Supervisa la operación en vivo y administra la cobertura del negocio desde un solo lugar" context={<StoreSelector value={store} onChange={setStore}/>} actions={supportsDelivery?<button disabled={!store} onClick={()=>start()} className="btn-primary"><Plus className="h-4 w-4"/>Nueva zona</button>:null}>
+  {!store?<PageEmpty title="Selecciona un negocio" detail="Elige el negocio para supervisar entregas y cobertura."/>:loading?<Loading/>:!supportsDelivery?<PageEmpty title="Delivery no habilitado para este negocio" detail={`El tipo de negocio ${storeConfig?.name?`“${storeConfig.name}”`:''} no utiliza delivery en su configuración actual. Actívalo solo si forma parte de su operación.`} action={<Link href="/settings/store?tab=sales" className="btn-primary">Revisar ventas y entrega</Link>}/>:<div className="space-y-5">
    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{[[PackageCheck,'Pendientes',counts.pending],[Clock3,'Listas',counts.ready],[Route,'En ruta',counts.route],[Truck,'Entregas activas',active.length]].map(([I,l,v]:any)=><div key={l} className="card flex items-center gap-4 p-5"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-brand-50 text-brand-600"><I className="h-5 w-5"/></span><div><div className="text-2xl font-semibold">{v}</div><div className="text-xs text-[#8d92aa]">{l}</div></div></div>)}</div>
    <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
     <section className="card overflow-hidden"><div className="border-b border-[#edf0f5] p-5"><div className="text-[10px] font-bold uppercase tracking-[.16em] text-brand-600">Centro de operaciones</div><h2 className="mt-1 text-lg font-semibold">Operación en vivo</h2><p className="mt-1 text-sm text-[#8d92aa]">Pedidos pendientes, listos y en ruta aparecen aquí automáticamente.</p></div>{active.length?<div className="divide-y divide-[#edf0f5]">{active.map(o=><div key={o.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><div className="font-semibold">Pedido #{o.number} · {o.customer_name}</div><div className="mt-1 text-xs text-[#8d92aa]">{o.customer_phone} · {money(o.total)}</div>{o.payment_method==='cash'&&<div className="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">{o.cash_change_requested?`Cambio para ${money(o.cash_tendered||0)}`:'Pago exacto'}</div>}</div><Status value={o.status}/><a className="btn-secondary" href="/orders">Gestionar</a></div>)}</div>:<div className="p-12 text-center"><Truck className="mx-auto h-8 w-8 text-[#d5d9e3]"/><div className="mt-3 font-semibold">No hay entregas activas</div><p className="mt-1 text-sm text-[#9ba0b4]">Los pedidos con entrega aparecerán aquí automáticamente.</p></div>}</section>

@@ -39,7 +39,7 @@ La configuración concreta se guarda en `business_templates.settings` y se clona
 | Cosméticos | Belleza | retail | tonos, tamaños y catálogo visual |
 | Celulares y tecnología | Tecnología | catalog | especificaciones, condición y garantía |
 | Ferretería | Ferretería | quotation | compra directa y cotización |
-| Repuestos | Automotriz | catalog | compatibilidad, marca y referencia |
+| Repuestos | Automotriz | quotation | compatibilidad, marca y referencia |
 | Salón de belleza | Servicios | services | servicios y coordinación por WhatsApp |
 | Barbería | Servicios | services | servicios y coordinación por WhatsApp |
 | Pet Shop | Mascotas | retail | alimentos, tamaños y accesorios |

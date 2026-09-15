@@ -16,7 +16,7 @@ assert '<span>Mi compra</span>' in mobile
 assert '<span>Mi compra</span>' in customer
 
 # Checkout payment order is cash, terminal card, transfer.
-assert "const paymentOptions=['cash','cash_on_delivery','bank_transfer'].filter" in store
+assert "['cash','cash_on_delivery','bank_transfer'].filter" in store
 assert payments.index('>Efectivo<') < payments.index('>Tarjeta en terminal<') < payments.index('>Transferencia electrónica<')
 
 # Notes belong under the cart products, not the checkout column.
@@ -29,6 +29,10 @@ assert 'grid-cols-[64px_minmax(0,1fr)_auto]' in store
 
 # Product cards reserve a dedicated action column so +/check cannot cover the price.
 assert 'grid-cols-[minmax(0,1fr)_2.25rem]' in store
+
+# Carousel count must follow the visible fulfillment cards; some business types only render two.
+assert 'const hasFulfillmentPerk=' in store and 'const count=2+(hasFulfillmentPerk?1:0)' in store, 'carousel count follows visible perks'
+assert 'const count=3' not in store, 'carousel must not assume three cards'
 
 # Product modal no longer has rounded outer corners.
 assert 'data-testid="storefront-product-modal"' in store

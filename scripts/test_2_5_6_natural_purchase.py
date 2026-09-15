@@ -5,7 +5,7 @@ products=(root/'apps/web/app/catalog/products/page.tsx').read_text()
 checks={
  'cart helper import': "from '@/lib/storefront-cart'" in store,
  'edit cart line action': 'data-testid="edit-cart-item"' in store and 'openCartItem' in store,
- 'update order CTA': 'Actualizar mi pedido' in store,
+ 'update order CTA': 'Actualizar mi compra' in store,
  'add another configuration': 'Agregar otra combinación' in store,
  'catalog cart summary': 'data-testid="product-cart-summary"' in store,
  'non disruptive save': 'setCartNotice' in store,

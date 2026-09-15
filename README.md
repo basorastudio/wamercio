@@ -12,6 +12,18 @@ La tienda pública conserva el catálogo visible mientras el cliente arma su ped
 - Los negocios que atienden en local pueden activar **Mesas y reservas**, administrar capacidad y aceptar pedidos asociados a una reserva.
 - El POS reutiliza la lógica comercial del catálogo: ficha con imagen, descripción, variantes y adicionales antes de agregar, además de búsqueda de clientes registrados.
 
+## Capacidades por tipo de negocio
+
+WAMERCIO utiliza `business_engine` + `template_config` como fuente de verdad para adaptar cada negocio sin duplicar plataformas. El catálogo, checkout, POS, entregas, WhatsApp asistido y panel administrativo muestran únicamente las funciones que corresponden al tipo de negocio:
+
+- variantes, adicionales e inventario cuando la plantilla los soporta;
+- Delivery, Recoger y Mesa/Reserva según capacidades reales del negocio;
+- citas, solicitudes de cotización, personalización y venta mayorista cuando estén habilitadas;
+- campos dinámicos de checkout definidos por la plantilla y persistidos con la operación;
+- flujos diferenciados `order`, `reservation` y `quote`, evitando que una cotización pendiente se contabilice como compra, cliente o ingreso.
+
+El SuperAdmin puede administrar estas capacidades desde **Tipos de negocio**, de modo que nuevas plantillas hereden un comportamiento coherente en toda la plataforma.
+
 ## Publicación
 
 - Plataforma y administración: `https://wamercio.com`
@@ -20,14 +32,14 @@ La tienda pública conserva el catálogo visible mientras el cliente arma su ped
 
 ## Storefront 2.5.5
 
-La experiencia pública del negocio se refinó para mantener la tienda útil mientras el cliente compra. Al abrir **Mi pedido**, WAMERCIO cambia a una página completa de carrito/checkout en lugar de usar un panel lateral:
+La experiencia pública del negocio se refinó para mantener la tienda útil mientras el cliente compra. Al abrir **Mi compra**, WAMERCIO cambia a una página completa de carrito/checkout en lugar de usar un panel lateral:
 
 - acceso progresivo por WhatsApp sin botón intermedio;
 - búsqueda predictiva en la barra superior sin filtrar el lienzo del catálogo;
 - resultados contextuales que abren directamente la ficha del producto;
 - tarjetas de producto más consistentes y precios iniciales correctos cuando existen variantes;
 - carrito como página completa dedicada: productos a la izquierda y checkout completo visible de inmediato a la derecha en escritorio, con flujo vertical responsive en móvil;
-- la edición de una línea del carrito abre la ficha del producto directamente sobre **Mi pedido**, sin regresar al catálogo;
+- la edición de una línea del carrito abre la ficha del producto directamente sobre **Mi compra**, sin regresar al catálogo;
 - una sola acción **Seguir comprando** devuelve al catálogo y no existe un paso intermedio para desplegar entrega/pago;
 - la dirección deja de ocupar espacio en la barra superior.
 
