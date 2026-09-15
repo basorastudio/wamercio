@@ -1,3 +1,16 @@
+# WAMERCIO 2.5.8 — Pulido móvil de catálogo, carrito y pagos
+
+- Convierte las tarjetas informativas **Recibiendo pedidos / Delivery / Compra fácil** en un carrusel horizontal automático en móvil, manteniéndolas en una sola fila de tres columnas en escritorio.
+- Elimina el botón superior **Mi pedido** y concentra ese acceso en la navegación móvil, renombrado como **Mi compra**.
+- Compacta las líneas del carrito en móvil para aprovechar mejor el ancho y reducir espacios vacíos.
+- Mueve **3 · Notas** debajo de los productos del carrito, separándolo del bloque de modalidad/pago.
+- Reestructura el pie de cada tarjeta de producto para reservar una columna fija al botón `+`/cotejo y evitar que tape el precio.
+- El modal de producto deja de usar esquinas redondeadas exteriores para una presentación más limpia y directa.
+- Reordena los métodos de pago como **Efectivo → Tarjeta en terminal → Transferencia electrónica** en checkout, configuración, POS y creación de pedidos desde conversaciones.
+- Añade regresiones específicas para estos comportamientos. No requiere migraciones ni nuevas variables de entorno.
+
+---
+
 # WAMERCIO 2.5.8 — Experiencia cliente refinada y cambio en efectivo
 
 - Refina la aplicación cliente tomando como referencia el patrón móvil de ColmaPro: navegación inferior **Catálogo / Mi pedido / Pedidos / WhatsApp**, tarjetas compactas y continuidad entre catálogo, carrito, pedidos y perfil.

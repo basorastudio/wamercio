@@ -26,8 +26,8 @@ checks={
  'order list type exposes change data': 'cash_change_requested' in types and 'cash_tendered' in types,
  'migration up exists': up.exists(),
  'migration down exists': down.exists(),
- 'storefront colmapro nav': all(x in mobile for x in ('Catálogo','Mi pedido','Pedidos','WhatsApp')),
- 'customer shell colmapro nav': all(x in shell for x in ('Catálogo','Mi pedido','Pedidos','WhatsApp')),
+ 'storefront colmapro nav': all(x in mobile for x in ('Catálogo','Mi compra','Pedidos','WhatsApp')),
+ 'customer shell colmapro nav': all(x in shell for x in ('Catálogo','Mi compra','Pedidos','WhatsApp')),
 }
 if up.exists():
     txt=up.read_text().lower()
