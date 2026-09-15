@@ -7,6 +7,8 @@ whatsapp_ui = read('apps/web/app/settings/whatsapp/page.tsx')
 bridge = read('services/whatsapp-bridge/internal/bridge/bridge.go')
 api = read('services/api/internal/httpapi/server.go')
 store_settings = read('apps/web/app/settings/store/page.tsx')
+tables_ui = read('apps/web/app/tables/page.tsx')
+store_shell = read('apps/web/components/store-shell.tsx')
 storefront = read('apps/web/components/storefront.tsx')
 pos = read('apps/web/app/pos/page.tsx')
 orders = read('apps/web/app/orders/page.tsx')
@@ -30,7 +32,8 @@ checks = [
     ('Migration up exists', up.exists()),
     ('Migration down exists', down.exists()),
     ('Tables settings toggle', 'Mesas y reservas' in store_settings and 'dine_in_enabled' in store_settings),
-    ('Tables management UI', 'Administrar mesas' in store_settings and '/tables' in store_settings),
+    ('Tables management UI moved to dedicated page', 'Administrar mesas' in tables_ui and '/tables' in tables_ui and 'Administrar mesas' not in store_settings),
+    ('Tables nav appears when enabled', 'Gestión de mesas' in store_shell and 'dineInNav' in store_shell),
     ('Tables API routes', 'listStoreTables' in api and 'createStoreTable' in api and 'updateStoreTable' in api and 'deleteStoreTable' in api),
     ('Storefront dine-in mode', "delivery_type:'dine_in'" in storefront and 'Reservar mesa' in storefront),
     ('Storefront reservation fields', 'reservation_at' in storefront and 'party_size' in storefront and 'table_id' in storefront),

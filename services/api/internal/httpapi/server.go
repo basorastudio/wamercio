@@ -178,6 +178,9 @@ func (s *Server) Router() http.Handler {
 			p.Get("/conversations/{id}/details", s.conversationDetails)
 			p.Put("/conversations/{id}/customer", s.saveConversationCustomer)
 			p.Patch("/conversations/{id}/status", s.updateConversationStatus)
+			p.Delete("/conversations/{id}", s.deleteConversation)
+			p.Delete("/conversations/{id}/messages", s.clearConversationMessages)
+			p.Patch("/conversations/{id}/block", s.blockConversation)
 			p.Get("/conversations/{id}/notes", s.listConversationNotes)
 			p.Post("/conversations/{id}/notes", s.createConversationNote)
 			p.Patch("/conversations/{id}/read", s.readConversation)
@@ -2424,6 +2427,97 @@ func (s *Server) updateConversationStatus(w http.ResponseWriter, r *http.Request
 	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET status=$1,updated_at=now() WHERE id=$2`, in.Status, id)
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
+func (s *Server) deleteConversation(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	if _, err := s.db.Exec(r.Context(), `DELETE FROM conversations WHERE id=$1`, id); err != nil {
+		jsonErr(w, 500, "No se pudo eliminar la conversación")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) clearConversationMessages(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo vaciar la conversación")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	if _, err = tx.Exec(r.Context(), `DELETE FROM messages WHERE conversation_id=$1`, id); err != nil {
+		jsonErr(w, 500, "No se pudieron eliminar los mensajes")
+		return
+	}
+	if _, err = tx.Exec(r.Context(), `UPDATE conversations SET unread_count=0,last_message='',last_message_at=NULL,updated_at=now() WHERE id=$1`, id); err != nil {
+		jsonErr(w, 500, "No se pudo actualizar la conversación")
+		return
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo vaciar la conversación")
+		return
+	}
+	jsonOut(w, 200, map[string]bool{"ok": true})
+}
+
+func (s *Server) blockConversation(w http.ResponseWriter, r *http.Request) {
+	c := claims(r)
+	id := chi.URLParam(r, "id")
+	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	if !ok {
+		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	var in struct {
+		Blocked bool `json:"blocked"`
+	}
+	if decode(r, &in) != nil {
+		jsonErr(w, 400, "Estado inválido")
+		return
+	}
+	status := "active"
+	if in.Blocked {
+		status = "blocked"
+	}
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		jsonErr(w, 500, "No se pudo actualizar el contacto")
+		return
+	}
+	defer tx.Rollback(r.Context())
+	var customerID string
+	_ = tx.QueryRow(r.Context(), `SELECT coalesce(customer_id::text,'') FROM conversations WHERE id=$1`, id).Scan(&customerID)
+	if _, err = tx.Exec(r.Context(), `UPDATE conversations SET contact_status=$1,status=CASE WHEN $2 THEN 'closed' ELSE status END,unread_count=CASE WHEN $2 THEN 0 ELSE unread_count END,updated_at=now() WHERE id=$3`, status, in.Blocked, id); err != nil {
+		jsonErr(w, 500, "No se pudo actualizar la conversación")
+		return
+	}
+	if customerID != "" {
+		_, _ = tx.Exec(r.Context(), `UPDATE customers SET status=$1,updated_at=now() WHERE id=$2`, status, customerID)
+	}
+	if err = tx.Commit(r.Context()); err != nil {
+		jsonErr(w, 500, "No se pudo actualizar el contacto")
+		return
+	}
+	jsonOut(w, 200, map[string]any{"ok": true, "blocked": in.Blocked})
+}
+
+func (s *Server) conversationIsBlocked(ctx context.Context, id string) bool {
+	var blocked bool
+	_ = s.db.QueryRow(ctx, `SELECT coalesce(contact_status,'active')='blocked' FROM conversations WHERE id=$1`, id).Scan(&blocked)
+	return blocked
+}
+
 func (s *Server) listConversationNotes(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
@@ -2502,6 +2596,10 @@ func (s *Server) sendConversationMessage(w http.ResponseWriter, r *http.Request)
 	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
 	if !ok {
 		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	if s.conversationIsBlocked(r.Context(), id) {
+		jsonErr(w, 409, "El contacto está bloqueado")
 		return
 	}
 	var in struct {
@@ -3964,6 +4062,14 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Tienda inválida")
 		return
 	}
+	if in.Direction != "out" {
+		var blocked bool
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM conversations WHERE store_id=$1 AND remote_jid=$2 AND coalesce(contact_status,'active')='blocked')`, in.StoreID, in.RemoteJID).Scan(&blocked)
+		if blocked {
+			jsonOut(w, 200, map[string]any{"ok": true, "ignored": true, "reason": "blocked"})
+			return
+		}
+	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
 		jsonErr(w, 500, "db")
@@ -5417,6 +5523,10 @@ func (s *Server) sendConversationMedia(w http.ResponseWriter, r *http.Request) {
 	sid, jid, ok := s.conversationOwned(r.Context(), c, id)
 	if !ok {
 		jsonErr(w, 404, "Conversación no encontrada")
+		return
+	}
+	if s.conversationIsBlocked(r.Context(), id) {
+		jsonErr(w, 409, "El contacto está bloqueado")
 		return
 	}
 	if err := r.ParseMultipartForm(33 << 20); err != nil {

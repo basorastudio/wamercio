@@ -88,3 +88,9 @@ button,a,input,select,textarea { touch-action:manipulation; }
 
 .storefront .field:focus{border-color:var(--store-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--store-primary) 12%,transparent)}
 .storefront ::selection{background:color-mix(in srgb,var(--store-primary) 22%,white);color:var(--store-text)}
+
+/* POS: densidad adaptable al estado real del menú lateral. */
+@media (min-width: 1600px) {
+  [data-sidebar-collapsed="false"] .pos-product-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  [data-sidebar-collapsed="true"] .pos-product-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}

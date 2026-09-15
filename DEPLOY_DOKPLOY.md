@@ -90,3 +90,14 @@ git push
 ```
 
 Luego realiza Rebuild + Redeploy en Dokploy.
+
+## Revisión POS / WhatsApp / Gestión de mesas
+
+No requiere migraciones ni variables de entorno adicionales.
+
+Después del Rebuild + Redeploy valida:
+
+- **Punto de Venta**: el rail **Venta actual** comienza en la línea superior de la cabecera y permanece fijo hasta el pie; en un escritorio amplio verifica 5 columnas con el menú desplegado y 6 con el menú plegado.
+- **WhatsApp**: la cabecera genérica ya no aparece; abre un chat y prueba el menú `⋮` con Vaciar, Exportar, Cerrar, Bloquear y Eliminar.
+- **Configuración → Ventas y entrega**: activa **Mesas y reservas** y guarda los cambios.
+- Confirma que aparezca **Gestión de mesas** en el grupo Gestión de la barra lateral y crea una mesa de prueba.

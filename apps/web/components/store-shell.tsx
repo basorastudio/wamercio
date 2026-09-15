@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
-  ChevronLeft,ChevronRight,ExternalLink
+  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed
 } from 'lucide-react'
 
 const SIDEBAR_KEY='wamercio_sidebar_collapsed'
@@ -30,6 +30,7 @@ const baseStoreTools=[
   {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},
   {href:'/settings/store',label:'Configuración',icon:SlidersHorizontal},
 ]
+const tablesNav={href:'/tables',label:'Gestión de mesas',icon:UtensilsCrossed}
 const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
 const account=[
   {href:'/settings/profile',label:'Mi cuenta',icon:Settings},
@@ -45,25 +46,39 @@ function NavLink({n,onClick,collapsed}:{n:any;onClick?:()=>void;collapsed?:boole
   </Link>
 }
 
-export default function StoreShell({children,title,subtitle,actions,context,fullHeight=false}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode;context?:React.ReactNode;fullHeight?:boolean}){
+export default function StoreShell({children,title,subtitle,actions,context,fullHeight=false,hideHeader=false,structuralRightRail=false}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode;context?:React.ReactNode;fullHeight?:boolean;hideHeader?:boolean;structuralRightRail?:boolean}){
  const path=usePathname(),router=useRouter()
  const[drawer,setDrawer]=useState(false)
  const[more,setMore]=useState(false)
  const[me,setMe]=useState<any>(null)
  const[stores,setStores]=useState<any[]|null>(null)
  const[collapsed,setCollapsed]=useState(false)
+ const[dineInNav,setDineInNav]=useState(false)
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
  useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(setStores).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;window.addEventListener('wamercio:stores-changed',refresh);return()=>window.removeEventListener('wamercio:stores-changed',refresh)},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
+ useEffect(()=>{
+  if(typeof window==='undefined')return
+  const refreshDineIn=async()=>{
+   const remembered=localStorage.getItem('wamercio_store_id')||stores?.find((x:any)=>x.is_active!==false)?.id||stores?.[0]?.id||''
+   if(!remembered){setDineInNav(false);return}
+   try{const cfg:any=await api(`/stores/${remembered}/settings`);setDineInNav(!!cfg?.dine_in_enabled)}catch{setDineInNav(false)}
+  }
+  void refreshDineIn()
+  const onChange=()=>void refreshDineIn()
+  window.addEventListener('wamercio:active-store-changed',onChange)
+  window.addEventListener('wamercio:store-settings-changed',onChange)
+  return()=>{window.removeEventListener('wamercio:active-store-changed',onChange);window.removeEventListener('wamercio:store-settings-changed',onChange)}
+ },[stores])
  useEffect(()=>{setMore(false);setDrawer(false)},[path])
  const toggleCollapsed=()=>setCollapsed(v=>{const next=!v;if(typeof window!=='undefined')localStorage.setItem(SIDEBAR_KEY,next?'1':'0');return next})
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
  const storeCount=stores?.length??null
  const primaryStore=useMemo(()=>stores?.find((store:any)=>store.is_active!==false)??stores?.[0]??null,[stores])
- const storeTools=useMemo(()=>storeCount!==null&&storeCount>1?[...baseStoreTools,storesNav]:baseStoreTools,[storeCount])
+ const storeTools=useMemo(()=>{const tools=dineInNav?[...baseStoreTools.slice(0,2),tablesNav,...baseStoreTools.slice(2)]:baseStoreTools;return storeCount!==null&&storeCount>1?[...tools,storesNav]:tools},[storeCount,dineInNav])
  const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[storeTools])
  const all=useMemo(()=>[...commerce,...catalog,...storeTools,...account],[storeTools])
- return <div className="min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
+ return <div data-sidebar-collapsed={collapsed?'true':'false'} className="group/shell min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
   {drawer&&<button aria-label="Cerrar menú" onClick={()=>setDrawer(false)} className="fixed inset-0 z-40 bg-[#2e3154]/25 lg:hidden"/>}
   <aside className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#eceef4] bg-white transition-[width,transform] duration-200 lg:translate-x-0 ${collapsed?'w-[88px]':'w-[258px]'} ${drawer?'translate-x-0':'-translate-x-full'}`}>
    <div className={`flex h-[70px] items-center border-b border-[#f0f1f5] ${collapsed?'justify-center px-3':'gap-2.5 px-5'}`}>
@@ -88,14 +103,14 @@ export default function StoreShell({children,title,subtitle,actions,context,full
   </aside>
 
   <div className={`transition-[padding] duration-200 ${collapsed?'lg:pl-[88px]':'lg:pl-[258px]'}`}>
-   <header className="sticky top-0 z-30 border-b border-[#eceef4] bg-white/95 backdrop-blur">
-    <div className="flex min-h-[66px] flex-wrap items-center gap-3 px-3 py-2 sm:px-5 md:flex-nowrap md:py-0 lg:px-6 xl:px-7">
+   {!hideHeader&&<header className="sticky top-0 z-30 border-b border-[#eceef4] bg-white/95 backdrop-blur">
+    <div className={`flex min-h-[66px] flex-wrap items-center gap-3 px-3 py-2 sm:px-5 md:flex-nowrap md:py-0 lg:px-6 xl:px-7 ${structuralRightRail?'xl:pr-[430px]':''}`}>
       <button className="rounded-xl p-2 text-[#777c96] hover:bg-[#f5f6f9] lg:hidden" onClick={()=>setDrawer(true)}><Menu className="h-5 w-5"/></button>
       <button className="hidden rounded-xl p-2 text-[#777c96] hover:bg-[#f5f6f9] lg:inline-flex" onClick={toggleCollapsed} title={collapsed?'Expandir menú':'Contraer menú'}>{collapsed?<ChevronRight className="h-5 w-5"/>:<ChevronLeft className="h-5 w-5"/>}</button>
       <div className="min-w-0 flex-1"><h1 className="truncate text-lg font-semibold tracking-tight text-ink-900 sm:text-xl">{title}</h1>{subtitle&&<p className="hidden truncate text-xs text-[#9a9fb5] sm:block">{subtitle}</p>}</div>{context&&<div className="order-3 w-full md:order-none md:min-w-[210px] md:max-w-[300px] md:flex-1">{context}</div>}<div className="flex shrink-0 items-center gap-2">{primaryStore&&<a href={storeCount===1?(primaryStore.public_url||`https://${primaryStore.slug}.${process.env.NEXT_PUBLIC_TENANT_ROOT_DOMAIN||'ltd.do'}`):'/stores'} target={storeCount===1?'_blank':undefined} rel={storeCount===1?'noreferrer':undefined} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 sm:px-3.5 sm:text-sm" title={storeCount===1?'Abrir tienda pública':'Elegir tienda'}><Store className="h-4 w-4"/><span>Ver tienda</span>{storeCount===1&&<ExternalLink className="hidden h-3.5 w-3.5 opacity-70 sm:block"/>}</a>}{actions}</div>
     </div>
-   </header>
-   <main className={`mx-auto w-full max-w-[1700px] ${fullHeight?'h-[calc(100dvh-188px)] overflow-hidden p-3 sm:p-4 md:h-[calc(100dvh-132px)] lg:h-[calc(100dvh-66px)] lg:p-4 xl:p-4':'p-3 sm:p-5 lg:p-6 xl:p-7'}`}>{children}</main>
+   </header>}
+   <main className={`mx-auto w-full max-w-[1700px] ${fullHeight?(hideHeader?'h-[calc(100dvh-72px)] overflow-hidden p-0 lg:h-dvh':'h-[calc(100dvh-188px)] overflow-hidden p-3 sm:p-4 md:h-[calc(100dvh-132px)] lg:h-[calc(100dvh-66px)] lg:p-4 xl:p-4'):'p-3 sm:p-5 lg:p-6 xl:p-7'}`}>{children}</main>
   </div>
 
   <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#e9ebf1] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"><div className="grid h-[66px] grid-cols-5">{bottom.map(n=>{const I=n.icon;const active=path===n.href||path.startsWith(n.href+'/');return <Link key={n.href} href={n.href} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${active?'text-brand-600':'text-[#8d92a9]'}`}><I className="h-5 w-5"/><span>{n.label}</span></Link>})}<button onClick={()=>setMore(true)} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${more?'text-brand-600':'text-[#8d92a9]'}`}><MoreHorizontal className="h-5 w-5"/><span>Más</span></button></div></nav>
@@ -106,9 +121,9 @@ export default function StoreShell({children,title,subtitle,actions,context,full
 
 export function StoreSelector({value,onChange,onStoreChange,className=''}:{value:string;onChange:(id:string)=>void;onStoreChange?:(store:any|null)=>void;className?:string}){
  const[stores,setStores]=useState<any[]>([])
- useEffect(()=>{api<any[]>('/stores').then(x=>{setStores(x);if(!value&&x[0]){const remembered=typeof window!=='undefined'?localStorage.getItem('wamercio_store_id'):'';const selected=x.some(s=>s.id===remembered)?remembered!:x[0].id;onChange(selected);onStoreChange?.(x.find(s=>s.id===selected)||null)}else if(value){onStoreChange?.(x.find(s=>s.id===value)||null)}}).catch(()=>{})},[])
+ useEffect(()=>{api<any[]>('/stores').then(x=>{setStores(x);if(!value&&x[0]){const remembered=typeof window!=='undefined'?localStorage.getItem('wamercio_store_id'):'';const selected=x.some(s=>s.id===remembered)?remembered!:x[0].id;onChange(selected);window.dispatchEvent(new CustomEvent('wamercio:active-store-changed',{detail:{store_id:selected}}));onStoreChange?.(x.find(s=>s.id===selected)||null)}else if(value){onStoreChange?.(x.find(s=>s.id===value)||null)}}).catch(()=>{})},[])
  useEffect(()=>{if(stores.length)onStoreChange?.(stores.find(s=>s.id===value)||null)},[value,stores])
- const change=(id:string)=>{if(typeof window!=='undefined'){if(id)localStorage.setItem('wamercio_store_id',id);else localStorage.removeItem('wamercio_store_id')}onChange(id);onStoreChange?.(stores.find(s=>s.id===id)||null)}
+ const change=(id:string)=>{if(typeof window!=='undefined'){if(id)localStorage.setItem('wamercio_store_id',id);else localStorage.removeItem('wamercio_store_id');window.dispatchEvent(new CustomEvent('wamercio:active-store-changed',{detail:{store_id:id}}))}onChange(id);onStoreChange?.(stores.find(s=>s.id===id)||null)}
  if(stores.length===1)return <div className={`hidden md:flex items-center gap-2 rounded-xl border border-[#e8ebf2] bg-[#fafbfe] px-3 py-2 text-sm font-medium text-[#6f758d] ${className}`}><Store className="h-4 w-4 text-brand-600"/><span className="truncate">{stores[0].name}</span></div>
  return <div className={`relative ${className}`}><select className="field w-full min-w-0 appearance-none pr-9" value={value} onChange={e=>change(e.target.value)}><option value="">Selecciona una tienda</option>{stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a0a5b8]"/></div>
 }

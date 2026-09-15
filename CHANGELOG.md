@@ -299,3 +299,30 @@ No requiere migraciones ni variables nuevas. Conserva `TENANT_ROOT_DOMAIN=ltd.do
 - Se reutiliza `[slug]` como único segmento dinámico raíz para `wamercio.com/{slug}`.
 - `[slug]` actúa solamente como acceso corto de la plataforma y redirige a `https://{slug}.ltd.do`.
 - Se agrega una regresión que impide volver a introducir dos nombres distintos de slug al mismo nivel del App Router.
+
+---
+
+## WAMERCIO 2.5.8 — POS estructural, menú contextual de WhatsApp y Gestión de mesas
+
+### Punto de Venta
+
+- **Venta actual** pasa a ser un rail estructural fijo del lado derecho, desde la misma línea superior de la cabecera hasta el pie de la ventana.
+- La cabecera reserva el ancho del rail para evitar solapamientos con el selector de negocio y las acciones del panel.
+- Las tarjetas del catálogo se compactan para aprovechar el espacio: en escritorios amplios se muestran **5 columnas con el menú desplegado** y **6 columnas con el menú plegado**.
+- Se conserva la barra de búsqueda y los chips de categorías fijos durante el desplazamiento del catálogo.
+
+### WhatsApp
+
+- Se elimina la cabecera genérica de WAMERCIO dentro del Centro de conversaciones para que el chat utilice toda la altura disponible.
+- El selector de negocio se integra en la propia bandeja de conversaciones.
+- Se agrega menú contextual `⋮` por conversación con **Vaciar chat**, **Exportar chat**, **Cerrar chat**, **Bloquear/Desbloquear** y **Eliminar chat**.
+- Bloquear un contacto impide que nuevos mensajes entrantes se incorporen a WAMERCIO hasta desbloquearlo y deshabilita el compositor local durante el bloqueo.
+- Vaciar elimina el historial local de mensajes sin borrar el contacto; eliminar borra la conversación local completa y conserva pedidos históricos mediante la relación existente `ON DELETE SET NULL`.
+
+### Gestión de mesas
+
+- La administración de mesas sale de **Configuración → Ventas y entrega** y pasa a una sección propia **Gestión de mesas**.
+- La opción aparece dinámicamente en la barra lateral únicamente cuando **Mesas y reservas** está habilitado para el negocio activo.
+- La nueva pantalla permite crear, editar y archivar mesas, administrar capacidad y configurar la duración estándar de las reservas.
+
+No se agregan migraciones ni variables de entorno nuevas en esta revisión.

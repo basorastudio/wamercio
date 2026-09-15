@@ -5,7 +5,7 @@ import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money} from '@/lib/api'
 import {resolveBusinessCapabilities,type CheckoutField} from '@/lib/business-capabilities'
 import {
-  ArrowLeft,CheckCheck,ClipboardList,Info,MessageCircleMore,Paperclip,RefreshCw,Search,Send,X,ShoppingCart,Plus,Minus,Trash2,Package2,Zap
+  ArrowLeft,Ban,CheckCheck,ClipboardList,Download,Eraser,Info,MessageCircleMore,MoreVertical,Paperclip,RefreshCw,Search,Send,X,ShoppingCart,Plus,Minus,Trash2,Package2,Zap
 } from 'lucide-react'
 import {WhatsAppMessageContent,type WhatsAppMessage} from '@/components/whatsapp-message-content'
 
@@ -59,6 +59,7 @@ export default function Conversations(){
   const[quickReplies,setQuickReplies]=useState<QuickReply[]>([])
   const[storeConfig,setStoreConfig]=useState<any>(null)
   const[showQuick,setShowQuick]=useState(false)
+  const[chatMenuOpen,setChatMenuOpen]=useState(false)
   const[productSearch,setProductSearch]=useState('')
   const[cart,setCart]=useState<CartItem[]>([])
   const[creatingOrder,setCreatingOrder]=useState(false)
@@ -132,7 +133,7 @@ export default function Conversations(){
   },[store,selected?.id,panel])
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'})},[messages.length])
 
-  const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);setShowQuick(false);void loadMsgs(c)}
+  const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);setShowQuick(false);setChatMenuOpen(false);void loadMsgs(c);void loadDetails(c)}
   const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);setOrderMessage('');void loadDetails().then(()=>{});if(mode==='records')void loadNotes();if(mode==='sale'){void loadCatalog();setOrderForm(v=>({...v,delivery_address:detail?.contact?.address||detail?.customer?.address||v.delivery_address}))}}
   const send=async(e:React.FormEvent)=>{
     e.preventDefault();if(!selected||!text.trim())return
@@ -205,14 +206,40 @@ export default function Conversations(){
     }catch(e:any){setOrderMessage(e.message||`No se pudo crear la ${capabilities.orderNoun}`)}finally{setCreatingOrder(false)}
   }
 
+  const deleteConversation=async()=>{
+    if(!selected||!confirm(`¿Eliminar el chat con ${label(selected)}? Esta acción elimina el historial local de WAMERCIO.`))return
+    try{await api(`/conversations/${selected.id}`,{method:'DELETE'});setChatMenuOpen(false);setSelected(null);setMessages([]);setPanel(null);setDetail(null);await loadConvs()}catch(e:any){alert(e.message)}
+  }
+  const clearConversation=async()=>{
+    if(!selected||!confirm(`¿Vaciar todos los mensajes del chat con ${label(selected)}?`))return
+    try{await api(`/conversations/${selected.id}/messages`,{method:'DELETE'});setMessages([]);setChatMenuOpen(false);setConvs(v=>v.map(c=>c.id===selected.id?{...c,last_message:'',last_message_at:null,unread_count:0}:c))}catch(e:any){alert(e.message)}
+  }
+  const exportConversation=()=>{
+    if(!selected)return
+    const lines=[`WAMERCIO · Exportación de chat`,`Contacto: ${label(selected)}`,`WhatsApp: ${selected.phone?`+${selected.phone}`:selected.remote_jid.split('@')[0]}`,'',...messages.map(m=>{const author=m.direction==='out'?'WAMERCIO':label(selected);const body=(m.body||m.caption||m.file_name||`[${m.type||'contenido'}]`).replace(/\r?\n/g,' ');return `[${dayTime(m.occurred_at)}] ${author}: ${body}`})]
+    const blob=new Blob([lines.join('\n')],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`wamercio-chat-${(selected.phone||selected.id).replace(/[^a-zA-Z0-9_-]/g,'')}.txt`;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);setChatMenuOpen(false)
+  }
+  const closeConversation=async()=>{
+    if(!selected)return
+    try{await api(`/conversations/${selected.id}/status`,{method:'PATCH',body:JSON.stringify({status:'closed'})});setSelected(v=>v?{...v,status:'closed'}:v);setConvs(v=>v.map(c=>c.id===selected.id?{...c,status:'closed'}:c));setDetail(v=>v?{...v,status:'closed'}:v);setChatMenuOpen(false)}catch(e:any){alert(e.message)}
+  }
+  const blockConversation=async()=>{
+    if(!selected)return
+    const current=detail||await api<Detail>(`/conversations/${selected.id}/details`).catch(()=>null)
+    const blocked=current?.contact?.status==='blocked'
+    if(!blocked&&!confirm(`¿Bloquear a ${label(selected)}? Los mensajes nuevos de este contacto no se incorporarán a WAMERCIO hasta que lo desbloquees.`))return
+    try{await api(`/conversations/${selected.id}/block`,{method:'PATCH',body:JSON.stringify({blocked:!blocked})});setContactForm(v=>({...v,status:blocked?'active':'blocked'}));setDetail(v=>v?{...v,contact:{...v.contact,status:blocked?'active':'blocked'},customer:{...v.customer,status:blocked?'active':'blocked'},status:blocked?v.status:'closed'}:v);if(!blocked){setSelected(v=>v?{...v,status:'closed'}:v);setConvs(v=>v.map(c=>c.id===selected.id?{...c,status:'closed',unread_count:0}:c))}setChatMenuOpen(false)}catch(e:any){alert(e.message)}
+  }
+
   const filtered=useMemo(()=>convs.filter(c=>{const filterOK=chatFilter==='all'||(chatFilter==='unread'?c.unread_count>0:c.contact_type===chatFilter);return filterOK&&(label(c)+' '+(c.whatsapp_name||'')+' '+c.last_message+' '+(c.phone||'')).toLowerCase().includes(search.toLowerCase())}),[convs,search,chatFilter])
   const paneOpen=!!panel&&!!selected
 
-  return <StoreShell title="WhatsApp" subtitle="Atiende clientes y contactos desde una experiencia similar a WhatsApp Web" context={<StoreSelector value={store} onChange={setStore}/>} fullHeight actions={<button className="btn-secondary px-3" title="Actualizar" onClick={()=>{loadConvs();selected&&loadMsgs(selected);paneOpen&&loadDetails()}}><RefreshCw className="h-4 w-4"/></button>}>
-    <div className="relative flex h-full min-h-0 overflow-hidden rounded-[28px] border border-[#dde3e7] bg-white shadow-[0_16px_48px_rgba(15,23,42,.06)]">
+  return <StoreShell title="WhatsApp" fullHeight hideHeader>
+    <div className="relative flex h-full min-h-0 overflow-hidden border border-[#dde3e7] bg-white">
       <aside className={`${selected?'hidden md:flex':'flex'} w-full shrink-0 flex-col border-r border-[#e9edef] bg-white md:w-[340px] xl:w-[380px]`}>
         <div className="border-b border-[#e9edef] bg-[#f0f2f5] px-3 py-3.5">
           <div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#00a884]">WhatsApp</p><h2 className="text-[15px] font-semibold text-[#111b21]">Bandeja de conversaciones</h2></div><button onClick={()=>{loadConvs();selected&&loadMsgs(selected)}} className="grid h-9 w-9 place-items-center rounded-full text-[#54656f] hover:bg-white"><RefreshCw className="h-4 w-4"/></button></div>
+          <StoreSelector value={store} onChange={setStore} className="mb-3"/>
           <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#667781]"/><input className="h-10 w-full rounded-full border border-transparent bg-white pl-10 pr-4 text-sm outline-none transition focus:border-[#b9e5dc]" placeholder="Buscar o iniciar un chat" value={search} onChange={e=>setSearch(e.target.value)}/></div>
           <div className="mt-3 flex flex-wrap gap-2">{([['all','Todos'],['customer','Clientes'],['contact','Contactos'],['unread','No leídos']] as const).map(([value,text])=><button key={value} onClick={()=>setChatFilter(value)} className={`rounded-full px-3.5 py-1.5 text-xs font-medium ${chatFilter===value?'bg-[#d9fdd3] text-[#008069]':'bg-white text-[#667781]'}`}>{text}</button>)}</div>
         </div>
@@ -230,18 +257,19 @@ export default function Conversations(){
               <div className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-full bg-[#dfe5e7] font-semibold text-[#54656f]">{selected.profile_picture_url?<img src={selected.profile_picture_url} alt={label(selected)} className="h-full w-full object-cover"/>:label(selected).slice(0,1).toUpperCase()}</div>
               <div className="min-w-0"><div className="flex items-center gap-2"><div className="truncate text-[15px] font-medium text-[#111b21]">{label(selected)}</div><span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-semibold ${selected.contact_type==='customer'?'bg-[#d9fdd3] text-[#008069]':'bg-[#e2e5e7] text-[#54656f]'}`}>{kindLabel(selected.contact_type)}</span></div><div className="truncate text-xs text-[#667781]">{selected.phone?`+${selected.phone}`:selected.remote_jid.split('@')[0]} · {statusLabel(selected.status)}</div></div>
             </button>
-            <div className="flex items-center gap-1"><button title={`${capabilities.primaryAction} por WhatsApp`} onClick={()=>openPanel('sale')} className={`rounded-full p-2.5 ${panel==='sale'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ShoppingCart className="h-5 w-5"/></button><button title="Datos del contacto" onClick={()=>openPanel('contact')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='contact'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><Info className="h-5 w-5"/></button><button title="Registros de atención" onClick={()=>openPanel('records')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button></div>
+            <div className="flex items-center gap-1"><button title={`${capabilities.primaryAction} por WhatsApp`} onClick={()=>openPanel('sale')} className={`rounded-full p-2.5 ${panel==='sale'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ShoppingCart className="h-5 w-5"/></button><button title="Datos del contacto" onClick={()=>openPanel('contact')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='contact'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><Info className="h-5 w-5"/></button><button title="Registros de atención" onClick={()=>openPanel('records')} className={`hidden rounded-full p-2.5 sm:inline-flex ${panel==='records'?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><ClipboardList className="h-5 w-5"/></button><div className="relative"><button data-testid="chat-context-menu" title="Más opciones" onClick={()=>setChatMenuOpen(v=>!v)} className={`rounded-full p-2.5 ${chatMenuOpen?'bg-[#e2e5e7] text-[#111b21]':'text-[#54656f] hover:bg-[#e2e5e7]'}`}><MoreVertical className="h-5 w-5"/></button>{chatMenuOpen&&<div className="absolute right-0 top-12 z-40 w-52 overflow-hidden rounded-xl border border-[#dfe3e6] bg-white py-1 shadow-[0_12px_34px_rgba(17,27,33,.2)]"><button type="button" onClick={clearConversation} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"><Eraser className="h-4 w-4"/>Vaciar chat</button><button type="button" onClick={exportConversation} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"><Download className="h-4 w-4"/>Exportar chat</button><button type="button" onClick={closeConversation} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"><X className="h-4 w-4"/>Cerrar chat</button><button type="button" onClick={blockConversation} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-[#3b4a54] hover:bg-[#f5f6f6]"><Ban className="h-4 w-4"/>{detail?.contact?.status==='blocked'?'Desbloquear':'Bloquear'}</button><div className="my-1 border-t border-[#eef0f2]"/><button type="button" onClick={deleteConversation} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4"/>Eliminar chat</button></div>}</div></div>
           </header>
           <div className="relative flex-1 overflow-y-auto px-3 py-4 sm:px-6" style={{backgroundColor:'#efeae2',backgroundImage:'radial-gradient(circle at 20px 20px,rgba(17,27,33,.025) 1px,transparent 1px)',backgroundSize:'32px 32px'}}>
             <div className="mx-auto max-w-4xl space-y-1.5">{messages.map(m=><div key={m.id} className={`flex ${m.direction==='out'?'justify-end':'justify-start'}`}><div className={`relative max-w-[88%] rounded-[10px] px-2.5 py-1.5 shadow-[0_1px_1px_rgba(11,20,26,.13)] sm:max-w-[72%] ${m.direction==='out'?'bg-[#d9fdd3]':'bg-white'}`}><WhatsAppMessageContent m={m}/><div className="ml-8 mt-0.5 flex items-center justify-end gap-1 text-[10px] leading-none text-[#667781]"><span>{time(m.occurred_at)}</span>{m.direction==='out'&&<CheckCheck className={`h-3.5 w-3.5 ${m.status==='read'?'text-[#53bdeb]':''}`}/>}</div></div></div>)}<div ref={bottom}/></div>
           </div>
+          {detail?.contact?.status==='blocked'&&<div className="shrink-0 border-t border-[#f1d6d6] bg-rose-50 px-4 py-2 text-center text-xs font-medium text-rose-700">Contacto bloqueado. Desbloquéalo desde el menú ⋮ para volver a enviar o recibir mensajes en WAMERCIO.</div>}
           <form onSubmit={send} className="relative flex shrink-0 items-end gap-2 border-t border-[#dfe3e6] bg-[#f0f2f5] px-3 py-2.5">
             {showQuick&&<div className="absolute bottom-[66px] left-3 z-30 w-[min(340px,calc(100vw-32px))] overflow-hidden rounded-2xl border border-[#dfe3e6] bg-white shadow-[0_14px_40px_rgba(17,27,33,.18)]"><div className="flex items-center justify-between border-b border-[#eef0f2] px-4 py-3"><div><p className="text-sm font-semibold text-[#111b21]">Respuestas rápidas</p><p className="text-[11px] text-[#8696a0]">Un toque para completar el mensaje</p></div><button type="button" onClick={()=>setShowQuick(false)} className="rounded-full p-1.5 text-[#667781] hover:bg-[#f0f2f5]"><X className="h-4 w-4"/></button></div><div className="max-h-64 overflow-y-auto p-2">{quickReplies.map(q=><button type="button" key={q.id} onClick={()=>{setText(q.body);setShowQuick(false)}} className="block w-full rounded-xl px-3 py-2.5 text-left hover:bg-[#f5f6f6]"><span className="block text-xs font-semibold text-[#008069]">{q.title}</span><span className="mt-1 line-clamp-2 block text-xs leading-5 text-[#667781]">{q.body}</span></button>)}{quickReplies.length===0&&<p className="p-4 text-center text-xs text-[#8696a0]">No hay respuestas guardadas.</p>}</div></div>}
             <input ref={fileInput} type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip" onChange={e=>void sendMedia(e.target.files?.[0])}/>
             <button type="button" onClick={()=>setShowQuick(v=>!v)} title="Respuestas rápidas" className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${showQuick?'bg-[#d9fdd3] text-[#008069]':'text-[#54656f] hover:bg-[#e1e5e7]'}`}><Zap className="h-5 w-5"/></button>
-            <button type="button" disabled={sendingMedia} onClick={()=>fileInput.current?.click()} title="Adjuntar archivo" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#e1e5e7] disabled:opacity-40"><Paperclip className="h-5 w-5"/></button>
-            <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-white px-1.5 py-1"><textarea rows={1} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[20px] border-0 bg-transparent px-3 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder={sendingMedia?'Enviando archivo...':'Escribe un mensaje'}/></div>
-            <button disabled={sending||sendingMedia||!text.trim()} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm disabled:opacity-40"><Send className="h-4 w-4"/></button>
+            <button type="button" disabled={sendingMedia||detail?.contact?.status==='blocked'} onClick={()=>fileInput.current?.click()} title="Adjuntar archivo" className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-[#54656f] hover:bg-[#e1e5e7] disabled:opacity-40"><Paperclip className="h-5 w-5"/></button>
+            <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-white px-1.5 py-1"><textarea rows={1} disabled={detail?.contact?.status==='blocked'} value={text} onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();(e.currentTarget.form as HTMLFormElement)?.requestSubmit()}}} className="max-h-32 min-h-[42px] flex-1 resize-none rounded-[20px] border-0 bg-transparent px-3 py-2.5 text-sm text-[#111b21] outline-none placeholder:text-[#8696a0]" placeholder={sendingMedia?'Enviando archivo...':'Escribe un mensaje'}/></div>
+            <button disabled={sending||sendingMedia||!text.trim()||detail?.contact?.status==='blocked'} className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white shadow-sm disabled:opacity-40"><Send className="h-4 w-4"/></button>
           </form>
         </>:<div className="grid h-full place-items-center bg-[#f7f8fa] text-center"><div className="max-w-sm px-6"><div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MessageCircleMore className="h-9 w-9"/></div><h3 className="mt-5 text-xl font-medium text-[#3b4a54]">WAMERCIO WhatsApp</h3><p className="mt-2 text-sm leading-6 text-[#667781]">Selecciona una conversación para atender a tu cliente desde un espacio familiar, inspirado en WhatsApp Web.</p></div></div>}
       </section>
