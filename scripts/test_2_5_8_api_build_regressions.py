@@ -4,6 +4,8 @@ import re
 root = Path(__file__).resolve().parents[1]
 server = (root / 'services/api/internal/httpapi/server.go').read_text(encoding='utf-8')
 
+customer_portal = (root / 'services/api/internal/httpapi/customer_portal.go').read_text(encoding='utf-8')
+
 
 def func_block(name: str, next_name: str) -> str:
     start = server.find(f'func (s *Server) {name}(')
@@ -34,6 +36,7 @@ checks = {
     ) is not None,
     'pgx CommandTag RowsAffected is not treated as (value,error)': 'rows, _ := result.RowsAffected()' not in profile_block,
     'contextual checkout switch has no duplicate default clause': '\n\t\tdefault:\n\t\tdefault:' not in contextual_block,
+    'customer portal imports encoding/json when using json.Unmarshal': ('json.Unmarshal' not in customer_portal or '"encoding/json"' in customer_portal),
 }
 
 failed = [name for name, ok in checks.items() if not ok]
