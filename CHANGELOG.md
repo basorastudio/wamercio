@@ -1,3 +1,16 @@
+# WAMERCIO 2.5.8 — Sincronización WhatsApp, Mesas y POS asistido
+
+- WhatsApp permite elegir **Sincronización manual** o **Automática** y limitar el historial por **Fecha desde / Fecha hasta**. Una vinculación nueva ya no importa silenciosamente todo el historial: el full sync queda desactivado y los rangos se respetan al solicitar páginas antiguas.
+- La sincronización manual puede iniciarse desde **Ajustes → Conexión → Sincronización de mensajes** y muestra estado, última ejecución y errores. Los chats no directos continúan excluidos.
+- **Ventas y entrega** incorpora **Mesas y reservas**: activación por negocio, duración de reserva, creación/edición/archivo de mesas y capacidad por mesa.
+- La tienda pública añade la modalidad **Mesa / Reservar y comer aquí**, fecha/hora, cantidad de personas y mesa disponible, con validación de capacidad y conflictos antes de confirmar el pedido.
+- Pedidos y el portal del cliente muestran la mesa, fecha/hora y cantidad de personas cuando el pedido es para consumir en el negocio. Cancelar o completar el pedido libera/cierra la reserva asociada.
+- El **Punto de Venta** ahora muestra tarjetas de producto con imagen, descripción, disponibilidad y precio; al seleccionar un producto abre su ficha con variantes, adicionales y cantidad antes de agregarlo a la venta.
+- El POS incorpora **Buscar cliente**, selección de clientes existentes y mantiene nombre/WhatsApp manual como alternativa. Las ventas guardan variante y adicionales en el detalle del pedido.
+- Se añade la migración `000025_whatsapp_sync_tables_pos`. No requiere variables de entorno nuevas.
+
+---
+
 # WAMERCIO 2.5.8 — Compra directa, opciones en tarjetas y detalle de pedidos
 
 - Recupera **Mi compra** en la cabecera de escritorio con contador, manteniendo **Mi compra** en la navegación inferior móvil.

@@ -6,6 +6,12 @@ WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, 
 
 La tienda pública conserva el catálogo visible mientras el cliente arma su pedido: agregar o actualizar no fuerza la apertura del carrito, los productos muestran lo que ya está incluido y cada línea puede volver a editarse. Los productos configurados para venta por libra admiten compra por peso o por monto sin duplicar el modelo de datos.
 
+## Sincronización, mesas y POS
+
+- La sesión WhatsApp del negocio no importa todo el historial por defecto. El comercio define sincronización **manual/automática** y un rango de fechas.
+- Los negocios que atienden en local pueden activar **Mesas y reservas**, administrar capacidad y aceptar pedidos asociados a una reserva.
+- El POS reutiliza la lógica comercial del catálogo: ficha con imagen, descripción, variantes y adicionales antes de agregar, además de búsqueda de clientes registrados.
+
 ## Publicación
 
 - Plataforma y administración: `https://wamercio.com`

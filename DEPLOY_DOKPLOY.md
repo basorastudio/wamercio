@@ -21,10 +21,15 @@ Mantén el wildcard `*.ltd.do` apuntando al servidor/Dokploy. WAMERCIO continúa
 
 ## Cambio requerido en esta entrega
 
-Esta versión añade la migración `000024_cash_change_checkout`, que incorpora la preferencia de cambio en efectivo a los pedidos. Durante el redeploy deja que la API ejecute las migraciones antes de validar el checkout.
+Esta entrega conserva `000024_cash_change_checkout` y añade la migración `000025_whatsapp_sync_tables_pos`, que incorpora preferencias/rangos de sincronización de historial WhatsApp, anclas de historial, configuración de mesas y reservas. Durante el redeploy deja que la API ejecute las migraciones antes de validar WhatsApp, checkout y POS.
 
 Después del despliegue comprueba:
 
+
+- en **Ajustes → Conexión**: configura **Manual / Automática**, fecha desde/hasta y prueba **Sincronizar ahora**;
+- en **Ventas y entrega**: activa **Mesas y reservas**, crea al menos una mesa y valida capacidad;
+- en una tienda: selecciona **Mesa**, fecha/hora, personas y mesa antes de confirmar;
+- en **Punto de Venta**: abre una tarjeta de producto, elige variantes/adicionales y prueba **Buscar cliente**.
 - en móvil: navegación **Catálogo / Mi pedido / Pedidos / WhatsApp**;
 - en **Mi pedido**: al elegir **Delivery + Efectivo** aparece **¿Necesita cambio?**;
 - al elegir **Sí**, se muestran montos sugeridos, **Otro** y el **Vuelto estimado**;

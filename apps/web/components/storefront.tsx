@@ -6,7 +6,7 @@ import {api,money} from '@/lib/api'
 import type {Product,PriceOption} from '@/lib/types'
 import CustomerAccessModal from '@/components/customer-access-modal'
 import {resolvedTheme,themeCSSVars,type StoreThemeConfig} from '@/lib/store-themes'
-import {Banknote,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,RefreshCw,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,WalletCards,X} from 'lucide-react'
+import {Banknote,CalendarClock,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,RefreshCw,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
 import StorefrontMobileNav from '@/components/storefront-mobile-nav'
 import {cartKey,formatCartQuantity,initialProductQuantity,mergeCartItem,normalizeStoredCart,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
 
@@ -17,6 +17,13 @@ const gridClass:Record<number,string>={1:'grid-cols-1 sm:grid-cols-2 lg:grid-col
 function buttonStyle(t:StoreThemeConfig,secondary=false):React.CSSProperties{return secondary||t.buttons.variant==='outline'?{background:'transparent',color:t.colors.primary,border:`1px solid ${t.colors.primary}`,borderRadius:t.shape.buttonRadius}:{background:t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary,color:t.buttons.variant==='soft'?t.colors.text:t.colors.buttonText,border:`1px solid ${t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary}`,borderRadius:t.shape.buttonRadius}}
 function surfaceStyle(t:StoreThemeConfig):React.CSSProperties{return{background:t.colors.surface,border:`1px solid ${t.colors.border}`,borderRadius:t.shape.radius,boxShadow:'var(--store-shadow)'}}
 function productStartingPrice(p:Product){const variants=(p.variants||[]).map(v=>Number(v.price||0)).filter(v=>v>0);return variants.length?Math.min(...variants):Number(p.price||0)}
+
+function reservationInputDefault(){
+  const d=new Date(Date.now()+60*60*1000)
+  d.setMinutes(Math.ceil(d.getMinutes()/30)*30,0,0)
+  const pad=(n:number)=>String(n).padStart(2,'0')
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
 export default function Storefront(){
   const[data,setData]=useState<any>(null)
@@ -38,7 +45,7 @@ export default function Storefront(){
   const[done,setDone]=useState<any>(null)
   const[customer,setCustomer]=useState<any>(null)
   const[customerAuthOpen,setCustomerAuthOpen]=useState(false)
-  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',notes:'',needs_change:null as boolean|null,cash_tendered:0})
+  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',notes:'',needs_change:null as boolean|null,cash_tendered:0,table_id:'',reservation_at:reservationInputDefault(),party_size:2})
   const[addressPickerOpen,setAddressPickerOpen]=useState(false)
   const[cashOtherOpen,setCashOtherOpen]=useState(false)
   const[perkIndex,setPerkIndex]=useState(0)
@@ -49,7 +56,7 @@ export default function Storefront(){
       const store=x.store
       const methods=store.payment_methods||{}
       const payment=['cash','cash_on_delivery','bank_transfer'].find(k=>methods[k])||''
-      const delivery=store.delivery_enabled?'delivery':'pickup'
+      const delivery=store.delivery_enabled?'delivery':store.pickup_enabled?'pickup':store.dine_in_enabled?'dine_in':'pickup'
       setForm(v=>({...v,payment_method:payment,delivery_type:delivery}))
     }).catch(e=>setError(e.message))
   },[])
@@ -62,11 +69,11 @@ export default function Storefront(){
   useEffect(()=>{if(typeof window!=='undefined'&&window.location.hash==='#pedido')setCartOpen(true)},[])
   useEffect(()=>{
     if(!data?.store)return
-    const count=(data.store.delivery_enabled||data.store.pickup_enabled)?3:2
+    const count=3
     if(count<2)return
     const timer=window.setInterval(()=>setPerkIndex(v=>(v+1)%count),3200)
     return()=>window.clearInterval(timer)
-  },[data?.store?.delivery_enabled,data?.store?.pickup_enabled])
+  },[data?.store?.delivery_enabled,data?.store?.pickup_enabled,data?.store?.dine_in_enabled])
   useEffect(()=>{
     if(typeof document==='undefined')return
     if(!pick&&!done)return
@@ -151,7 +158,7 @@ export default function Storefront(){
     if(!customer){setCustomerAuthOpen(true);return}
     setSending(true);setError('')
     try{
-      const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras}))}
+      const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',table_id:form.delivery_type==='dine_in'?form.table_id:'',reservation_at:form.delivery_type==='dine_in'&&form.reservation_at?new Date(form.reservation_at).toISOString():'',party_size:form.delivery_type==='dine_in'?form.party_size:0,needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras}))}
       const out=await api('/public/store/checkout',{method:'POST',body:JSON.stringify(payload)})
       setDone(out);setCart([]);setCartOpen(false);setCashOtherOpen(false);setForm(v=>({...v,needs_change:null,cash_tendered:0}))
     }catch(e:any){
@@ -183,7 +190,7 @@ export default function Storefront(){
   const headerSubtitle=s.business_engine==='food'?'Menú y pedidos en línea':s.business_engine==='services'?'Servicios y solicitudes':s.business_engine==='quotation'?'Catálogo y cotizaciones':'Catálogo y pedidos en línea'
   const perks=[
     canOrder?{title:'Recibiendo pedidos',detail:'Puedes ordenar ahora',icon:Check}:{title:'Solo catálogo',detail:'Pedidos no disponibles',icon:Clock3},
-    s.delivery_enabled?{title:'Delivery',detail:'Entrega a domicilio',icon:Truck}:s.pickup_enabled?{title:'Recogida',detail:'Pasa por el negocio',icon:StoreIcon}:null,
+    s.delivery_enabled?{title:'Delivery',detail:'Entrega a domicilio',icon:Truck}:s.pickup_enabled?{title:'Recogida',detail:'Pasa por el negocio',icon:StoreIcon}:s.dine_in_enabled?{title:'Mesas',detail:'Reserva y come aquí',icon:UtensilsCrossed}:null,
     minimum>0?{title:`Mínimo ${money(minimum)}`,detail:'Para completar el pedido',icon:ShoppingBag}:{title:'Compra fácil',detail:'Agrega y confirma',icon:ShoppingBag},
   ].filter(Boolean) as {title:string;detail:string;icon:any}[]
 
@@ -236,13 +243,14 @@ export default function Storefront(){
 
       <section data-testid="storefront-cart-step-delivery" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
         <div className="mb-3"><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>1 · Modalidad de pedido</div><div className="mt-1 text-sm font-semibold">¿Cómo recibirás tu pedido?</div></div>
-        <div className="grid grid-cols-2 gap-2">
+        <div className={`grid gap-2 ${s.dine_in_enabled?'grid-cols-2 sm:grid-cols-3':'grid-cols-2'}`}>
           {s.delivery_enabled&&<button type="button" onClick={()=>setForm({...form,delivery_type:'delivery',needs_change:null,cash_tendered:0})} className="relative p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.delivery_type==='delivery'?t.colors.primary:t.colors.border,background:form.delivery_type==='delivery'?t.colors.background:t.colors.surface}}><Truck className="h-4 w-4" style={{color:t.colors.primary}}/><div className="mt-2 text-sm font-bold">Delivery</div><div className="text-[11px]" style={{color:t.colors.muted}}>Entrega a domicilio</div>{form.delivery_type==='delivery'&&<Check className="absolute right-3 top-3 h-4 w-4" style={{color:t.colors.primary}}/>}</button>}
           {s.pickup_enabled&&<button type="button" onClick={()=>{setForm({...form,delivery_type:'pickup',shipping_zone_id:'',needs_change:null,cash_tendered:0});setCashOtherOpen(false);setAddressPickerOpen(false)}} className="relative p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.delivery_type==='pickup'?t.colors.primary:t.colors.border,background:form.delivery_type==='pickup'?t.colors.background:t.colors.surface}}><StoreIcon className="h-4 w-4" style={{color:t.colors.primary}}/><div className="mt-2 text-sm font-bold">Recoger</div><div className="text-[11px]" style={{color:t.colors.muted}}>Retiro en el negocio</div>{form.delivery_type==='pickup'&&<Check className="absolute right-3 top-3 h-4 w-4" style={{color:t.colors.primary}}/>}</button>}
+          {s.dine_in_enabled&&<button type="button" onClick={()=>{setForm({...form,delivery_type:'dine_in',shipping_zone_id:'',needs_change:null,cash_tendered:0,reservation_at:form.reservation_at||reservationInputDefault()});setCashOtherOpen(false);setAddressPickerOpen(false)}} className="relative p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.delivery_type==='dine_in'?t.colors.primary:t.colors.border,background:form.delivery_type==='dine_in'?t.colors.background:t.colors.surface}}><UtensilsCrossed className="h-4 w-4" style={{color:t.colors.primary}}/><div className="mt-2 text-sm font-bold">Mesa</div><div className="text-[11px]" style={{color:t.colors.muted}}>Reservar y comer aquí</div>{form.delivery_type==='dine_in'&&<Check className="absolute right-3 top-3 h-4 w-4" style={{color:t.colors.primary}}/>}</button>}
         </div>
         {form.delivery_type==='delivery'?customer?<div className="mt-3 space-y-3">
           {selectedAddress&&!addressPickerOpen?<div data-testid="storefront-selected-address" className="flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de entrega</div><div className="mt-1 truncate text-sm font-semibold">{selectedAddress.label}</div><div className="mt-0.5 line-clamp-2 text-xs" style={{color:t.colors.muted}}>{selectedAddress.formatted}</div></div><button type="button" onClick={()=>setAddressPickerOpen(true)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold" style={{background:t.colors.surface,color:t.colors.primary}}>Cambiar</button></div>:<div><div className="mb-1 flex items-center justify-between"><label className="label">Dirección de entrega *</label><Link href="/cliente/perfil" className="text-[11px] font-semibold" style={{color:t.colors.primary}}>Administrar</Link></div><select className="field" required value={form.address_id} onChange={e=>{setForm({...form,address_id:e.target.value});if(e.target.value)setAddressPickerOpen(false)}}><option value="">Selecciona una dirección</option>{(customer?.addresses||[]).map((a:any)=><option key={a.id} value={a.id}>{a.label} · {a.formatted}</option>)}</select></div>}
-        </div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-xl p-3 text-left" style={{background:t.colors.background}}><MapPin className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-xs font-semibold">Inicia sesión para seleccionar una dirección de entrega.</span><ChevronRight className="ml-auto h-4 w-4"/></button>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
+        </div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-xl p-3 text-left" style={{background:t.colors.background}}><MapPin className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-xs font-semibold">Inicia sesión para seleccionar una dirección de entrega.</span><ChevronRight className="ml-auto h-4 w-4"/></button>:form.delivery_type==='dine_in'?<div data-testid="storefront-table-reservation" className="mt-3 space-y-3 rounded-xl p-3" style={{background:t.colors.background}}><div className="flex items-start gap-2"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Reservar mesa</div><div className="mt-1 text-xs font-semibold">{s.address||'Reserva para comer en el negocio.'}</div></div></div><div className="grid gap-2 sm:grid-cols-2"><div><label className="label text-[11px]">Fecha y hora *</label><input type="datetime-local" required className="field" value={form.reservation_at} onChange={e=>setForm({...form,reservation_at:e.target.value})}/></div><div><label className="label text-[11px]">Personas *</label><div className="relative"><UsersRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{color:t.colors.primary}}/><input type="number" min="1" max="50" required className="field pl-9" value={form.party_size} onChange={e=>{const n=Math.max(1,Number(e.target.value)||1);setForm({...form,party_size:n,table_id:(data.tables||[]).some((x:any)=>x.id===form.table_id&&Number(x.capacity)>=n)?form.table_id:''})}}/></div></div></div><div><label className="label text-[11px]">Mesa *</label><select required className="field" value={form.table_id} onChange={e=>setForm({...form,table_id:e.target.value})}><option value="">Selecciona una mesa</option>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).map((table:any)=><option key={table.id} value={table.id}>{table.name} · hasta {table.capacity} personas</option>)}</select>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).length===0&&<p className="mt-1 text-[11px] text-amber-700">No hay una mesa disponible con esa capacidad.</p>}</div></div>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
       </section>
 
       <section data-testid="storefront-cart-step-payment" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>

@@ -40,6 +40,18 @@ type Session struct {
 	qrCancel context.CancelFunc
 }
 
+type historySyncJob struct {
+	From         time.Time
+	To           time.Time
+	LastActivity time.Time
+}
+
+type historySyncPolicyConfig struct {
+	Mode string
+	From time.Time
+	To   time.Time
+}
+
 type Manager struct {
 	db              *sql.DB
 	container       *sqlstore.Container
@@ -51,12 +63,14 @@ type Manager struct {
 	profileMu       sync.Mutex
 	profileRefresh  map[string]time.Time
 	profileSem      chan struct{}
+	historyMu       sync.Mutex
+	historyJobs     map[string]*historySyncJob
 }
 
 func New(ctx context.Context, dbURL, coreURL, secret, uploadDir string) (*Manager, error) {
 	store.SetOSInfo("WAMERCIO", store.GetWAVersion())
 	store.DeviceProps.PlatformType = waCompanionReg.DeviceProps_DESKTOP.Enum()
-	store.DeviceProps.RequireFullSync = proto.Bool(true)
+	store.DeviceProps.RequireFullSync = proto.Bool(false)
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -79,7 +93,7 @@ func New(ctx context.Context, dbURL, coreURL, secret, uploadDir string) (*Manage
 		uploadDir = "/app/data/uploads"
 	}
 	_ = os.MkdirAll(filepath.Join(uploadDir, "whatsapp"), 0755)
-	return &Manager{db: db, container: container, coreURL: strings.TrimRight(coreURL, "/"), secret: secret, uploadDir: uploadDir, http: &http.Client{Timeout: 45 * time.Second}, sessions: map[string]*Session{}, profileRefresh: map[string]time.Time{}, profileSem: make(chan struct{}, 4)}, nil
+	return &Manager{db: db, container: container, coreURL: strings.TrimRight(coreURL, "/"), secret: secret, uploadDir: uploadDir, http: &http.Client{Timeout: 45 * time.Second}, sessions: map[string]*Session{}, profileRefresh: map[string]time.Time{}, profileSem: make(chan struct{}, 4), historyJobs: map[string]*historySyncJob{}}, nil
 }
 
 func (m *Manager) Close() {
@@ -239,6 +253,8 @@ func (m *Manager) handleSession(w http.ResponseWriter, r *http.Request) {
 		m.sendMedia(w, r, sessionKey)
 	case r.Method == "POST" && action == "read":
 		m.markRead(w, r, sessionKey)
+	case r.Method == "POST" && action == "history-sync":
+		m.manualHistorySync(w, r, sessionKey)
 	default:
 		writeJSON(w, 404, map[string]string{"error": "Ruta inválida"})
 	}
@@ -1296,21 +1312,251 @@ func (m *Manager) forwardReceipt(sessionKey string, v *events.Receipt) {
 	}
 	m.postCore("/api/v1/internal/whatsapp/receipts", map[string]any{"session_key": sessionKey, "message_ids": ids, "type": string(v.Type), "occurred_at": v.Timestamp})
 }
+func parseSyncDate(value string, endOfDay bool) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, nil
+	}
+	t, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if endOfDay {
+		t = t.Add(24*time.Hour - time.Nanosecond)
+	}
+	return t, nil
+}
+
+func historyMessageAllowed(ts, from, to time.Time) bool {
+	if ts.IsZero() {
+		return false
+	}
+	if !from.IsZero() && ts.Before(from) {
+		return false
+	}
+	if !to.IsZero() && ts.After(to) {
+		return false
+	}
+	return true
+}
+
+func (m *Manager) historySyncPolicy(sessionKey string) historySyncPolicyConfig {
+	// The global support account has no per-store configuration. Keep it conservative
+	// instead of silently importing an unlimited archive.
+	if sessionKey == SupportSessionKey {
+		now := time.Now().UTC()
+		return historySyncPolicyConfig{Mode: "automatic", From: now.AddDate(0, 0, -30), To: now}
+	}
+	var mode string
+	var fromSQL, toSQL sql.NullTime
+	if err := m.db.QueryRow(`SELECT coalesce(history_sync_mode,'manual'),history_sync_from,history_sync_to FROM whatsapp_sessions WHERE store_id=$1`, sessionKey).Scan(&mode, &fromSQL, &toSQL); err != nil {
+		return historySyncPolicyConfig{Mode: "manual"}
+	}
+	cfg := historySyncPolicyConfig{Mode: strings.ToLower(strings.TrimSpace(mode))}
+	if cfg.Mode == "auto" {
+		cfg.Mode = "automatic"
+	}
+	if cfg.Mode != "automatic" {
+		cfg.Mode = "manual"
+	}
+	if fromSQL.Valid {
+		cfg.From = fromSQL.Time
+	}
+	if toSQL.Valid {
+		cfg.To = toSQL.Time.Add(24*time.Hour - time.Nanosecond)
+	}
+	return cfg
+}
+
+func (m *Manager) saveHistoryAnchor(sessionKey string, evt *events.Message) {
+	if evt == nil || !isDirectUserMessage(evt) || evt.Info.ID == "" || evt.Info.Timestamp.IsZero() {
+		return
+	}
+	_, _ = m.db.Exec(`INSERT INTO whatsapp_history_anchors(session_key,chat_jid,message_id,message_timestamp,from_me,updated_at)
+		VALUES($1,$2,$3,$4,$5,now()) ON CONFLICT(session_key,chat_jid) DO UPDATE SET
+		message_id=excluded.message_id,message_timestamp=excluded.message_timestamp,from_me=excluded.from_me,updated_at=now()
+		WHERE whatsapp_history_anchors.message_timestamp < excluded.message_timestamp`, sessionKey, evt.Info.Chat.ToNonAD().String(), evt.Info.ID, evt.Info.Timestamp, evt.Info.IsFromMe)
+}
+
+func (m *Manager) currentHistoryJob(sessionKey string) *historySyncJob {
+	m.historyMu.Lock()
+	defer m.historyMu.Unlock()
+	job := m.historyJobs[sessionKey]
+	if job == nil {
+		return nil
+	}
+	copy := *job
+	return &copy
+}
+
+func (m *Manager) touchHistoryJob(sessionKey string) {
+	m.historyMu.Lock()
+	if job := m.historyJobs[sessionKey]; job != nil {
+		job.LastActivity = time.Now()
+	}
+	m.historyMu.Unlock()
+}
+
+func (m *Manager) requestOlderHistory(s *Session, evt *events.Message) {
+	if s == nil || evt == nil || s.Client == nil || evt.Info.ID == "" || evt.Info.Timestamp.IsZero() {
+		return
+	}
+	info := &types.MessageInfo{
+		MessageSource: types.MessageSource{Chat: evt.Info.Chat.ToNonAD(), IsFromMe: evt.Info.IsFromMe},
+		ID:            evt.Info.ID, Timestamp: evt.Info.Timestamp,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if _, err := s.Client.SendPeerMessage(ctx, s.Client.BuildHistorySyncRequest(info, 50)); err != nil {
+		log.Printf("whatsapp %s history request for %s: %v", s.StoreID, info.Chat, err)
+	}
+}
+
+func (m *Manager) finishHistorySyncWhenIdle(sessionKey string) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		m.historyMu.Lock()
+		job := m.historyJobs[sessionKey]
+		if job == nil {
+			m.historyMu.Unlock()
+			return
+		}
+		idle := time.Since(job.LastActivity)
+		if idle < 12*time.Second {
+			m.historyMu.Unlock()
+			continue
+		}
+		delete(m.historyJobs, sessionKey)
+		m.historyMu.Unlock()
+		_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET history_sync_status='completed',history_sync_last_at=now(),history_sync_error=null,updated_at=now() WHERE store_id=$1`, sessionKey)
+		return
+	}
+}
+
+func (m *Manager) manualHistorySync(w http.ResponseWriter, r *http.Request, sessionKey string) {
+	m.mu.RLock()
+	s := m.sessions[sessionKey]
+	m.mu.RUnlock()
+	if !sessionLinked(s) || s.Client == nil || !s.Client.IsConnected() || !s.Client.IsLoggedIn() {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "El dispositivo de WhatsApp debe estar conectado"})
+		return
+	}
+	var in struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&in)
+	from, err := parseSyncDate(in.From, false)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Fecha desde inválida"})
+		return
+	}
+	to, err := parseSyncDate(in.To, true)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Fecha hasta inválida"})
+		return
+	}
+	if from.IsZero() || to.IsZero() || to.Before(from) || to.Sub(from) > 367*24*time.Hour {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Selecciona un rango válido de hasta 366 días"})
+		return
+	}
+	rows, err := m.db.Query(`SELECT chat_jid,message_id,message_timestamp,from_me FROM whatsapp_history_anchors WHERE session_key=$1 ORDER BY message_timestamp DESC`, sessionKey)
+	if err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "No se pudo consultar el historial disponible"})
+		return
+	}
+	defer rows.Close()
+	type anchor struct {
+		jid    string
+		id     string
+		ts     time.Time
+		fromMe bool
+	}
+	anchors := []anchor{}
+	for rows.Next() {
+		var a anchor
+		if rows.Scan(&a.jid, &a.id, &a.ts, &a.fromMe) == nil {
+			anchors = append(anchors, a)
+		}
+	}
+	if len(anchors) == 0 {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "WhatsApp todavía no ha entregado referencias de historial. Espera unos segundos y vuelve a intentar."})
+		return
+	}
+	m.historyMu.Lock()
+	m.historyJobs[sessionKey] = &historySyncJob{From: from, To: to, LastActivity: time.Now()}
+	m.historyMu.Unlock()
+	_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET history_sync_status='running',history_sync_error=null,updated_at=now() WHERE store_id=$1`, sessionKey)
+	sent := 0
+	for _, a := range anchors {
+		jid, err := types.ParseJID(a.jid)
+		if err != nil || !isDirectUserJID(jid) {
+			continue
+		}
+		info := &types.MessageInfo{MessageSource: types.MessageSource{Chat: jid.ToNonAD(), IsFromMe: a.fromMe}, ID: a.id, Timestamp: a.ts}
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		_, sendErr := s.Client.SendPeerMessage(ctx, s.Client.BuildHistorySyncRequest(info, 50))
+		cancel()
+		if sendErr == nil {
+			sent++
+		}
+	}
+	if sent == 0 {
+		m.historyMu.Lock()
+		delete(m.historyJobs, sessionKey)
+		m.historyMu.Unlock()
+		_, _ = m.db.Exec(`UPDATE whatsapp_sessions SET history_sync_status='error',history_sync_error='No se pudo solicitar el historial',updated_at=now() WHERE store_id=$1`, sessionKey)
+		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "No se pudo solicitar el historial a WhatsApp"})
+		return
+	}
+	go m.finishHistorySyncWhenIdle(sessionKey)
+	writeJSON(w, http.StatusAccepted, map[string]any{"status": "running", "chats": sent})
+}
+
 func (m *Manager) forwardHistory(s *Session, v *events.HistorySync) {
 	if !m.isCurrentSession(s) || v == nil || v.Data == nil {
 		return
+	}
+	policy := m.historySyncPolicy(s.StoreID)
+	job := m.currentHistoryJob(s.StoreID)
+	isOnDemand := strings.EqualFold(v.Data.GetSyncType().String(), "ON_DEMAND")
+	if isOnDemand && job != nil {
+		m.touchHistoryJob(s.StoreID)
 	}
 	for _, conv := range v.Data.GetConversations() {
 		jid, err := types.ParseJID(conv.GetID())
 		if err != nil || !isDirectUserJID(jid) {
 			continue
 		}
+		var oldest *events.Message
 		for _, hm := range conv.GetMessages() {
 			evt, err := s.Client.ParseWebMessage(jid, hm.GetMessage())
-			if err != nil || evt == nil {
+			if err != nil || evt == nil || !isDirectUserMessage(evt) {
 				continue
 			}
-			m.forwardMessage(s, evt)
+			m.saveHistoryAnchor(s.StoreID, evt)
+			if oldest == nil || evt.Info.Timestamp.Before(oldest.Info.Timestamp) {
+				oldest = evt
+			}
+			allowed := false
+			if isOnDemand && job != nil {
+				allowed = historyMessageAllowed(evt.Info.Timestamp, job.From, job.To)
+			} else if policy.Mode == "automatic" {
+				allowed = historyMessageAllowed(evt.Info.Timestamp, policy.From, policy.To)
+			}
+			if allowed {
+				m.forwardMessage(s, evt)
+			}
+		}
+		if oldest != nil {
+			if isOnDemand && job != nil && oldest.Info.Timestamp.After(job.From) {
+				go m.requestOlderHistory(s, oldest)
+			} else if policy.Mode == "automatic" && !policy.From.IsZero() && oldest.Info.Timestamp.After(policy.From) {
+				// Automatic history import is also bounded by the configured date range.
+				// Page backwards only until the lower bound is reached.
+				go m.requestOlderHistory(s, oldest)
+			}
 		}
 	}
 }

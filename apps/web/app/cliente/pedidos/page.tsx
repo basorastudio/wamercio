@@ -3,11 +3,11 @@
 import {useEffect,useMemo,useState} from 'react'
 import CustomerShell from '@/components/customer-shell'
 import {api,dateTime,money} from '@/lib/api'
-import {MapPin,Package,ReceiptText,WalletCards,X} from 'lucide-react'
+import {CalendarClock,MapPin,Package,ReceiptText,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
 
 const labels:any={pending:'Pendiente',confirmed:'Confirmado',processing:'Preparando',preparing:'Preparando',ready:'Listo',out_for_delivery:'En camino',delivered:'Entregado',completed:'Completado',canceled:'Cancelado',cancelled:'Cancelado'}
 const paymentLabels:any={cash:'Efectivo',cash_on_delivery:'Tarjeta en terminal',bank_transfer:'Transferencia electrónica'}
-const deliveryLabels:any={delivery:'Delivery',pickup:'Recoger'}
+const deliveryLabels:any={delivery:'Delivery',pickup:'Recoger',dine_in:'Mesa'}
 
 function extrasText(value:any){
  let parsed=value
@@ -72,7 +72,7 @@ export default function CustomerOrdersPage(){
   <div className="mt-4 space-y-3">
    {loading?<div className="card p-10 text-center text-slate-400">Cargando pedidos...</div>:rows.length===0?<div className="card grid min-h-52 place-items-center p-8 text-center"><div><Package className="mx-auto h-10 w-10 text-slate-200"/><h3 className="mt-3 font-semibold">No hay pedidos en esta vista</h3></div></div>:rows.map(o=><article key={o.id} className="card flex flex-col gap-3 p-5 sm:flex-row sm:items-center">
     <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-50 text-amber-600"><Package className="h-4 w-4"/></div>
-    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong>#{o.number}</strong><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[o.status]||o.status}</span></div><div className="mt-1 text-sm text-slate-500">{o.store_name} · {o.item_count} producto(s)</div><div className="mt-1 text-xs text-slate-400">{dateTime(o.created_at)}</div></div>
+    <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong>#{o.number}</strong><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700">{labels[o.status]||o.status}</span></div><div className="mt-1 text-sm text-slate-500">{o.store_name} · {o.item_count} producto(s){o.delivery_type==='dine_in'&&o.table_name?` · ${o.table_name}`:''}</div><div className="mt-1 text-xs text-slate-400">{o.delivery_type==='dine_in'&&o.reservation_at?`Reserva ${dateTime(o.reservation_at)} · `:''}{dateTime(o.created_at)}</div></div>
     <div className="flex items-center justify-between gap-3 sm:justify-end"><strong className="text-emerald-600">{money(o.total)}</strong><button type="button" onClick={()=>openDetail(o.id)} className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold hover:bg-slate-50">Ver detalles</button></div>
    </article>)}
   </div>
@@ -93,7 +93,7 @@ export default function CustomerOrdersPage(){
       </section>
 
       <div className="grid gap-3 sm:grid-cols-2">
-       <section className="rounded-2xl border border-slate-100 p-4"><div className="flex items-center gap-2 text-emerald-600"><MapPin className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Entrega</span></div><div className="mt-2 font-semibold">{deliveryLabels[detail.delivery_type]||detail.delivery_type}</div>{detail.delivery_address&&<p className="mt-1 text-xs leading-5 text-slate-500">{detail.delivery_address}</p>}</section>
+       <section className="rounded-2xl border border-slate-100 p-4">{detail.delivery_type==='dine_in'?<><div className="flex items-center gap-2 text-emerald-600"><UtensilsCrossed className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Reserva de mesa</span></div><div className="mt-2 font-semibold">{detail.table_name||'Mesa reservada'}</div>{detail.reservation_at&&<p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><CalendarClock className="h-3.5 w-3.5"/>{dateTime(detail.reservation_at)}</p>}{Number(detail.party_size||0)>0&&<p className="mt-1 flex items-center gap-1.5 text-xs text-slate-500"><UsersRound className="h-3.5 w-3.5"/>{detail.party_size} persona(s)</p>}</>:<><div className="flex items-center gap-2 text-emerald-600"><MapPin className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Entrega</span></div><div className="mt-2 font-semibold">{deliveryLabels[detail.delivery_type]||detail.delivery_type}</div>{detail.delivery_address&&<p className="mt-1 text-xs leading-5 text-slate-500">{detail.delivery_address}</p>}</>}</section>
        <section className="rounded-2xl border border-slate-100 p-4"><div className="flex items-center gap-2 text-emerald-600"><WalletCards className="h-4 w-4"/><span className="text-[10px] font-bold uppercase tracking-wider">Pago</span></div><div className="mt-2 font-semibold">{paymentLabels[detail.payment_method]||detail.payment_method}</div>{detail.payment_method==='cash'&&<p className="mt-1 text-xs text-slate-500">{detail.cash_change_requested?`Paga con ${money(detail.cash_tendered||0)} · cambio estimado ${money(Math.max(0,Number(detail.cash_tendered||0)-Number(detail.total||0)))}`:'Pago exacto'}</p>}</section>
       </div>
 
