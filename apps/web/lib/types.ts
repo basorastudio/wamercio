@@ -1,6 +1,7 @@
 export type BusinessHoursDay={enabled?:boolean;open?:string;close?:string}
 export type Store={
   id:string;name:string;slug:string;public_url?:string;description:string;logo_url:string;banner_url?:string;whatsapp:string;address:string;
+  service_scope?:'national'|'provincial'|'municipal';province_code?:string;province?:string;city_id?:string;municipality?:string;neighborhood_id?:string;neighborhood?:string;street?:string;street_number?:string;
   currency:string;primary_color:string;is_active:boolean;created_at:string;minimum_order?:number;pickup_enabled?:boolean;delivery_enabled?:boolean;dine_in_enabled?:boolean;reservation_duration_minutes?:number;
   cash_enabled?:boolean;cash_on_delivery_enabled?:boolean;bank_transfer_enabled?:boolean;bank_name?:string;bank_account_name?:string;bank_account_number?:string;
   bank_account_type?:string;business_hours?:Record<string,BusinessHoursDay>;order_notice?:string;checkout_message?:string;accepting_orders?:boolean;open_now?:boolean;business_engine?:string;template_config?:Record<string,any>;template_slug?:string;template_name?:string;visual_theme?:string;theme_config?:Record<string,any>

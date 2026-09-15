@@ -1,3 +1,12 @@
+## 2.5.8 · QR público y alcance territorial del negocio
+- Añade un QR real debajo de la vista previa móvil en **Configuración → Mi negocio**, generado con la URL pública actual del catálogo para abrirlo directamente desde un teléfono.
+- Incorpora **Alcance del negocio** con los modos **Nacional / Provincial / Municipal** y persistencia mediante `stores.service_scope`.
+- El registro y la edición de direcciones de clientes adaptan los selectores territoriales al alcance: Nacional permite provincia, municipio/distrito y barrio; Provincial fija la provincia del negocio; Municipal fija provincia y municipio/distrito.
+- El backend normaliza las partes fijas de la dirección según el negocio y el checkout rechaza direcciones guardadas que queden fuera de su alcance configurado.
+- Elimina el aviso redundante **Gestión de mesas habilitada** de Ventas y entrega; la administración permanece centralizada en **Gestión de mesas**.
+- Añade la migración `000029_store_service_scope` y regresiones específicas para alcance territorial y QR. No requiere variables de entorno nuevas.
+
+
 ## 2.5.8 · Punto de Venta fijo y filtros por categorías
 - La barra de búsqueda del POS permanece visible debajo de la cabecera mientras se recorre el catálogo.
 - Añade chips dinámicos de categorías (`Todos` + categorías activas con productos) y combina el filtro con la búsqueda por nombre, código o descripción.

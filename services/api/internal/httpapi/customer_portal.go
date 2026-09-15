@@ -126,6 +126,14 @@ func (s *Server) customerCreateAddress(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusBadRequest, "Dirección inválida")
 		return
 	}
+	if scope, scoped := s.storeServiceTerritoryForRequest(r); scoped {
+		var scopeErr error
+		in, scopeErr = applyStoreServiceScopeToAddress(scope, in)
+		if scopeErr != nil {
+			jsonErr(w, http.StatusBadRequest, scopeErr.Error())
+			return
+		}
+	}
 	var msg string
 	in, msg = validateCustomerAddress(in)
 	if msg != "" {
@@ -161,6 +169,14 @@ func (s *Server) customerUpdateAddress(w http.ResponseWriter, r *http.Request) {
 	if decode(r, &in) != nil {
 		jsonErr(w, http.StatusBadRequest, "Dirección inválida")
 		return
+	}
+	if scope, scoped := s.storeServiceTerritoryForRequest(r); scoped {
+		var scopeErr error
+		in, scopeErr = applyStoreServiceScopeToAddress(scope, in)
+		if scopeErr != nil {
+			jsonErr(w, http.StatusBadRequest, scopeErr.Error())
+			return
+		}
 	}
 	var msg string
 	in, msg = validateCustomerAddress(in)

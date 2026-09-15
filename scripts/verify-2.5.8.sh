@@ -9,6 +9,7 @@ grep -q 'wamercio-store-v2.5.8' apps/web/public/sw.js || fail 'PWA cache'
 node scripts/test_2_5_6_cart_helpers.js
 node scripts/test_2_5_8_cart_quantity.js
 node scripts/test_2_5_8_customer_address_territory.js
+node scripts/test_2_5_8_store_scope_helpers.js
 python3 scripts/test_2_5_8_product_modal.py
 python3 scripts/test_2_5_8_catalog_customer_fixes.py
 python3 scripts/test_2_5_8_cart_address_experience.py
@@ -28,6 +29,7 @@ python3 scripts/test_2_5_8_pos_workspace.py
 python3 scripts/test_2_5_8_pos_dense_shell.py
 python3 scripts/test_2_5_8_whatsapp_context_menu.py
 python3 scripts/test_2_5_8_tables_management_nav.py
+python3 scripts/test_2_5_8_store_scope_qr.py
 node scripts/test_2_5_8_business_capabilities.js
 python3 scripts/test_2_5_8_platform_coherence.py
 python3 scripts/test_2_5_8_contextual_order_flows.py
@@ -62,6 +64,8 @@ down=$(find services/api/migrations -maxdepth 1 -name '*.down.sql' | wc -l | tr 
 [ -f services/api/migrations/000027_quote_customer_metrics.down.sql ] || fail 'migration 000027 down'
 [ -f services/api/migrations/000028_compact_store_urls_unified_access.up.sql ] || fail 'migration 000028 up'
 [ -f services/api/migrations/000028_compact_store_urls_unified_access.down.sql ] || fail 'migration 000028 down'
+[ -f services/api/migrations/000029_store_service_scope.up.sql ] || fail 'migration 000029 up'
+[ -f services/api/migrations/000029_store_service_scope.down.sql ] || fail 'migration 000029 down'
 
 if grep -R -i -q 'colmapro\|col\.do' apps services --exclude-dir=node_modules; then fail 'legacy brand reference'; fi
 if grep -R -q 'wamercio.com/{slug}' apps services; then fail 'legacy path-based tenant URL'; fi

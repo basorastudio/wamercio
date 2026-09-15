@@ -4,6 +4,7 @@ import {useEffect,useRef,useState} from 'react'
 import {api} from '@/lib/api'
 import PhoneInput from '@/components/phone-input'
 import PinInput from '@/components/pin-input'
+import {applyStoreScopeToAddress,normalizeServiceScope,scopeContextLabel,scopeFieldVisibility} from '@/lib/store-service-scope'
 import {ArrowLeft,CheckCircle2,IdCard,LoaderCircle,MapPin,MessageCircleMore,ShieldCheck,UserRound,X} from 'lucide-react'
 
 type Step='phone'|'pin'|'register'
@@ -39,6 +40,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   const[cedulaMessage,setCedulaMessage]=useState('')
   const[lastVerifiedCedula,setLastVerifiedCedula]=useState('')
   const[territoryEnabled,setTerritoryEnabled]=useState(false)
+  const[storeTerritory,setStoreTerritory]=useState<any>(null)
   const[territoryAvailable,setTerritoryAvailable]=useState(true)
   const[territoryLoading,setTerritoryLoading]=useState(false)
   const[provinces,setProvinces]=useState<any[]>([])
@@ -63,12 +65,14 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
       setIdentityEnabled(!!x?.identity?.enabled)
       setTerritoryEnabled(!!x?.territory?.enabled)
     }).catch(()=>{})
+    api<any>('/public/store').then(x=>setStoreTerritory(x?.store||null)).catch(()=>setStoreTerritory(null))
     return()=>{document.body.style.overflow=''}
   },[open])
 
   useEffect(()=>{
-    if(open&&step==='register'&&territoryEnabled&&!provinces.length&&!territoryLoading)void loadProvinces()
-  },[open,step,territoryEnabled])
+    if(!open||step!=='register'||!territoryEnabled)return
+    void prepareScopedTerritory()
+  },[open,step,territoryEnabled,storeTerritory?.service_scope,storeTerritory?.province_code,storeTerritory?.city_id])
 
   useEffect(()=>{
     if(!open||step!=='register'||!identityEnabled)return
@@ -87,6 +91,8 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   const loginPinLength=Math.max(activePinLength,...activeAcceptedPinLengths)
   const hasLegacyPinLengths=activeAcceptedPinLengths.length>1
   const identityLocked=cedulaState==='valid'
+  const serviceScope=normalizeServiceScope(storeTerritory?.service_scope)
+  const scopeFields=scopeFieldVisibility(serviceScope)
 
   const finish=async()=>{
     const customer=await api('/customer/me')
@@ -222,6 +228,27 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
       return false
     }
   }
+  const prepareScopedTerritory=async()=>{
+    const scope=normalizeServiceScope(storeTerritory?.service_scope)
+    setForm(v=>applyStoreScopeToAddress(v,storeTerritory))
+    if(!storeTerritory||scope==='national'){
+      if(!provinces.length&&!territoryLoading)await loadProvinces()
+      return
+    }
+    setTerritoryLoading(true)
+    try{
+      if(scope==='provincial'){
+        const code=String(storeTerritory?.province_code||'')
+        setProvinces([]);setNeighborhoods([])
+        setCities(code?unwrapList(await api(`/public/territories/cities?provinceCode=${encodeURIComponent(code)}`)):[])
+      }else{
+        const city=String(storeTerritory?.city_id||'')
+        setProvinces([]);setCities([])
+        setNeighborhoods(city?unwrapList(await api(`/public/territories/neighborhoods?cityId=${encodeURIComponent(city)}`)):[])
+      }
+      setTerritoryAvailable(true)
+    }catch{setTerritoryAvailable(false)}finally{setTerritoryLoading(false)}
+  }
   const loadProvinces=async()=>{
     setTerritoryLoading(true)
     try{setProvinces(unwrapList(await api('/public/territories/provinces')));setTerritoryAvailable(true)}catch{setTerritoryAvailable(false)}finally{setTerritoryLoading(false)}
@@ -308,7 +335,8 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
           </section>
           <section className="rounded-2xl border border-slate-100 p-4 sm:p-5">
             <div className="mb-4 flex items-start gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><MapPin className="h-4 w-4"/></div><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Dirección principal</div><h3 className="font-semibold text-[#26304f]">¿Dónde recibirás tus pedidos?</h3></div></div>
-            {territoryEnabled&&territoryAvailable?<div className="grid gap-4 sm:grid-cols-3"><div><label className="label">Provincia *</label><select className="field" value={form.province_code} onChange={e=>chooseProvince(e.target.value)}><option value="">Selecciona provincia</option>{provinces.map((p:any)=><option key={String(p.code)} value={String(p.code)}>{p.name}</option>)}</select></div><div><label className="label">Municipio / Distrito *</label><select className="field" value={form.city_id} disabled={!form.province_code} onChange={e=>chooseCity(e.target.value)}><option value="">Selecciona municipio</option>{cities.map((c:any)=><option key={String(c.cityId||c.id)} value={String(c.cityId||c.id)}>{c.name}</option>)}</select></div><div><label className="label">Barrio *</label><select className="field" value={form.neighborhood_id} disabled={!form.city_id} onChange={e=>chooseNeighborhood(e.target.value)}><option value="">Selecciona barrio</option>{neighborhoods.map((n:any)=><option key={String(n.neighborhoodId||n.id)} value={String(n.neighborhoodId||n.id)}>{n.name}</option>)}</select></div></div>:<div className="grid gap-4 sm:grid-cols-3"><div><label className="label">Provincia *</label><input className="field" value={form.province} onChange={e=>setForm(v=>({...v,province:e.target.value}))}/></div><div><label className="label">Municipio / Distrito *</label><input className="field" value={form.municipality} onChange={e=>setForm(v=>({...v,municipality:e.target.value}))}/></div><div><label className="label">Barrio *</label><input className="field" value={form.neighborhood} onChange={e=>setForm(v=>({...v,neighborhood:e.target.value}))}/></div></div>}
+            {serviceScope!=='national'&&<div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-800"><strong>Alcance {serviceScope==='provincial'?'provincial':'municipal'}:</strong> {scopeContextLabel(storeTerritory,serviceScope)}. WAMERCIO fija automáticamente esta ubicación.</div>}
+            {territoryEnabled&&territoryAvailable?<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><select className="field" value={form.province_code} onChange={e=>chooseProvince(e.target.value)}><option value="">Selecciona provincia</option>{provinces.map((p:any)=><option key={String(p.code)} value={String(p.code)}>{p.name}</option>)}</select></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><select className="field" value={form.city_id} disabled={scopeFields.province?!form.province_code:false} onChange={e=>chooseCity(e.target.value)}><option value="">Selecciona municipio</option>{cities.map((c:any)=><option key={String(c.cityId||c.id)} value={String(c.cityId||c.id)}>{c.name}</option>)}</select></div>}<div><label className="label">Barrio *</label><select className="field" value={form.neighborhood_id} disabled={scopeFields.municipality?!form.city_id:false} onChange={e=>chooseNeighborhood(e.target.value)}><option value="">Selecciona barrio</option>{neighborhoods.map((n:any)=><option key={String(n.neighborhoodId||n.id)} value={String(n.neighborhoodId||n.id)}>{n.name}</option>)}</select></div></div>:<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><input className="field" value={form.province} onChange={e=>setForm(v=>({...v,province:e.target.value}))}/></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><input className="field" value={form.municipality} onChange={e=>setForm(v=>({...v,municipality:e.target.value}))}/></div>}<div><label className="label">Barrio *</label><input className="field" value={form.neighborhood} onChange={e=>setForm(v=>({...v,neighborhood:e.target.value}))}/></div></div>}
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px]"><div><label className="label">Calle *</label><input className="field" value={form.street} onChange={e=>setForm(v=>({...v,street:e.target.value}))}/></div><div><label className="label">Número *</label><input className="field" value={form.street_number} onChange={e=>setForm(v=>({...v,street_number:e.target.value}))}/></div></div>
             <div className="mt-4"><label className="label">Referencia</label><input className="field" value={form.reference} onChange={e=>setForm(v=>({...v,reference:e.target.value}))} placeholder="Ej.: casa azul, frente al parque"/></div>
           </section>

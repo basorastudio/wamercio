@@ -227,6 +227,14 @@ func (s *Server) customerRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	address := normalizeCustomerAddress(in.Address)
+	if scope, scoped := s.storeServiceTerritoryForRequest(r); scoped {
+		var scopeErr error
+		address, scopeErr = applyStoreServiceScopeToAddress(scope, address)
+		if scopeErr != nil {
+			jsonErr(w, http.StatusBadRequest, scopeErr.Error())
+			return
+		}
+	}
 	if address.Province == "" || address.Municipality == "" || address.Neighborhood == "" || address.Street == "" || address.StreetNumber == "" {
 		jsonErr(w, http.StatusBadRequest, "Completa provincia, municipio, barrio, calle y número")
 		return
