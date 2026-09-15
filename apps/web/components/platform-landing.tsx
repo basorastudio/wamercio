@@ -51,8 +51,7 @@ export default function Landing(){
           <a href="#planes" className="hover:text-white">{text(landing.nav_prices_label,'Precios')}</a>
           <a href="#demo" className="hover:text-white">{text(landing.nav_demo_label,'Demo')}</a>
         </nav>
-        <button onClick={open} className="ml-auto rounded border border-white bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-600 shadow-sm lg:ml-7">{text(landing.nav_access_label,'Acceder')}</button>
-        <button onClick={open} className="ml-2 hidden rounded border border-white/70 bg-transparent px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-white sm:inline-flex">{text(landing.nav_register_label,'Registrarme')}</button>
+        <button onClick={open} className="ml-auto rounded border border-white bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-brand-600 shadow-sm lg:ml-7">{text(landing.nav_access_label,'Acceso')}</button>
       </header>
 
       <div className="mx-auto grid max-w-6xl items-center gap-8 px-4 pb-28 pt-14 sm:px-6 sm:pb-36 lg:grid-cols-[1fr_1.05fr] lg:px-8 lg:pt-20">

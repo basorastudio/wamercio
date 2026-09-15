@@ -57,3 +57,9 @@ Después del despliegue comprueba:
 - los productos con **Vender por libra** permiten indicar peso y, si está habilitado, comprar por monto;
 - el carrito funciona como una página completa: productos a la izquierda y checkout a la derecha en escritorio, con flujo vertical en móvil;
 - `wamercio.com` sigue siendo exclusivamente plataforma/backoffice y `*.ltd.do` sigue siendo tiendas.
+
+## Actualización 2.5.8 · URL compacta y acceso unificado
+
+Esta revisión agrega la migración `000028_compact_store_urls_unified_access`.
+Los negocios nuevos usan identificadores compactos sin separadores (por ejemplo `Pizzería Demo` → `pizzeriademo`) y la cabecera pública utiliza una sola acción `ACCESO` para iniciar sesión o registrarse según corresponda.
+Los slugs de negocios ya existentes no se renombran automáticamente para no romper enlaces previamente compartidos.

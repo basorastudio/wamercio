@@ -1035,6 +1035,17 @@ func slugify(s string) string {
 	return s
 }
 
+// storeSlugify genera el identificador público compacto de un negocio.
+// A diferencia de los slugs de catálogo, las URLs de tiendas no usan
+// separadores entre el tipo y el nombre: "Pizzería Demo" -> "pizzeriademo".
+func storeSlugify(s string) string {
+	slug := strings.ReplaceAll(slugify(s), "-", "")
+	if slug == "" {
+		slug = "tienda" + strings.ReplaceAll(uuid.NewString()[:8], "-", "")
+	}
+	return slug
+}
+
 var reservedStoreSlugs = map[string]bool{
 	"admin": true, "api": true, "catalog": true, "conversations": true, "coupons": true,
 	"customers": true, "cliente": true, "dashboard": true, "delivery": true, "domains": true, "geo": true, "health": true, "id": true, "login": true,
@@ -1046,20 +1057,32 @@ var reservedStoreSlugs = map[string]bool{
 	"privacidad": true,
 }
 
-func safeStoreSlug(value string) string {
-	slug := slugify(value)
+func isReservedStoreSlug(slug string) bool {
 	if reservedStoreSlugs[slug] {
-		return slug + "-tienda"
+		return true
+	}
+	for key := range reservedStoreSlugs {
+		if storeSlugify(key) == slug {
+			return true
+		}
+	}
+	return false
+}
+
+func safeStoreSlug(value string) string {
+	slug := storeSlugify(value)
+	if isReservedStoreSlug(slug) {
+		return slug + "tienda"
 	}
 	return slug
 }
 func (s *Server) safeStoreSlugFor(ctx context.Context, value string) string {
-	slug := slugify(value)
-	reserved := reservedStoreSlugs[slug]
+	slug := storeSlugify(value)
+	reserved := isReservedStoreSlug(slug)
 	domains := s.platformSetting(ctx, "domains")
 	if raw, ok := domains["reserved_subdomains"].([]any); ok {
 		for _, item := range raw {
-			if strings.EqualFold(strings.TrimSpace(fmt.Sprint(item)), slug) {
+			if storeSlugify(strings.TrimSpace(fmt.Sprint(item))) == slug {
 				reserved = true
 				break
 			}
@@ -1067,14 +1090,14 @@ func (s *Server) safeStoreSlugFor(ctx context.Context, value string) string {
 	}
 	if raw, ok := domains["reserved_subdomains"].([]string); ok {
 		for _, item := range raw {
-			if strings.EqualFold(strings.TrimSpace(item), slug) {
+			if storeSlugify(strings.TrimSpace(item)) == slug {
 				reserved = true
 				break
 			}
 		}
 	}
 	if reserved {
-		return slug + "-tienda"
+		return slug + "tienda"
 	}
 	return slug
 }

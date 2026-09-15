@@ -50,12 +50,26 @@ func TestSlugify(t *testing.T) {
 	}
 }
 
+func TestStoreSlugify(t *testing.T) {
+	tests := map[string]string{
+		"Pizzería Demo":       "pizzeriademo",
+		"Pizzería La Familia": "pizzerialafamilia",
+		"Café & Panadería Ñ":  "cafepanaderian",
+	}
+	for in, want := range tests {
+		if got := storeSlugify(in); got != want {
+			t.Fatalf("storeSlugify(%q)=%q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestSafeStoreSlug(t *testing.T) {
 	tests := map[string]string{
-		"Mi Mascota": "mi-mascota",
-		"admin":      "admin-tienda",
-		"stores":     "stores-tienda",
-		"CATALOG":    "catalog-tienda",
+		"Mi Mascota":      "mimascota",
+		"admin":           "admintienda",
+		"stores":          "storestienda",
+		"CATALOG":         "catalogtienda",
+		"payment methods": "paymentmethodstienda",
 	}
 	for in, want := range tests {
 		if got := safeStoreSlug(in); got != want {

@@ -1,3 +1,8 @@
+
+## 2.5.8 · URLs compactas y acceso unificado
+- Los nuevos identificadores públicos de negocios eliminan separadores entre tipo y nombre: `Pizzería Demo` genera `pizzeriademo`, disponible como acceso corto `wamercio.com/pizzeriademo` y subdominio `pizzeriademo.ltd.do`.
+- Los slugs existentes no se renombran automáticamente para no romper enlaces previamente compartidos.
+- La cabecera pública fusiona **Acceder** y **Registrarme** en una sola acción **ACCESO**, que abre el flujo progresivo existente de autenticación/registro.
 # WAMERCIO 2.5.8 — Auditoría integral de coherencia y comercio conversacional
 
 - Unifica las capacidades del negocio mediante `business_engine` + `template_config` para que catálogo, tienda, checkout, POS, entregas, WhatsApp asistido y backoffice respondan al mismo modelo.

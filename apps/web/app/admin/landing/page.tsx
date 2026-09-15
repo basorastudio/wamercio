@@ -13,8 +13,7 @@ const landingDefaults={
  nav_product_label:'Producto',
  nav_prices_label:'Precios',
  nav_demo_label:'Demo',
- nav_access_label:'Acceder',
- nav_register_label:'Registrarme',
+ nav_access_label:'Acceso',
  hero_badge:'Comercio conversacional hecho en República Dominicana 🇩🇴',
  hero_kicker:'Simple y amigable',
  hero_title:'Tu comercio y tus pedidos más fáciles con WhatsApp.',
@@ -107,7 +106,7 @@ export default function LandingSettings(){
      {err&&<Alert text={err}/>} {saved&&<div className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">Cambios guardados correctamente.</div>}
 
      <EditorSection eyebrow="Identidad" title="Marca y navegación" description="Textos de cabecera que aparecen antes del contenido principal.">
-      <div className="grid gap-4 sm:grid-cols-2">{textInput('Nombre visible','brand_name')}{textInput('Subtítulo','brand_subtitle')}{textInput('Menú · Funciones','nav_features_label')}{textInput('Menú · Producto','nav_product_label')}{textInput('Menú · Precios','nav_prices_label')}{textInput('Menú · Demo','nav_demo_label')}{textInput('Botón cabecera · Acceder','nav_access_label')}{textInput('Botón cabecera · Registrarme','nav_register_label')}</div>
+      <div className="grid gap-4 sm:grid-cols-2">{textInput('Nombre visible','brand_name')}{textInput('Subtítulo','brand_subtitle')}{textInput('Menú · Funciones','nav_features_label')}{textInput('Menú · Producto','nav_product_label')}{textInput('Menú · Precios','nav_prices_label')}{textInput('Menú · Demo','nav_demo_label')}{textInput('Botón cabecera · Acceso','nav_access_label')}</div>
      </EditorSection>
 
      <EditorSection eyebrow="Hero" title="Bloque principal" description="Primer mensaje que ve el visitante al abrir la página.">

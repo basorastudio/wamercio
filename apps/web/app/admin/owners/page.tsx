@@ -7,6 +7,7 @@ import {Alert,Loading,Modal,SearchBox,Status} from '@/components/ui'
 import type {Plan} from '@/lib/types'
 import PhoneInput,{phoneDisplay} from '@/components/phone-input'
 import PinInput from '@/components/pin-input'
+import {storeSlugify} from '@/lib/store-slug'
 import {
   Building2,CheckCircle2,ChevronDown,ChevronUp,ExternalLink,IdCard,Layers3,
   MapPin,Pencil,Plus,RefreshCw,ShieldBan,ShieldCheck,Store,Trash2,UserRound,UsersRound
@@ -30,7 +31,6 @@ const emptyBusiness:BusinessForm={name:'',template_slug:'otro-negocio',whatsapp:
 const digits=(v:string)=>String(v||'').replace(/\D/g,'')
 const formatCedula=(v:string)=>{const d=digits(v).slice(0,11);return [d.slice(0,3),d.slice(3,10),d.slice(10,11)].filter(Boolean).join('-')}
 const formatRNC=(v:string)=>{const d=digits(v).slice(0,11);if(d.length<=9)return [d.slice(0,3),d.slice(3,8),d.slice(8,9)].filter(Boolean).join('-');return [d.slice(0,3),d.slice(3,10),d.slice(10,11)].filter(Boolean).join('-')}
-const slugify=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)
 const unwrapList=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 
 export default function OwnersPage(){
@@ -62,7 +62,7 @@ export default function OwnersPage(){
  const selectedTemplate=activeTemplates.find(t=>t.slug===businessForm.template_slug)
  const templateName=String(selectedTemplate?.name||'').trim()
  const finalBusinessName=useMemo(()=>{const raw=businessForm.name.trim();if(!raw)return '';if(!templateName||businessForm.template_slug==='otro-negocio'||/^otro/i.test(templateName))return raw;return raw.toLowerCase().startsWith((templateName+' ').toLowerCase())?raw:`${templateName} ${raw}`},[businessForm.name,businessForm.template_slug,templateName])
- const publicSlug=slugify(finalBusinessName)
+ const publicSlug=storeSlugify(finalBusinessName)
  const publicURL=publicSlug?`wamercio.com/${publicSlug}`:'Se generará al escribir el nombre'
  const whatsappVerified=whatsappState==='valid'&&lastWhatsApp===digits(ownerForm.phone)
  const identityLocked=identityVerified

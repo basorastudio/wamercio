@@ -6,6 +6,7 @@ import {api} from '@/lib/api'
 import PhoneInput,{phoneDisplay} from '@/components/phone-input'
 import PinInput from '@/components/pin-input'
 import BusinessTemplatePicker,{type BusinessTemplate} from '@/components/business-template-picker'
+import {storeSlugify} from '@/lib/store-slug'
 import {ArrowLeft,Building2,CheckCircle2,IdCard,KeyRound,LoaderCircle,MapPin,MessageCircleMore,ShieldCheck,Sparkles,UserRound,X} from 'lucide-react'
 
 type Step='phone'|'pin'|'template'|'register'
@@ -18,7 +19,6 @@ type RegisterForm={
 const emptyForm:RegisterForm={name:'',last_name:'',birth_date:'',gender:'',cedula:'',business_name:'',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:''}
 const digits=(value:string)=>String(value||'').replace(/\D/g,'')
 const formatCedula=(value:string)=>{const d=digits(value).slice(0,11);return [d.slice(0,3),d.slice(3,10),d.slice(10,11)].filter(Boolean).join('-')}
-const slugify=(v:string)=>v.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)
 const unwrapList=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 
 export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>void}){
@@ -89,7 +89,7 @@ export default function AccessModal({open,onClose}:{open:boolean;onClose:()=>voi
   const templateName=String((activeTemplates.find(t=>t.slug===templateSlug)||selectedTemplate)?.name||'').trim()
   const rawBusinessName=form.business_name.trim()
   const finalBusinessName=!rawBusinessName?'':(!templateName||templateSlug==='otro-negocio'||/^otro/i.test(templateName))?rawBusinessName:rawBusinessName.toLowerCase().startsWith((templateName+' ').toLowerCase())?rawBusinessName:`${templateName} ${rawBusinessName}`
-  const publicSlug=slugify(finalBusinessName)
+  const publicSlug=storeSlugify(finalBusinessName)
 
   const reset=()=>{
     setStep('phone');setPhone('');setPhoneValid(false);setPhoneVerified(false);setPin('');setForm({...emptyForm});setTemplateSlug('');setSelectedTemplate(undefined);setError('');setBusy(false);setAcceptedPinLengths([pinLength]);setCedulaState('idle');setCedulaMessage('');setLastVerifiedCedula('');setCities([]);setNeighborhoods([]);setTerritoryAvailable(true)

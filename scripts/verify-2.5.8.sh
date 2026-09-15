@@ -19,6 +19,7 @@ python3 scripts/test_2_5_8_storefront_purchase_order_details.py
 python3 scripts/test_2_5_8_whatsapp_session_hygiene.py
 python3 scripts/test_2_5_8_customer_contact_profiles.py
 python3 scripts/test_2_5_8_api_build_regressions.py
+python3 scripts/test_2_5_8_compact_store_slug_access.py
 python3 scripts/test_2_5_8_admin_settings_independent_scroll.py
 python3 scripts/test_2_5_8_owner_identity_landing_editor.py
 python3 scripts/test_2_5_8_whatsapp_tables_pos.py
@@ -54,6 +55,8 @@ down=$(find services/api/migrations -maxdepth 1 -name '*.down.sql' | wc -l | tr 
 [ -f services/api/migrations/000026_business_capabilities_coherence.down.sql ] || fail 'migration 000026 down'
 [ -f services/api/migrations/000027_quote_customer_metrics.up.sql ] || fail 'migration 000027 up'
 [ -f services/api/migrations/000027_quote_customer_metrics.down.sql ] || fail 'migration 000027 down'
+[ -f services/api/migrations/000028_compact_store_urls_unified_access.up.sql ] || fail 'migration 000028 up'
+[ -f services/api/migrations/000028_compact_store_urls_unified_access.down.sql ] || fail 'migration 000028 down'
 
 if grep -R -i -q 'colmapro\|col\.do' apps services --exclude-dir=node_modules; then fail 'legacy brand reference'; fi
 if grep -R -q 'wamercio.com/{slug}' apps services; then fail 'legacy path-based tenant URL'; fi
