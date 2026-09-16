@@ -6,7 +6,7 @@ import {loadAddressTerritory} from '@/lib/customer-address-territory'
 import {applyStoreScopeToAddress,normalizeServiceScope,scopeContextLabel,scopeFieldVisibility} from '@/lib/store-service-scope'
 import {LoaderCircle,MapPin} from 'lucide-react'
 
-const blank={id:'',label:'Principal',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:'',is_primary:false}
+const blank={id:'',label:'Principal',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:'',latitude:null as number|null,longitude:null as number|null,is_primary:false}
 const unwrap=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 const same=(a:any,b:any)=>String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase()
 
@@ -19,6 +19,8 @@ export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?
   const[cities,setCities]=useState<any[]>([])
   const[neighborhoods,setNeighborhoods]=useState<any[]>([])
   const[busy,setBusy]=useState(false)
+  const[locating,setLocating]=useState(false)
+  const[locationMessage,setLocationMessage]=useState('')
   const[error,setError]=useState('')
   const scope=normalizeServiceScope(storeTerritory?.service_scope)
   const fields=useMemo(()=>scopeFieldVisibility(scope),[scope])
@@ -105,6 +107,29 @@ export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?
     try{await api(payload.id?`/customer/addresses/${payload.id}`:'/customer/addresses',{method:payload.id?'PUT':'POST',body:JSON.stringify(payload)});onSaved()}catch(e:any){setError(e.message||'No se pudo guardar la dirección')}finally{setBusy(false)}
   }
 
+
+  const captureLocation=()=>{
+    setLocationMessage('')
+    if(typeof navigator==='undefined'||!navigator.geolocation){setLocationMessage('Este dispositivo no permite obtener la ubicación.');return}
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      position=>{
+        const latitude=Number(position.coords.latitude.toFixed(7))
+        const longitude=Number(position.coords.longitude.toFixed(7))
+        setForm((v:any)=>({...v,latitude,longitude}))
+        setLocationMessage('Ubicación exacta guardada en esta dirección.')
+        setLocating(false)
+      },
+      geoError=>{
+        const message=geoError.code===1?'No autorizaste el acceso a tu ubicación.':geoError.code===2?'No pudimos determinar tu ubicación actual.':'La solicitud de ubicación tardó demasiado. Inténtalo nuevamente.'
+        setLocationMessage(message)
+        setLocating(false)
+      },
+      {enableHighAccuracy:true,timeout:15000,maximumAge:60000},
+    )
+  }
+  const hasLocation=form.latitude!==null&&form.latitude!==undefined&&form.longitude!==null&&form.longitude!==undefined&&Number.isFinite(Number(form.latitude))&&Number.isFinite(Number(form.longitude))
+
   const territoryFields=territory&&available?
     <div className={`mt-4 grid gap-4 ${fields.province?'sm:grid-cols-3':fields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>
       {fields.province&&<div><label className="label">Provincia</label><select className="field" value={form.province_code} onChange={e=>province(e.target.value)}><option value="">Selecciona provincia</option>{provinces.map((p:any)=><option key={p.code} value={p.code}>{p.name}</option>)}</select></div>}
@@ -123,7 +148,14 @@ export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?
     {scope!=='national'&&<div className="mt-4 rounded-xl border border-emerald-100 bg-white/80 px-3 py-2.5 text-xs text-emerald-800"><strong>Alcance {scope==='provincial'?'provincial':'municipal'}:</strong> {scopeContextLabel(storeTerritory,scope)}. La ubicación base del negocio se aplica automáticamente.</div>}
     {territoryFields}
     <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px]"><div><label className="label">Calle</label><input className="field" value={form.street} onChange={e=>setForm((v:any)=>({...v,street:e.target.value}))}/></div><div><label className="label">Número</label><input className="field" value={form.street_number} onChange={e=>setForm((v:any)=>({...v,street_number:e.target.value}))}/></div></div>
-    <div className="mt-4"><label className="label">Referencia</label><input className="field" value={form.reference} onChange={e=>setForm((v:any)=>({...v,reference:e.target.value}))}/></div>
+    <div className="mt-4 rounded-2xl border border-emerald-100 bg-white/85 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><MapPin className="h-4 w-4"/></div><div><p className="text-sm font-semibold text-ink-900">Ubicación exacta</p><p className="mt-1 text-xs leading-5 text-[#8d92aa]">Guarda las coordenadas de este dispositivo junto a la dirección para ubicarla con precisión en el mapa.</p></div></div>
+        <button type="button" onClick={captureLocation} disabled={locating} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 disabled:opacity-60">{locating?<LoaderCircle className="h-4 w-4 animate-spin"/>:<MapPin className="h-4 w-4"/>}{hasLocation?'Actualizar ubicación':'Obtener mi ubicación'}</button>
+      </div>
+      {hasLocation&&<p className="mt-3 text-xs font-semibold text-emerald-700">Ubicación guardada · {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p>}
+      {locationMessage&&<p className={`mt-2 text-xs ${locationMessage.startsWith('Ubicación exacta')?'text-emerald-700':'text-amber-700'}`}>{locationMessage}</p>}
+    </div>
     {error&&<p className="mt-3 text-sm text-rose-600">{error}</p>}
     <div className="mt-4 flex justify-end gap-2"><button type="button" onClick={onCancel} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">Cancelar</button><button disabled={busy} className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white">{busy&&<LoaderCircle className="h-4 w-4 animate-spin"/>}Guardar</button></div>
   </form>

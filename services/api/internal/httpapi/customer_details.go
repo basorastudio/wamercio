@@ -41,20 +41,21 @@ func (s *Server) globalCustomerDetailData(ctx context.Context, id string) (map[s
 	var primaryAddress map[string]any
 	rows, err := s.db.Query(ctx, `
 		SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),
-		       coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),is_primary,created_at
+		       coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),latitude,longitude,is_primary,created_at
 		FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, id)
 	if err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var aid, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string
+			var latitude, longitude *float64
 			var primary bool
 			var created time.Time
-			if rows.Scan(&aid, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &primary, &created) == nil {
+			if rows.Scan(&aid, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &latitude, &longitude, &primary, &created) == nil {
 				formatted := joinCustomerAddressParts(joinCustomerAddressParts(street, streetNumber), neighborhood, municipality, province)
 				item := map[string]any{
 					"id": aid, "label": label, "province_code": provinceCode, "province": province, "city_id": cityID,
 					"municipality": municipality, "neighborhood_id": neighborhoodID, "neighborhood": neighborhood,
-					"street": street, "street_number": streetNumber, "reference": reference, "is_primary": primary,
+					"street": street, "street_number": streetNumber, "reference": reference, "latitude": latitude, "longitude": longitude, "is_primary": primary,
 					"formatted_address": formatted, "map_query": formatted, "created_at": created,
 				}
 				addresses = append(addresses, item)

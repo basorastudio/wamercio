@@ -1,3 +1,15 @@
+# WAMERCIO 2.8.9 — Ubicación exacta en direcciones de clientes
+
+- Reemplaza el campo visible **Referencia** por **Ubicación exacta** en el perfil y en el registro inicial del cliente.
+- Añade **Obtener mi ubicación** mediante `navigator.geolocation`, con alta precisión, manejo de permisos y mensajes de error.
+- Guarda `latitude` y `longitude` junto a cada registro de `customer_addresses` mediante la migración reversible `000036_customer_address_geolocation`.
+- Conserva compatibilidad con direcciones históricas: el campo `reference` permanece en base de datos, pero deja de formar parte del flujo visual nuevo.
+- El modal **Detalles del cliente** usa las coordenadas exactas cuando están disponibles; para direcciones antiguas sin coordenadas conserva el fallback por dirección escrita.
+- El marcador visual del mapa continúa usando la imagen de perfil de WhatsApp del cliente.
+- Valida rangos de coordenadas tanto en API como en PostgreSQL.
+
+---
+
 # WAMERCIO 2.8.8 — Hotfix de compilación API para detalle de clientes
 
 - Corrige la colisión de símbolos Go introducida en 2.8.7: `customer_details.go` declaraba `customerAddressText` con una firma distinta a la función ya existente en `customer_auth.go`.

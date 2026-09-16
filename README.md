@@ -1,3 +1,15 @@
+# WAMERCIO 2.8.9
+
+## Ubicación exacta de direcciones
+
+WAMERCIO permite ahora que el cliente guarde las coordenadas de su dispositivo junto a cada dirección. En **Mi perfil → Direcciones**, el campo Referencia fue sustituido por **Obtener mi ubicación**. El mismo control está disponible durante el registro inicial.
+
+El detalle administrativo del cliente centra Google Maps en `latitude,longitude` cuando existen y mantiene la foto de WhatsApp como pin visual. Las direcciones creadas antes de 2.8.9 continúan funcionando mediante búsqueda textual hasta que el cliente actualice su ubicación.
+
+La actualización agrega la migración `000036_customer_address_geolocation` y no requiere variables de entorno nuevas.
+
+---
+
 # WAMERCIO 2.8.8
 
 ## Hotfix de compilación 2.8.8

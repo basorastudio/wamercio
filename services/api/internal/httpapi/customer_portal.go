@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func customerAddressRow(id, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string, primary bool, created time.Time) map[string]any {
+func customerAddressRow(id, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string, latitude, longitude *float64, primary bool, created time.Time) map[string]any {
 	input := customerAddressInput{
 		Label: label, ProvinceCode: provinceCode, Province: province, CityID: cityID, Municipality: municipality,
 		NeighborhoodID: neighborhoodID, Neighborhood: neighborhood, Street: street, StreetNumber: streetNumber, Reference: reference, IsPrimary: primary,
@@ -17,7 +17,7 @@ func customerAddressRow(id, label, provinceCode, province, cityID, municipality,
 	return map[string]any{
 		"id": id, "label": label, "province_code": provinceCode, "province": province, "city_id": cityID, "municipality": municipality,
 		"neighborhood_id": neighborhoodID, "neighborhood": neighborhood, "street": street, "street_number": streetNumber, "reference": reference,
-		"is_primary": primary, "formatted": customerAddressText(input), "created_at": created,
+		"latitude": latitude, "longitude": longitude, "is_primary": primary, "formatted": customerAddressText(input), "created_at": created,
 	}
 }
 
@@ -32,15 +32,16 @@ func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	addresses := []map[string]any{}
-	rows, _ := s.db.Query(r.Context(), `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),is_primary,created_at FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, c.UserID)
+	rows, _ := s.db.Query(r.Context(), `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),latitude,longitude,is_primary,created_at FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, c.UserID)
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
 			var aid, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string
+			var latitude, longitude *float64
 			var primary bool
 			var at time.Time
-			if rows.Scan(&aid, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &primary, &at) == nil {
-				addresses = append(addresses, customerAddressRow(aid, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference, primary, at))
+			if rows.Scan(&aid, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &latitude, &longitude, &primary, &at) == nil {
+				addresses = append(addresses, customerAddressRow(aid, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference, latitude, longitude, primary, at))
 			}
 		}
 	}
@@ -93,7 +94,7 @@ func (s *Server) customerUpdateMe(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) customerAddresses(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
-	rows, err := s.db.Query(r.Context(), `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),is_primary,created_at FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, c.UserID)
+	rows, err := s.db.Query(r.Context(), `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),latitude,longitude,is_primary,created_at FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, c.UserID)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "No se pudieron cargar las direcciones")
 		return
@@ -102,10 +103,11 @@ func (s *Server) customerAddresses(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference string
+		var latitude, longitude *float64
 		var primary bool
 		var created time.Time
-		if rows.Scan(&id, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &primary, &created) == nil {
-			out = append(out, customerAddressRow(id, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference, primary, created))
+		if rows.Scan(&id, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &latitude, &longitude, &primary, &created) == nil {
+			out = append(out, customerAddressRow(id, label, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood, street, streetNumber, reference, latitude, longitude, primary, created))
 		}
 	}
 	jsonOut(w, http.StatusOK, out)
@@ -115,6 +117,12 @@ func validateCustomerAddress(in customerAddressInput) (customerAddressInput, str
 	in = normalizeCustomerAddress(in)
 	if in.Province == "" || in.Municipality == "" || in.Neighborhood == "" || in.Street == "" || in.StreetNumber == "" {
 		return in, "Completa provincia, municipio, barrio, calle y número"
+	}
+	if (in.Latitude == nil) != (in.Longitude == nil) {
+		return in, "La ubicación debe incluir latitud y longitud"
+	}
+	if in.Latitude != nil && (*in.Latitude < -90 || *in.Latitude > 90 || *in.Longitude < -180 || *in.Longitude > 180) {
+		return in, "Las coordenadas de ubicación no son válidas"
 	}
 	return in, ""
 }
@@ -154,12 +162,12 @@ func (s *Server) customerCreateAddress(w http.ResponseWriter, r *http.Request) {
 	}
 	var id string
 	var created time.Time
-	err = tx.QueryRow(r.Context(), `INSERT INTO customer_addresses(global_customer_id,label,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number,reference,is_primary) VALUES($1,$2,nullif($3,''),$4,nullif($5,''),$6,nullif($7,''),$8,$9,$10,nullif($11,''),$12) RETURNING id::text,created_at`, c.UserID, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, primary).Scan(&id, &created)
+	err = tx.QueryRow(r.Context(), `INSERT INTO customer_addresses(global_customer_id,label,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number,reference,latitude,longitude,is_primary) VALUES($1,$2,nullif($3,''),$4,nullif($5,''),$6,nullif($7,''),$8,$9,$10,nullif($11,''),$12,$13,$14) RETURNING id::text,created_at`, c.UserID, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, in.Latitude, in.Longitude, primary).Scan(&id, &created)
 	if err != nil || tx.Commit(r.Context()) != nil {
 		jsonErr(w, http.StatusInternalServerError, "No se pudo guardar la dirección")
 		return
 	}
-	jsonOut(w, http.StatusCreated, customerAddressRow(id, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, primary, created))
+	jsonOut(w, http.StatusCreated, customerAddressRow(id, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, in.Latitude, in.Longitude, primary, created))
 }
 
 func (s *Server) customerUpdateAddress(w http.ResponseWriter, r *http.Request) {
@@ -199,7 +207,7 @@ func (s *Server) customerUpdateAddress(w http.ResponseWriter, r *http.Request) {
 	if in.IsPrimary {
 		_, _ = tx.Exec(r.Context(), `UPDATE customer_addresses SET is_primary=false,updated_at=now() WHERE global_customer_id=$1 AND id<>$2 AND is_primary=true`, c.UserID, id)
 	}
-	_, err = tx.Exec(r.Context(), `UPDATE customer_addresses SET label=$1,province_code=nullif($2,''),province=$3,city_id=nullif($4,''),municipality=$5,neighborhood_id=nullif($6,''),neighborhood=$7,street=$8,street_number=$9,reference=nullif($10,''),is_primary=$11,updated_at=now() WHERE id=$12 AND global_customer_id=$13`, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, in.IsPrimary, id, c.UserID)
+	_, err = tx.Exec(r.Context(), `UPDATE customer_addresses SET label=$1,province_code=nullif($2,''),province=$3,city_id=nullif($4,''),municipality=$5,neighborhood_id=nullif($6,''),neighborhood=$7,street=$8,street_number=$9,reference=nullif($10,''),latitude=$11,longitude=$12,is_primary=$13,updated_at=now() WHERE id=$14 AND global_customer_id=$15`, in.Label, in.ProvinceCode, in.Province, in.CityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.Street, in.StreetNumber, in.Reference, in.Latitude, in.Longitude, in.IsPrimary, id, c.UserID)
 	if err != nil || tx.Commit(r.Context()) != nil {
 		jsonErr(w, http.StatusInternalServerError, "No se pudo actualizar la dirección")
 		return

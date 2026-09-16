@@ -14,17 +14,19 @@ import (
 )
 
 type customerAddressInput struct {
-	Label          string `json:"label"`
-	ProvinceCode   string `json:"province_code"`
-	Province       string `json:"province"`
-	CityID         string `json:"city_id"`
-	Municipality   string `json:"municipality"`
-	NeighborhoodID string `json:"neighborhood_id"`
-	Neighborhood   string `json:"neighborhood"`
-	Street         string `json:"street"`
-	StreetNumber   string `json:"street_number"`
-	Reference      string `json:"reference"`
-	IsPrimary      bool   `json:"is_primary"`
+	Label          string   `json:"label"`
+	ProvinceCode   string   `json:"province_code"`
+	Province       string   `json:"province"`
+	CityID         string   `json:"city_id"`
+	Municipality   string   `json:"municipality"`
+	NeighborhoodID string   `json:"neighborhood_id"`
+	Neighborhood   string   `json:"neighborhood"`
+	Street         string   `json:"street"`
+	StreetNumber   string   `json:"street_number"`
+	Reference      string   `json:"reference"`
+	Latitude       *float64 `json:"latitude"`
+	Longitude      *float64 `json:"longitude"`
+	IsPrimary      bool     `json:"is_primary"`
 }
 
 func normalizeCustomerAddress(in customerAddressInput) customerAddressInput {
@@ -235,8 +237,10 @@ func (s *Server) customerRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if address.Province == "" || address.Municipality == "" || address.Neighborhood == "" || address.Street == "" || address.StreetNumber == "" {
-		jsonErr(w, http.StatusBadRequest, "Completa provincia, municipio, barrio, calle y número")
+	var addressMsg string
+	address, addressMsg = validateCustomerAddress(address)
+	if addressMsg != "" {
+		jsonErr(w, http.StatusBadRequest, addressMsg)
 		return
 	}
 
@@ -324,7 +328,7 @@ func (s *Server) customerRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = tx.Exec(r.Context(), `UPDATE customer_addresses SET is_primary=false,updated_at=now() WHERE global_customer_id=$1 AND is_primary=true`, customerID)
-	_, err = tx.Exec(r.Context(), `INSERT INTO customer_addresses(global_customer_id,label,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number,reference,is_primary) VALUES($1,$2,nullif($3,''),$4,nullif($5,''),$6,nullif($7,''),$8,$9,$10,nullif($11,''),true)`, customerID, address.Label, address.ProvinceCode, address.Province, address.CityID, address.Municipality, address.NeighborhoodID, address.Neighborhood, address.Street, address.StreetNumber, address.Reference)
+	_, err = tx.Exec(r.Context(), `INSERT INTO customer_addresses(global_customer_id,label,province_code,province,city_id,municipality,neighborhood_id,neighborhood,street,street_number,reference,latitude,longitude,is_primary) VALUES($1,$2,nullif($3,''),$4,nullif($5,''),$6,nullif($7,''),$8,$9,$10,nullif($11,''),$12,$13,true)`, customerID, address.Label, address.ProvinceCode, address.Province, address.CityID, address.Municipality, address.NeighborhoodID, address.Neighborhood, address.Street, address.StreetNumber, address.Reference, address.Latitude, address.Longitude)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, "No se pudo guardar la dirección")
 		return

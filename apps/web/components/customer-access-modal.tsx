@@ -14,10 +14,10 @@ type VerifyState='idle'|'checking'|'valid'|'invalid'
 type PhoneAutoState='idle'|'waiting'|'checking'|'account'|'new'|'error'
 type CustomerForm={
   cedula:string;name:string;last_name:string;birth_date:string;gender:string;
-  province_code:string;province:string;city_id:string;municipality:string;neighborhood_id:string;neighborhood:string;street:string;street_number:string;reference:string
+  province_code:string;province:string;city_id:string;municipality:string;neighborhood_id:string;neighborhood:string;street:string;street_number:string;reference:string;latitude:number|null;longitude:number|null
 }
 
-const emptyForm:CustomerForm={cedula:'',name:'',last_name:'',birth_date:'',gender:'',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:''}
+const emptyForm:CustomerForm={cedula:'',name:'',last_name:'',birth_date:'',gender:'',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:'',latitude:null,longitude:null}
 const digits=(value:string)=>String(value||'').replace(/\D/g,'')
 const formatCedula=(value:string)=>{const d=digits(value).slice(0,11);return [d.slice(0,3),d.slice(3,10),d.slice(10,11)].filter(Boolean).join('-')}
 const unwrapList=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
@@ -47,6 +47,8 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}
   const[provinces,setProvinces]=useState<any[]>([])
   const[cities,setCities]=useState<any[]>([])
   const[neighborhoods,setNeighborhoods]=useState<any[]>([])
+  const[locating,setLocating]=useState(false)
+  const[locationMessage,setLocationMessage]=useState('')
   const phoneLookupSeq=useRef(0)
   const brandName=brand?.name||'Mi tienda'
   const brandColor=String(brand?.theme_config?.colors?.primary||brand?.primary_color||'#10b981')
@@ -167,6 +169,8 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}
     setCities([])
     setNeighborhoods([])
     setTerritoryAvailable(true)
+    setLocating(false)
+    setLocationMessage('')
   }
   const close=()=>{reset();onClose()}
   const back=()=>{
@@ -274,6 +278,29 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}
     const n=neighborhoods.find(x=>String(x.neighborhoodId||x.id)===id)
     setForm(v=>({...v,neighborhood_id:id,neighborhood:String(n?.name||'')}))
   }
+
+  const captureLocation=()=>{
+    setLocationMessage('')
+    if(typeof navigator==='undefined'||!navigator.geolocation){setLocationMessage('Este dispositivo no permite obtener la ubicación.');return}
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      position=>{
+        const latitude=Number(position.coords.latitude.toFixed(7))
+        const longitude=Number(position.coords.longitude.toFixed(7))
+        setForm(v=>({...v,latitude,longitude}))
+        setLocationMessage('Ubicación exacta guardada en esta dirección.')
+        setLocating(false)
+      },
+      geoError=>{
+        const message=geoError.code===1?'No autorizaste el acceso a tu ubicación.':geoError.code===2?'No pudimos determinar tu ubicación actual.':'La solicitud de ubicación tardó demasiado. Inténtalo nuevamente.'
+        setLocationMessage(message)
+        setLocating(false)
+      },
+      {enableHighAccuracy:true,timeout:15000,maximumAge:60000},
+    )
+  }
+  const hasLocation=form.latitude!==null&&form.latitude!==undefined&&form.longitude!==null&&form.longitude!==undefined&&Number.isFinite(Number(form.latitude))&&Number.isFinite(Number(form.longitude))
+
   const register=async(e:React.FormEvent)=>{
     e.preventDefault()
     if(!phoneValid){setError('Revisa el WhatsApp.');return}
@@ -285,7 +312,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}
     if(pin.length!==pinLength){setError(`Crea un PIN de ${pinLength} dígitos.`);return}
     setBusy(true);setError('')
     try{
-      await api('/auth/customer/register',{method:'POST',body:JSON.stringify({phone,pin,cedula:c,name:form.name,last_name:form.last_name,birth_date:form.birth_date,gender:form.gender,address:{label:'Principal',province_code:form.province_code,province:form.province,city_id:form.city_id,municipality:form.municipality,neighborhood_id:form.neighborhood_id,neighborhood:form.neighborhood,street:form.street,street_number:form.street_number,reference:form.reference,is_primary:true}})})
+      await api('/auth/customer/register',{method:'POST',body:JSON.stringify({phone,pin,cedula:c,name:form.name,last_name:form.last_name,birth_date:form.birth_date,gender:form.gender,address:{label:'Principal',province_code:form.province_code,province:form.province,city_id:form.city_id,municipality:form.municipality,neighborhood_id:form.neighborhood_id,neighborhood:form.neighborhood,street:form.street,street_number:form.street_number,reference:form.reference,latitude:form.latitude,longitude:form.longitude,is_primary:true}})})
       await finish()
     }catch(e:any){setError(e.message||'No pudimos crear tu cuenta.')}finally{setBusy(false)}
   }
@@ -341,7 +368,11 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}
             {serviceScope!=='national'&&<div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-800"><strong>Alcance {serviceScope==='provincial'?'provincial':'municipal'}:</strong> {scopeContextLabel(storeTerritory,serviceScope)}. La tienda fija automáticamente esta ubicación.</div>}
             {territoryEnabled&&territoryAvailable?<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><select className="field" value={form.province_code} onChange={e=>chooseProvince(e.target.value)}><option value="">Selecciona provincia</option>{provinces.map((p:any)=><option key={String(p.code)} value={String(p.code)}>{p.name}</option>)}</select></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><select className="field" value={form.city_id} disabled={scopeFields.province?!form.province_code:false} onChange={e=>chooseCity(e.target.value)}><option value="">Selecciona municipio</option>{cities.map((c:any)=><option key={String(c.cityId||c.id)} value={String(c.cityId||c.id)}>{c.name}</option>)}</select></div>}<div><label className="label">Barrio *</label><select className="field" value={form.neighborhood_id} disabled={scopeFields.municipality?!form.city_id:false} onChange={e=>chooseNeighborhood(e.target.value)}><option value="">Selecciona barrio</option>{neighborhoods.map((n:any)=><option key={String(n.neighborhoodId||n.id)} value={String(n.neighborhoodId||n.id)}>{n.name}</option>)}</select></div></div>:<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><input className="field" value={form.province} onChange={e=>setForm(v=>({...v,province:e.target.value}))}/></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><input className="field" value={form.municipality} onChange={e=>setForm(v=>({...v,municipality:e.target.value}))}/></div>}<div><label className="label">Barrio *</label><input className="field" value={form.neighborhood} onChange={e=>setForm(v=>({...v,neighborhood:e.target.value}))}/></div></div>}
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px]"><div><label className="label">Calle *</label><input className="field" value={form.street} onChange={e=>setForm(v=>({...v,street:e.target.value}))}/></div><div><label className="label">Número *</label><input className="field" value={form.street_number} onChange={e=>setForm(v=>({...v,street_number:e.target.value}))}/></div></div>
-            <div className="mt-4"><label className="label">Referencia</label><input className="field" value={form.reference} onChange={e=>setForm(v=>({...v,reference:e.target.value}))} placeholder="Ej.: casa azul, frente al parque"/></div>
+            <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex items-start gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-emerald-600"><MapPin className="h-4 w-4"/></div><div><p className="text-sm font-semibold text-[#26304f]">Ubicación exacta</p><p className="mt-1 text-xs leading-5 text-[#8d92aa]">Usa la ubicación de tu dispositivo para guardar las coordenadas junto a esta dirección.</p></div></div><button type="button" onClick={captureLocation} disabled={locating} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 disabled:opacity-60">{locating?<LoaderCircle className="h-4 w-4 animate-spin"/>:<MapPin className="h-4 w-4"/>}{hasLocation?'Actualizar ubicación':'Obtener mi ubicación'}</button></div>
+              {hasLocation&&<p className="mt-3 text-xs font-semibold text-emerald-700">Ubicación guardada · {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p>}
+              {locationMessage&&<p className={`mt-2 text-xs ${locationMessage.startsWith('Ubicación exacta')?'text-emerald-700':'text-amber-700'}`}>{locationMessage}</p>}
+            </div>
           </section>
           <section className="rounded-2xl border border-slate-100 p-4 sm:p-5"><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Acceso</div><h3 className="mb-4 font-semibold text-[#26304f]">Crea tu PIN de {pinLength} dígitos</h3><PinInput value={pin} onChange={setPin} length={pinLength} required/></section>
           {error&&<p className="text-sm text-rose-600">{error}</p>}

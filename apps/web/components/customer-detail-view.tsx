@@ -32,8 +32,9 @@ function ProfileAvatar({profile,size='lg'}:{profile:any;size?:'lg'|'pin'}){
 export default function CustomerDetailView({profile,storePoints,storeOrders,storeSpent,tenantMode=false}:{profile:any;storePoints?:number;storeOrders?:number;storeSpent?:number;tenantMode?:boolean}){
  if(!profile)return <div className="rounded-2xl border border-dashed border-[#e0e5ec] p-8 text-center text-sm text-[#8d92aa]">No hay información global disponible para este cliente.</div>
  const primary=profile.primary_address||profile.addresses?.[0]
- const mapQuery=primary?.map_query||primary?.formatted_address||''
- const mapURL=mapQuery?`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=17&output=embed`:''
+ const hasExactLocation=primary?.latitude!==null&&primary?.latitude!==undefined&&primary?.longitude!==null&&primary?.longitude!==undefined&&Number.isFinite(Number(primary.latitude))&&Number.isFinite(Number(primary.longitude))
+ const mapQuery=hasExactLocation?`${Number(primary.latitude)},${Number(primary.longitude)}`:(primary?.map_query||primary?.formatted_address||'')
+ const mapURL=mapQuery?`https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=${hasExactLocation?19:17}&output=embed`:''
  const name=profile.full_name||profile.name||'Cliente'
  return <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,.95fr)]">
   <section className="overflow-hidden rounded-[26px] border border-[#e8ebf1] bg-[#f7f9fb]">
@@ -42,7 +43,7 @@ export default function CustomerDetailView({profile,storePoints,storeOrders,stor
     {mapURL?<iframe title="Google Maps - ubicación principal" src={mapURL} className="absolute inset-0 h-full w-full border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade"/>:<div className="absolute inset-0 grid place-items-center p-8 text-center text-sm text-[#8d92aa]">Este cliente todavía no tiene una dirección guardada para mostrar en el mapa.</div>}
     {mapURL&&<div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-full"><div className="relative"><ProfileAvatar profile={profile} size="pin"/><span className="absolute -bottom-2 left-1/2 h-4 w-4 -translate-x-1/2 rotate-45 border-b-4 border-r-4 border-white bg-brand-500 shadow-sm"/></div></div>}
    </div>
-   <div className="border-t border-[#e8ebf1] bg-white p-4"><p className="text-sm font-semibold text-ink-900">{primary?.label||'Principal'}</p><p className="mt-1 text-sm leading-6 text-[#7d849d]">{primary?.formatted_address||'Sin dirección registrada'}</p>{primary?.reference&&<p className="mt-1 text-xs text-[#9aa0b2]">Referencia: {primary.reference}</p>}</div>
+   <div className="border-t border-[#e8ebf1] bg-white p-4"><p className="text-sm font-semibold text-ink-900">{primary?.label||'Principal'}</p><p className="mt-1 text-sm leading-6 text-[#7d849d]">{primary?.formatted_address||'Sin dirección registrada'}</p>{hasExactLocation&&<p className="mt-1 text-xs font-semibold text-brand-600">Ubicación exacta guardada</p>}</div>
   </section>
 
   <section className="space-y-4">
