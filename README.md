@@ -1,4 +1,11 @@
-# WAMERCIO 2.8.3
+# WAMERCIO 2.8.4
+
+
+## Cambios 2.8.4
+
+- Higiene de identidad WhatsApp: el número propio de cada negocio no puede aparecer como conversación del negocio.
+- Reconocimiento inmediato de clientes globales registrados por WhatsApp, incluso antes de la primera compra.
+- Backfill automático mediante la migración `000034_whatsapp_registered_customer_identity`.
 
 La tienda pública es ahora completamente identificada por cada negocio: nombre, logo, colores, favicon, PWA y portada configurable. El propietario puede ocultar o reposicionar los elementos superpuestos a la portada desde **Configuración → Mi negocio** y en móvil la búsqueda se mantiene contraída hasta pulsar la lupa.
 

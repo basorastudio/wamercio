@@ -13,7 +13,8 @@ refresh=server.split('func (s *Server) refreshCustomerStats',1)[1].split('func (
 dashboard=server.split('func (s *Server) dashboard',1)[1].split('func slugify',1)[0]
 admin_dashboard=server.split('func (s *Server) adminDashboard',1)[1].split('func (s *Server) adminUsers',1)[0]
 
-for block,name in [(list_convs,'conversation classification'),(list_customers,'customer list'),(list_contacts,'contact list'),(refresh,'customer statistics'),(dashboard,'merchant dashboard'),(admin_dashboard,'platform dashboard')]:
+need(list_convs, "CASE WHEN c.customer_id IS NOT NULL THEN 'customer' ELSE 'contact' END", 'conversation classification must use resolved customer identity, not purchase history')
+for block,name in [(list_customers,'customer list'),(list_contacts,'contact list'),(refresh,'customer statistics'),(dashboard,'merchant dashboard'),(admin_dashboard,'platform dashboard')]:
     need(block,"flow_type<>'quote'",f'{name} must exclude quotations from purchase metrics')
 
 migration=Path('services/api/migrations/000027_quote_customer_metrics.up.sql')

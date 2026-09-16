@@ -2423,7 +2423,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.db.Query(r.Context(), `
 		SELECT c.id,c.remote_jid,
-		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote')
+		       CASE WHEN c.customer_id IS NOT NULL
 		            THEN coalesce(nullif(cu.name,''),nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'')
 		            ELSE coalesce(nullif(c.contact_name,''),nullif(c.whatsapp_name,''),nullif(c.display_name,''),'') END,
 		       c.unread_count,coalesce(c.last_message,''),c.last_message_at,c.created_at,
@@ -2431,11 +2431,19 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 		       coalesce(nullif(c.whatsapp_phone,''),nullif(cu.phone,''),
 		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
 		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),
-		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote') THEN 'customer' ELSE 'contact' END
+		       CASE WHEN c.customer_id IS NOT NULL THEN 'customer' ELSE 'contact' END
 		FROM conversations c
 		LEFT JOIN customers cu ON cu.id=c.customer_id
 		WHERE c.store_id=$1
 		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
+		  AND NOT EXISTS (
+		    SELECT 1 FROM whatsapp_sessions ws
+		    WHERE ws.store_id=c.store_id AND (
+		      (regexp_replace(coalesce(c.whatsapp_phone,''),'[^0-9]','','g')<>'' AND regexp_replace(coalesce(c.whatsapp_phone,''),'[^0-9]','','g')=regexp_replace(coalesce(ws.phone,''),'[^0-9]','','g'))
+		      OR lower(c.remote_jid)=lower(coalesce(ws.jid,''))
+		      OR (split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' AND regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g')=regexp_replace(coalesce(ws.phone,''),'[^0-9]','','g'))
+		    )
+		  )
 		ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
 		LIMIT 300`, sid)
 	if err != nil {
@@ -2479,6 +2487,59 @@ func conversationPhone(jid string) string {
 	base := strings.SplitN(jid, "@", 2)[0]
 	return normalizePhone(base)
 }
+
+func (s *Server) isOwnWhatsAppEvent(ctx context.Context, storeID, remoteJID, phone string) bool {
+	var ownJID, ownPhone string
+	if err := s.db.QueryRow(ctx, `SELECT coalesce(jid,''),coalesce(phone,'') FROM whatsapp_sessions WHERE store_id=$1`, storeID).Scan(&ownJID, &ownPhone); err != nil {
+		return false
+	}
+	ownPhone = normalizePhone(ownPhone)
+	phone = normalizePhone(phone)
+	if ownPhone != "" && phone != "" && ownPhone == phone {
+		return true
+	}
+	if ownJID != "" && strings.EqualFold(strings.TrimSpace(ownJID), strings.TrimSpace(remoteJID)) {
+		return true
+	}
+	if ownPhone != "" && strings.HasSuffix(strings.ToLower(remoteJID), "@s.whatsapp.net") && conversationPhone(remoteJID) == ownPhone {
+		return true
+	}
+	return false
+}
+
+func registeredCustomerForWhatsApp(ctx context.Context, tx pgx.Tx, storeID, phone string) (string, string, error) {
+	phone = normalizePhone(phone)
+	if phone == "" {
+		return "", "", nil
+	}
+	var globalID, fullName string
+	err := tx.QueryRow(ctx, `SELECT id::text,trim(concat_ws(' ',name,nullif(last_name,''))) FROM global_customers WHERE regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 AND status='active' AND coalesce(pin_hash,'')<>'' ORDER BY updated_at DESC LIMIT 1`, phone).Scan(&globalID, &fullName)
+	if err != nil && err != pgx.ErrNoRows {
+		return "", "", err
+	}
+	if globalID != "" {
+		if strings.TrimSpace(fullName) == "" {
+			fullName = "+" + phone
+		}
+		var customerID string
+		err = tx.QueryRow(ctx, `SELECT id::text FROM customers WHERE store_id=$1 AND (global_customer_id=$2 OR regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$3) ORDER BY (global_customer_id=$2) DESC,created_at DESC LIMIT 1 FOR UPDATE`, storeID, globalID, phone).Scan(&customerID)
+		if err == nil {
+			_, err = tx.Exec(ctx, `UPDATE customers SET global_customer_id=$1,name=$2,status=CASE WHEN status='blocked' THEN status ELSE 'active' END,updated_at=now() WHERE id=$3`, globalID, fullName, customerID)
+			return customerID, fullName, err
+		}
+		if err != pgx.ErrNoRows {
+			return "", "", err
+		}
+		err = tx.QueryRow(ctx, `INSERT INTO customers(store_id,global_customer_id,name,phone,status) VALUES($1,$2,$3,$4,'active') RETURNING id::text`, storeID, globalID, fullName, phone).Scan(&customerID)
+		return customerID, fullName, err
+	}
+	var customerID, customerName string
+	err = tx.QueryRow(ctx, `SELECT c.id::text,c.name FROM customers c WHERE c.store_id=$1 AND regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')=$2 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.id AND o.status<>'canceled' AND o.flow_type<>'quote') ORDER BY c.last_order_at DESC NULLS LAST,c.created_at DESC LIMIT 1`, storeID, phone).Scan(&customerID, &customerName)
+	if err == pgx.ErrNoRows {
+		return "", "", nil
+	}
+	return customerID, customerName, err
+}
 func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
@@ -2519,9 +2580,8 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 	}
 	customer := map[string]any{"id": "", "name": "", "phone": phone, "address": "", "notes": "", "status": "active", "order_count": 0, "total_spent": 0.0}
 	orders := []map[string]any{}
-	isCustomer := false
+	isCustomer := customerID != ""
 	if customerID != "" {
-		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled' AND flow_type<>'quote')`, customerID).Scan(&isCustomer)
 		var name, cphone, address, notes, cstatus string
 		var count int
 		var spent float64
@@ -2625,10 +2685,7 @@ func (s *Server) saveConversationCustomer(w http.ResponseWriter, r *http.Request
 		jsonErr(w, 400, "No se pudo determinar el WhatsApp del contacto")
 		return
 	}
-	isCustomer := false
-	if linkedCustomerID != "" {
-		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled' AND flow_type<>'quote')`, linkedCustomerID).Scan(&isCustomer)
-	}
+	isCustomer := linkedCustomerID != ""
 	name := strings.TrimSpace(in.Name)
 	address := strings.TrimSpace(in.Address)
 	if isCustomer {
@@ -4381,6 +4438,14 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, "Tienda inválida")
 		return
 	}
+	phone := normalizePhone(in.Phone)
+	if phone == "" && strings.HasSuffix(strings.ToLower(in.RemoteJID), "@s.whatsapp.net") {
+		phone = conversationPhone(in.RemoteJID)
+	}
+	if s.isOwnWhatsAppEvent(r.Context(), in.StoreID, in.RemoteJID, phone) {
+		jsonOut(w, 200, map[string]any{"ok": true, "ignored": true, "reason": "self_identity"})
+		return
+	}
 	if in.Direction != "out" {
 		var blocked bool
 		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM conversations WHERE store_id=$1 AND remote_jid=$2 AND coalesce(contact_status,'active')='blocked')`, in.StoreID, in.RemoteJID).Scan(&blocked)
@@ -4396,20 +4461,25 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var customerID any
-	phone := normalizePhone(in.Phone)
-	if phone != "" {
-		var cid string
-		if tx.QueryRow(r.Context(), `SELECT id FROM customers WHERE store_id=$1 AND phone=$2 AND EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=customers.id AND o.status<>'canceled' AND o.flow_type<>'quote') ORDER BY last_order_at DESC NULLS LAST,created_at DESC LIMIT 1`, in.StoreID, phone).Scan(&cid) == nil {
-			customerID = cid
-		}
+	linkedCustomerID, registeredName, customerErr := registeredCustomerForWhatsApp(r.Context(), tx, in.StoreID, phone)
+	if customerErr != nil {
+		jsonErr(w, 500, "No se pudo resolver la identidad del contacto")
+		return
+	}
+	if linkedCustomerID != "" {
+		customerID = linkedCustomerID
 	}
 	whatsappName := strings.TrimSpace(in.DisplayName)
+	displayName := whatsappName
+	if registeredName != "" {
+		displayName = registeredName
+	}
 	unreadInc := 0
 	if in.Direction != "out" {
 		unreadInc = 1
 	}
 	var convID string
-	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,whatsapp_name,whatsapp_phone,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$3,$4,$5,$6,$7,$8) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=CASE WHEN coalesce(conversations.contact_name,'')='' THEN coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name) ELSE conversations.display_name END,whatsapp_name=coalesce(nullif(EXCLUDED.whatsapp_name,''),conversations.whatsapp_name),whatsapp_phone=coalesce(nullif(EXCLUDED.whatsapp_phone,''),conversations.whatsapp_phone),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$6,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, whatsappName, phone, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
+	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,whatsapp_name,whatsapp_phone,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=CASE WHEN coalesce(conversations.contact_name,'')='' THEN coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name) ELSE conversations.display_name END,whatsapp_name=coalesce(nullif(EXCLUDED.whatsapp_name,''),conversations.whatsapp_name),whatsapp_phone=coalesce(nullif(EXCLUDED.whatsapp_phone,''),conversations.whatsapp_phone),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$7,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, displayName, whatsappName, phone, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo registrar conversación")
 		return

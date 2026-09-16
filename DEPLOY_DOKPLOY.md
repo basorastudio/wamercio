@@ -1,11 +1,11 @@
-# Despliegue WAMERCIO 2.8.3 en Dokploy
+# Despliegue WAMERCIO 2.8.4 en Dokploy
 
 ## Personalización pública por negocio
 
 Esta versión sustituye **2.8.2** y no añade migraciones ni variables de entorno. Conserva PostgreSQL, Redis, uploads y las migraciones `000032`/`000033` existentes.
 
-1. Reemplaza el código anterior por **WAMERCIO 2.8.3** y conserva todos los volúmenes actuales. **No uses Fresh Volumes.**
-2. Ejecuta `sh scripts/verify-2.8.3.sh`.
+1. Reemplaza el código anterior por **WAMERCIO 2.8.4** y conserva todos los volúmenes actuales. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.4.sh`.
 3. Sube el código al repositorio y deja que el CI ejecute `npm run build`, `go test ./...`, `go build ./...` y validación de Compose.
 4. En Dokploy usa **Rebuild + Redeploy**.
 5. Después del despliegue abre una tienda en ventana privada y verifica: título de pestaña = nombre del negocio, favicon/logo del negocio, color del navegador = color primario, instalación PWA con nombre/logo del negocio y búsqueda móvil contraída.
@@ -193,4 +193,15 @@ Después del despliegue valida:
 - en la tienda pública, cambia entre modalidades y confirma que solo se muestran los métodos permitidos para la modalidad elegida;
 - intenta confirmar un pedido con una combinación no permitida y confirma que la API la rechaza o selecciona únicamente un método permitido;
 - verifica que las mesas anteriores sigan disponibles dentro de **Área principal** y que las reservas existentes se conserven.
+
+
+## Migración 2.8.4
+
+El API aplicará `000034_whatsapp_registered_customer_identity` al iniciar. Esta migración:
+
+1. elimina conversaciones que correspondan al propio número/JID de la sesión WhatsApp del negocio;
+2. crea o enlaza la relación local de tienda para clientes globales registrados cuyo WhatsApp ya aparece en una conversación;
+3. enlaza esas conversaciones como `customer_id` sin crear pedidos ni alterar `order_count`/`total_spent`.
+
+No requiere nuevas variables de entorno ni reiniciar volúmenes.
 

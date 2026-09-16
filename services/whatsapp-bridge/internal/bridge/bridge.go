@@ -1138,14 +1138,42 @@ func phoneForJID(s *Session, jid types.JID) string {
 	return ""
 }
 
+func skipOwnPhone(ownPhone, candidatePhone string) bool {
+	ownPhone = nonDigits.ReplaceAllString(ownPhone, "")
+	candidatePhone = nonDigits.ReplaceAllString(candidatePhone, "")
+	return ownPhone != "" && candidatePhone != "" && ownPhone == candidatePhone
+}
+
+func sessionOwnPhone(s *Session) string {
+	if s == nil || s.Client == nil || s.Client.Store == nil || s.Client.Store.ID == nil {
+		return ""
+	}
+	return phoneForJID(s, s.Client.Store.ID.ToNonAD())
+}
+
+func isOwnConversationJID(s *Session, jid types.JID) bool {
+	if s == nil || s.Client == nil || s.Client.Store == nil || s.Client.Store.ID == nil {
+		return false
+	}
+	jid = jid.ToNonAD()
+	ownJID := s.Client.Store.ID.ToNonAD()
+	if jid.String() == ownJID.String() {
+		return true
+	}
+	return skipOwnPhone(sessionOwnPhone(s), phoneForJID(s, jid))
+}
+
 func directPhone(s *Session, v *events.Message) string {
 	if v == nil || v.Info.IsGroup {
 		return ""
 	}
+	ownPhone := sessionOwnPhone(s)
 	for _, jid := range []types.JID{v.Info.Chat, v.Info.Sender, v.Info.SenderAlt} {
-		if phone := phoneForJID(s, jid); phone != "" {
-			return phone
+		phone := phoneForJID(s, jid)
+		if phone == "" || skipOwnPhone(ownPhone, phone) {
+			continue
 		}
+		return phone
 	}
 	return ""
 }
@@ -1285,7 +1313,7 @@ func (m *Manager) persistProfilePicture(sessionKey string, jid types.JID, source
 }
 
 func (m *Manager) forwardMessage(s *Session, v *events.Message) {
-	if !m.isCurrentSession(s) || !isDirectUserMessage(v) {
+	if !m.isCurrentSession(s) || !isDirectUserMessage(v) || isOwnConversationJID(s, v.Info.Chat) {
 		return
 	}
 	meta := m.extractMedia(s, v)

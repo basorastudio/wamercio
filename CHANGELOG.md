@@ -1,3 +1,12 @@
+# WAMERCIO 2.8.4 — Identidad WhatsApp y reconocimiento de clientes
+
+- Corrige conversaciones fantasma creadas con el propio WhatsApp del negocio. El bridge ya no toma el número de la sesión como fallback del contacto remoto y el API aplica una segunda validación defensiva por JID/teléfono.
+- La migración `000034_whatsapp_registered_customer_identity` elimina conversaciones propias existentes y enlaza retroactivamente conversaciones de clientes registrados.
+- Un WhatsApp con cuenta global activa en WAMERCIO se reconoce como **Cliente** desde su primera conversación, aunque tenga `0` compras. Los números no registrados continúan como **Contacto**.
+- Al reconocer un cliente global se crea/enlaza su relación local con la tienda, por lo que el Centro SaaS refleja el negocio asociado sin fabricar pedidos ni métricas de compra.
+- Conserva por separado el nombre real del cliente y el nombre de perfil de WhatsApp; la lista de conversaciones prioriza la identidad de cliente cuando existe.
+- Actualiza las regresiones históricas para mantener separados identidad comercial y métricas de compra/cotización.
+
 # WAMERCIO 2.8.3 — Identidad total de tienda y editor libre de portada
 
 - Fija el menú paralelo de **Configuración** en escritorio para que permanezca visible mientras se recorre el lienzo de ajustes.
