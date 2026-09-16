@@ -9,7 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-func customerAddressText(parts ...string) string {
+func joinCustomerAddressParts(parts ...string) string {
 	clean := make([]string, 0, len(parts))
 	for _, part := range parts {
 		if value := strings.TrimSpace(part); value != "" {
@@ -50,7 +50,7 @@ func (s *Server) globalCustomerDetailData(ctx context.Context, id string) (map[s
 			var primary bool
 			var created time.Time
 			if rows.Scan(&aid, &label, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &street, &streetNumber, &reference, &primary, &created) == nil {
-				formatted := customerAddressText(customerAddressText(street, streetNumber), neighborhood, municipality, province)
+				formatted := joinCustomerAddressParts(joinCustomerAddressParts(street, streetNumber), neighborhood, municipality, province)
 				item := map[string]any{
 					"id": aid, "label": label, "province_code": provinceCode, "province": province, "city_id": cityID,
 					"municipality": municipality, "neighborhood_id": neighborhoodID, "neighborhood": neighborhood,

@@ -1,3 +1,20 @@
+# Despliegue WAMERCIO 2.8.8 en Dokploy
+
+## Hotfix de compilación API · detalle de clientes
+
+Esta versión sustituye 2.8.7 y corrige el error de compilación `customerAddressText redeclared in this block`. No agrega migraciones ni variables de entorno.
+
+1. Reemplaza 2.8.7 por **WAMERCIO 2.8.8**, conservando PostgreSQL, Redis, uploads y variables actuales. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.8.sh`.
+3. Sube el código y confirma que CI/Dokploy ejecute `go build ./...` y `npm run build`.
+4. En Dokploy ejecuta **Rebuild + Redeploy** para API y Web.
+5. Verifica que el paso Docker del API supere `CGO_ENABLED=0 GOOS=linux go build ... ./cmd/api` y que luego continúe el build del frontend.
+6. Después del arranque prueba **Clientes → ficha comercial → Detalles del cliente** y **Superadmin → Clientes globales → fila del cliente**.
+
+No existe migración `000036`; la última continúa siendo `000035_global_identity_contact_semantics`.
+
+---
+
 # Despliegue WAMERCIO 2.8.7 en Dokploy
 
 ## Ficha comercial y detalle global de clientes

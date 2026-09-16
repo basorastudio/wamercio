@@ -1,3 +1,13 @@
+# WAMERCIO 2.8.8 — Hotfix de compilación API para detalle de clientes
+
+- Corrige la colisión de símbolos Go introducida en 2.8.7: `customer_details.go` declaraba `customerAddressText` con una firma distinta a la función ya existente en `customer_auth.go`.
+- Renombra el helper nuevo a `joinCustomerAddressParts` y actualiza sus llamadas sin alterar la lógica de direcciones del detalle global.
+- Añade `test_2_8_8_go_symbol_guard.py`, que inspecciona todo `internal/httpapi` y falla si dos archivos vuelven a declarar la misma función de nivel de paquete.
+- Mantiene sin cambios la ficha comercial, puntos, navegación interna a WhatsApp, detalle global de Superadmin y aislamiento multi-tenant de 2.8.7.
+- No agrega migraciones, dependencias ni variables de entorno. La última migración sigue siendo `000035_global_identity_contact_semantics`.
+
+---
+
 # WAMERCIO 2.8.7 — Ficha comercial, fidelización y detalle global de clientes
 
 - Añade la tarjeta **Puntos de fidelización** a la ficha comercial del cliente usando el saldo real de `loyalty_accounts` para la tienda seleccionada.

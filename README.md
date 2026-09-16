@@ -1,4 +1,9 @@
-# WAMERCIO 2.8.7
+# WAMERCIO 2.8.8
+
+## Hotfix de compilación 2.8.8
+
+Corrige la colisión de nombres Go introducida al añadir el detalle global de clientes en 2.8.7. El helper local de formato de direcciones fue renombrado para convivir con la función existente de autenticación, sin cambios de datos ni migraciones.
+
 
 ## Creación automática de mesas
 
