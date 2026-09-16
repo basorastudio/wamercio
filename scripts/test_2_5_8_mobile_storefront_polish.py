@@ -16,7 +16,7 @@ assert '<span>Mi compra</span>' in mobile
 assert '<span>Mi compra</span>' in customer
 
 # Checkout payment order is cash, terminal card, transfer.
-assert "['cash','cash_on_delivery','bank_transfer'].filter" in store
+assert "const paymentMethodOrder:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer']" in store
 assert payments.index('>Efectivo<') < payments.index('>Tarjeta en terminal<') < payments.index('>Transferencia electrónica<')
 
 # Notes belong under the cart products, not the checkout column.

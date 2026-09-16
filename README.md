@@ -8,6 +8,15 @@ La tienda pública conserva el catálogo visible mientras el cliente arma su ped
 
 ## Sincronización, mesas y POS
 
+### Áreas de mesas y pagos por modalidad
+
+- **Gestión de mesas** se organiza por **Áreas**. Primero se crea el área (por ejemplo, Salón principal o Terraza) y luego cada mesa se asocia mediante un selector.
+- Las mesas existentes se migran automáticamente a **Área principal** y la reserva pública muestra `Área · Mesa` para evitar ambigüedad.
+- **Métodos de pago → Disponibilidad por modalidad** permite decidir qué formas de pago están disponibles para **Delivery**, **Recoger** y **Mesa**. Los interruptores globales siguen siendo el límite superior.
+- La API valida la modalidad + método de pago durante el checkout, de modo que una combinación deshabilitada no puede forzarse desde el navegador.
+- La barra lateral obtiene `dine_in_enabled` desde `/stores` y usa un estado persistido para evitar el parpadeo de **Gestión de mesas** al refrescar.
+
+
 - La sesión WhatsApp del negocio no importa todo el historial por defecto. El comercio define sincronización **manual/automática** y un rango de fechas.
 - Los negocios que atienden en local pueden activar **Mesas y reservas**, administrar capacidad y aceptar pedidos asociados a una reserva.
 - El POS reutiliza la lógica comercial del catálogo: ficha con imagen, descripción, variantes y adicionales antes de agregar, además de búsqueda de clientes registrados.

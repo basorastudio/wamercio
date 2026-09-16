@@ -101,3 +101,17 @@ Después del Rebuild + Redeploy valida:
 - **WhatsApp**: la cabecera genérica ya no aparece; abre un chat y prueba el menú `⋮` con Vaciar, Exportar, Cerrar, Bloquear y Eliminar.
 - **Configuración → Ventas y entrega**: activa **Mesas y reservas** y guarda los cambios.
 - Confirma que aparezca **Gestión de mesas** en el grupo Gestión de la barra lateral y crea una mesa de prueba.
+
+## Revisión 2.5.8 · Áreas de mesas y pagos por modalidad
+
+Esta revisión incorpora la migración `000030_table_areas_payment_rules`. Durante el **Rebuild + Redeploy**, permite que la API ejecute todas las migraciones pendientes antes de abrir el panel. No se agregan variables de entorno.
+
+Después del despliegue valida:
+
+- en **Gestión de mesas**, crea primero un **Área** (por ejemplo, Salón principal) y luego crea varias mesas seleccionando esa área;
+- refresca el navegador con **Mesas y reservas** activo y confirma que **Gestión de mesas** no desaparece/reaparece en la barra lateral;
+- en **Métodos de pago**, abre **Disponibilidad por modalidad** y configura combinaciones distintas para **Delivery / Recoger / Mesa**;
+- en la tienda pública, cambia entre modalidades y confirma que solo se muestran los métodos permitidos para la modalidad elegida;
+- intenta confirmar un pedido con una combinación no permitida y confirma que la API la rechaza o selecciona únicamente un método permitido;
+- verifica que las mesas anteriores sigan disponibles dentro de **Área principal** y que las reservas existentes se conserven.
+

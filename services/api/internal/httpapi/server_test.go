@@ -113,3 +113,31 @@ func TestValidCustomHostname(t *testing.T) {
 		}
 	}
 }
+
+func TestPaymentMethodAllowedForFulfillment(t *testing.T) {
+	raw := []byte(`{"delivery":{"cash":true,"cash_on_delivery":false,"bank_transfer":true},"pickup":{"cash":false,"cash_on_delivery":true,"bank_transfer":true},"dine_in":{"cash":true,"cash_on_delivery":true,"bank_transfer":false}}`)
+	globals := map[string]bool{"cash": true, "cash_on_delivery": true, "bank_transfer": true}
+	if !paymentMethodAllowedForFulfillment(raw, "delivery", "cash", globals) {
+		t.Fatal("delivery cash should be allowed")
+	}
+	if paymentMethodAllowedForFulfillment(raw, "delivery", "cash_on_delivery", globals) {
+		t.Fatal("delivery terminal should be blocked by fulfillment rule")
+	}
+	if paymentMethodAllowedForFulfillment(raw, "pickup", "cash", globals) {
+		t.Fatal("pickup cash should be blocked by fulfillment rule")
+	}
+	globals["bank_transfer"] = false
+	if paymentMethodAllowedForFulfillment(raw, "delivery", "bank_transfer", globals) {
+		t.Fatal("global switch must override fulfillment rule")
+	}
+}
+
+func TestPaymentMethodAllowedForFulfillmentFallsBackToGlobal(t *testing.T) {
+	globals := map[string]bool{"cash": true, "cash_on_delivery": false, "bank_transfer": true}
+	if !paymentMethodAllowedForFulfillment(nil, "delivery", "cash", globals) {
+		t.Fatal("missing rules should fall back to global enabled state")
+	}
+	if paymentMethodAllowedForFulfillment(nil, "delivery", "cash_on_delivery", globals) {
+		t.Fatal("missing rules should still honor global disabled state")
+	}
+}

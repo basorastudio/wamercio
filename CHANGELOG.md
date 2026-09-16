@@ -1,3 +1,12 @@
+## 2.5.8 · Áreas de mesas y métodos de pago por modalidad
+- **Gestión de mesas** incorpora una capa de **Áreas**: el comercio crea Salón, Terraza, VIP u otras áreas y cada mesa selecciona su área mediante un selector. Una misma área puede agrupar decenas de mesas y el listado muestra cantidad de mesas y capacidad acumulada.
+- Las mesas históricas se preservan mediante una migración automática a **Área principal**; los nombres de mesa pueden repetirse en áreas distintas sin perder reservas existentes.
+- El acceso **Gestión de mesas** usa `dine_in_enabled` desde la carga inicial de tiendas y conserva el estado de navegación localmente para evitar el parpadeo al refrescar la aplicación.
+- **Métodos de pago** añade **Disponibilidad por modalidad** para configurar por separado **Delivery / Recoger / Mesa**, respetando los interruptores globales de Efectivo, Tarjeta en terminal y Transferencia electrónica.
+- La tienda pública filtra los métodos de pago en tiempo real al cambiar de modalidad y el backend vuelve a validar la combinación al confirmar el pedido.
+- Añade la migración `000030_table_areas_payment_rules` y regresiones específicas para áreas, navegación y reglas de pago. No requiere variables de entorno nuevas.
+
+
 ## 2.5.8 · QR público y alcance territorial del negocio
 - Añade un QR real debajo de la vista previa móvil en **Configuración → Mi negocio**, generado con la URL pública actual del catálogo para abrirlo directamente desde un teléfono.
 - Incorpora **Alcance del negocio** con los modos **Nacional / Provincial / Municipal** y persistencia mediante `stores.service_scope`.

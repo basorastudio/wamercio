@@ -15,6 +15,15 @@ type CartItem=StorefrontCartLine
 const payLabel:any={cash_on_delivery:'Tarjeta en terminal',cash:'Efectivo',bank_transfer:'Transferencia electrónica',pending_quote:'Pago por definir'}
 const ratioClass:Record<string,string>={'1:1':'aspect-square','4:3':'aspect-[4/3]','3:4':'aspect-[3/4]','16:9':'aspect-video'}
 const gridClass:Record<number,string>={1:'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',2:'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}
+type PaymentMethod='cash'|'cash_on_delivery'|'bank_transfer'
+type Fulfillment='delivery'|'pickup'|'dine_in'
+const paymentMethodOrder:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer']
+function paymentMethodsForFulfillment(store:any,fulfillment:string):PaymentMethod[]{
+  const globals=store?.payment_methods||{}
+  const rules=store?.payment_methods_by_fulfillment||{}
+  const mode=rules?.[fulfillment]||{}
+  return paymentMethodOrder.filter(method=>!!globals[method]&&mode?.[method]!==false)
+}
 function buttonStyle(t:StoreThemeConfig,secondary=false):React.CSSProperties{return secondary||t.buttons.variant==='outline'?{background:'transparent',color:t.colors.primary,border:`1px solid ${t.colors.primary}`,borderRadius:t.shape.buttonRadius}:{background:t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary,color:t.buttons.variant==='soft'?t.colors.text:t.colors.buttonText,border:`1px solid ${t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary}`,borderRadius:t.shape.buttonRadius}}
 function surfaceStyle(t:StoreThemeConfig):React.CSSProperties{return{background:t.colors.surface,border:`1px solid ${t.colors.border}`,borderRadius:t.shape.radius,boxShadow:'var(--store-shadow)'}}
 function productStartingPrice(p:Product){const variants=(p.variants||[]).map(v=>Number(v.price||0)).filter(v=>v>0);return variants.length?Math.min(...variants):Number(p.price||0)}
@@ -55,14 +64,23 @@ export default function Storefront(){
     api('/public/store').then((x:any)=>{
       setData(x)
       const store=x.store
-      const methods=store.payment_methods||{}
       const caps=resolveBusinessCapabilities(store)
-      const payment=caps.requiresPayment?(['cash','cash_on_delivery','bank_transfer'].find(k=>methods[k])||''):'pending_quote'
+      const payment=caps.requiresPayment?(paymentMethodsForFulfillment(store,(caps.supportsDelivery&&store.delivery_enabled?'delivery':caps.supportsPickup&&store.pickup_enabled?'pickup':'dine_in'))[0]||''):'pending_quote'
       const delivery=caps.supportsDelivery&&store.delivery_enabled?'delivery':caps.supportsPickup&&store.pickup_enabled?'pickup':caps.supportsDineIn&&store.dine_in_enabled?'dine_in':'pickup'
       setForm(v=>({...v,payment_method:payment,delivery_type:delivery}))
     }).catch(e=>setError(e.message))
   },[])
   useEffect(()=>{if(data?.store?.name)document.title=`${data.store.name} · WAMERCIO`},[data?.store?.name])
+  useEffect(()=>{
+    if(!data?.store)return
+    const caps=resolveBusinessCapabilities(data.store)
+    if(!caps.requiresPayment)return
+    const allowed=paymentMethodsForFulfillment(data.store,form.delivery_type)
+    if(!allowed.includes(form.payment_method as PaymentMethod)){
+      setForm(v=>({...v,payment_method:allowed[0]||''}))
+      setCashOtherOpen(false)
+    }
+  },[data?.store,form.delivery_type,form.payment_method])
   const applyCustomer=(c:any)=>{setCustomer(c);const primary=Array.isArray(c?.addresses)?(c.addresses.find((a:any)=>a.is_primary)||c.addresses[0]):null;if(primary)setForm(v=>({...v,address_id:primary.id}))}
   const loadCustomer=()=>api<any>('/customer/me').then(applyCustomer).catch(()=>setCustomer(null))
   useEffect(()=>{void loadCustomer()},[])
@@ -184,7 +202,7 @@ export default function Storefront(){
   const minimum=Number(s.minimum_order||0)
   const minimumMissing=Math.max(0,minimum-subtotal)
   const methods=s.payment_methods||{}
-  const paymentOptions=capabilities.requiresPayment?['cash','cash_on_delivery','bank_transfer'].filter(k=>methods[k]):[]
+  const paymentOptions=capabilities.requiresPayment?paymentMethodsForFulfillment(s,form.delivery_type):[]
   const canOrder=s.accepting_orders!==false&&s.open_now!==false
   const{preset,config:t}=resolvedTheme(s.visual_theme,s.theme_config,s.primary_color)
   const vars=themeCSSVars(t) as React.CSSProperties
@@ -271,7 +289,7 @@ export default function Storefront(){
         </div>
         {form.delivery_type==='delivery'?customer?<div className="mt-3 space-y-3">
           {selectedAddress&&!addressPickerOpen?<div data-testid="storefront-selected-address" className="flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de entrega</div><div className="mt-1 truncate text-sm font-semibold">{selectedAddress.label}</div><div className="mt-0.5 line-clamp-2 text-xs" style={{color:t.colors.muted}}>{selectedAddress.formatted}</div></div><button type="button" onClick={()=>setAddressPickerOpen(true)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-bold" style={{background:t.colors.surface,color:t.colors.primary}}>Cambiar</button></div>:<div><div className="mb-1 flex items-center justify-between"><label className="label">Dirección de entrega *</label><Link href="/cliente/perfil" className="text-[11px] font-semibold" style={{color:t.colors.primary}}>Administrar</Link></div><select className="field" required value={form.address_id} onChange={e=>{setForm({...form,address_id:e.target.value});if(e.target.value)setAddressPickerOpen(false)}}><option value="">Selecciona una dirección</option>{(customer?.addresses||[]).map((a:any)=><option key={a.id} value={a.id}>{a.label} · {a.formatted}</option>)}</select></div>}
-        </div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-xl p-3 text-left" style={{background:t.colors.background}}><MapPin className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-xs font-semibold">Inicia sesión para seleccionar una dirección de entrega.</span><ChevronRight className="ml-auto h-4 w-4"/></button>:form.delivery_type==='dine_in'?<div data-testid="storefront-table-reservation" className="mt-3 space-y-3 rounded-xl p-3" style={{background:t.colors.background}}><div className="flex items-start gap-2"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Reservar mesa</div><div className="mt-1 text-xs font-semibold">{s.address||'Reserva para comer en el negocio.'}</div></div></div><div className="grid gap-2 sm:grid-cols-2"><div><label className="label text-[11px]">Fecha y hora *</label><input type="datetime-local" required className="field" value={form.reservation_at} onChange={e=>setForm({...form,reservation_at:e.target.value})}/></div><div><label className="label text-[11px]">Personas *</label><div className="relative"><UsersRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{color:t.colors.primary}}/><input type="number" min="1" max="50" required className="field pl-9" value={form.party_size} onChange={e=>{const n=Math.max(1,Number(e.target.value)||1);setForm({...form,party_size:n,table_id:(data.tables||[]).some((x:any)=>x.id===form.table_id&&Number(x.capacity)>=n)?form.table_id:''})}}/></div></div></div><div><label className="label text-[11px]">Mesa *</label><select required className="field" value={form.table_id} onChange={e=>setForm({...form,table_id:e.target.value})}><option value="">Selecciona una mesa</option>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).map((table:any)=><option key={table.id} value={table.id}>{table.name} · hasta {table.capacity} personas</option>)}</select>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).length===0&&<p className="mt-1 text-[11px] text-amber-700">No hay una mesa disponible con esa capacidad.</p>}</div></div>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
+        </div>:<button type="button" onClick={()=>setCustomerAuthOpen(true)} className="mt-3 flex w-full items-center gap-3 rounded-xl p-3 text-left" style={{background:t.colors.background}}><MapPin className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-xs font-semibold">Inicia sesión para seleccionar una dirección de entrega.</span><ChevronRight className="ml-auto h-4 w-4"/></button>:form.delivery_type==='dine_in'?<div data-testid="storefront-table-reservation" className="mt-3 space-y-3 rounded-xl p-3" style={{background:t.colors.background}}><div className="flex items-start gap-2"><CalendarClock className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Reservar mesa</div><div className="mt-1 text-xs font-semibold">{s.address||'Reserva para comer en el negocio.'}</div></div></div><div className="grid gap-2 sm:grid-cols-2"><div><label className="label text-[11px]">Fecha y hora *</label><input type="datetime-local" required className="field" value={form.reservation_at} onChange={e=>setForm({...form,reservation_at:e.target.value})}/></div><div><label className="label text-[11px]">Personas *</label><div className="relative"><UsersRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2" style={{color:t.colors.primary}}/><input type="number" min="1" max="50" required className="field pl-9" value={form.party_size} onChange={e=>{const n=Math.max(1,Number(e.target.value)||1);setForm({...form,party_size:n,table_id:(data.tables||[]).some((x:any)=>x.id===form.table_id&&Number(x.capacity)>=n)?form.table_id:''})}}/></div></div></div><div><label className="label text-[11px]">Mesa *</label><select required className="field" value={form.table_id} onChange={e=>setForm({...form,table_id:e.target.value})}><option value="">Selecciona una mesa</option>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).map((table:any)=><option key={table.id} value={table.id}>{table.area_name?`${table.area_name} · `:''}{table.name} · hasta {table.capacity} personas</option>)}</select>{(data.tables||[]).filter((x:any)=>Number(x.capacity)>=Number(form.party_size||1)).length===0&&<p className="mt-1 text-[11px] text-amber-700">No hay una mesa disponible con esa capacidad.</p>}</div></div>:<div className="mt-3 flex items-start gap-3 rounded-xl p-3" style={{background:t.colors.background}}><MapPin className="mt-0.5 h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><div><div className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>Dirección de recogida</div><div className="mt-1 text-xs font-semibold">{s.address||'Coordina la recogida directamente con el negocio.'}</div></div></div>}
       </section>
 
       {capabilities.requiresPayment?<>

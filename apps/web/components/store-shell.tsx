@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
-import {useEffect,useMemo,useState} from 'react'
+import {useEffect,useLayoutEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
@@ -55,21 +55,10 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const[collapsed,setCollapsed]=useState(false)
  const[dineInNav,setDineInNav]=useState(false)
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
- useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(setStores).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;window.addEventListener('wamercio:stores-changed',refresh);return()=>window.removeEventListener('wamercio:stores-changed',refresh)},[])
+ useLayoutEffect(()=>{if(typeof window==='undefined')return;const remembered=localStorage.getItem('wamercio_store_id')||'';if(remembered){const cached=localStorage.getItem(`wamercio_store_dine_in_${remembered}`);if(cached!==null)setDineInNav(cached==='1')}},[])
+ useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(rows=>{setStores(rows);if(typeof window!=='undefined'){const remembered=localStorage.getItem('wamercio_store_id')||rows.find((x:any)=>x.is_active!==false)?.id||rows[0]?.id||'';const selected=rows.find((x:any)=>x.id===remembered)??rows.find((x:any)=>x.is_active!==false)??rows[0];const enabled=!!selected?.dine_in_enabled;setDineInNav(enabled);if(remembered)localStorage.setItem(`wamercio_store_dine_in_${remembered}`,enabled?'1':'0')}}).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;const onActive=(event:any)=>{const id=String(event?.detail?.store_id||localStorage.getItem('wamercio_store_id')||'');const cached=id?localStorage.getItem(`wamercio_store_dine_in_${id}`):null;if(cached!==null)setDineInNav(cached==='1');void refresh()};const onSettings=()=>void refresh();window.addEventListener('wamercio:stores-changed',refresh);window.addEventListener('wamercio:active-store-changed',onActive);window.addEventListener('wamercio:store-settings-changed',onSettings);return()=>{window.removeEventListener('wamercio:stores-changed',refresh);window.removeEventListener('wamercio:active-store-changed',onActive);window.removeEventListener('wamercio:store-settings-changed',onSettings)}},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
- useEffect(()=>{
-  if(typeof window==='undefined')return
-  const refreshDineIn=async()=>{
-   const remembered=localStorage.getItem('wamercio_store_id')||stores?.find((x:any)=>x.is_active!==false)?.id||stores?.[0]?.id||''
-   if(!remembered){setDineInNav(false);return}
-   try{const cfg:any=await api(`/stores/${remembered}/settings`);setDineInNav(!!cfg?.dine_in_enabled)}catch{setDineInNav(false)}
-  }
-  void refreshDineIn()
-  const onChange=()=>void refreshDineIn()
-  window.addEventListener('wamercio:active-store-changed',onChange)
-  window.addEventListener('wamercio:store-settings-changed',onChange)
-  return()=>{window.removeEventListener('wamercio:active-store-changed',onChange);window.removeEventListener('wamercio:store-settings-changed',onChange)}
- },[stores])
+
  useEffect(()=>{setMore(false);setDrawer(false)},[path])
  const toggleCollapsed=()=>setCollapsed(v=>{const next=!v;if(typeof window!=='undefined')localStorage.setItem(SIDEBAR_KEY,next?'1':'0');return next})
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}

@@ -29,6 +29,7 @@ python3 scripts/test_2_5_8_pos_workspace.py
 python3 scripts/test_2_5_8_pos_dense_shell.py
 python3 scripts/test_2_5_8_whatsapp_context_menu.py
 python3 scripts/test_2_5_8_tables_management_nav.py
+python3 scripts/test_2_5_8_table_areas_payment_rules.py
 python3 scripts/test_2_5_8_store_scope_qr.py
 node scripts/test_2_5_8_business_capabilities.js
 python3 scripts/test_2_5_8_platform_coherence.py
@@ -66,6 +67,8 @@ down=$(find services/api/migrations -maxdepth 1 -name '*.down.sql' | wc -l | tr 
 [ -f services/api/migrations/000028_compact_store_urls_unified_access.down.sql ] || fail 'migration 000028 down'
 [ -f services/api/migrations/000029_store_service_scope.up.sql ] || fail 'migration 000029 up'
 [ -f services/api/migrations/000029_store_service_scope.down.sql ] || fail 'migration 000029 down'
+[ -f services/api/migrations/000030_table_areas_payment_rules.up.sql ] || fail 'migration 000030 up'
+[ -f services/api/migrations/000030_table_areas_payment_rules.down.sql ] || fail 'migration 000030 down'
 
 if grep -R -i -q 'colmapro\|col\.do' apps services --exclude-dir=node_modules; then fail 'legacy brand reference'; fi
 if grep -R -q 'wamercio.com/{slug}' apps services; then fail 'legacy path-based tenant URL'; fi
