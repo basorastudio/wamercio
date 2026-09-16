@@ -1,3 +1,17 @@
+# WAMERCIO 2.8.10 — Mapa sincronizado y detalle de cliente simplificado
+
+- Elimina del modal **Detalles del cliente** las tarjetas de Negocios, Pedidos, Comprado y Puntos.
+- Elimina los badges **Identidad verificada** y **WhatsApp verificado** de esa vista para reducir ruido visual.
+- Sustituye el mapa con overlay independiente por el componente compartido `CustomerLocationMap`.
+- El preview de Google Maps queda no interactivo para impedir que el mapa haga zoom/pan sin mover el avatar personalizado.
+- La imagen de WhatsApp funciona como pin visual único y permanece anclada al centro de las coordenadas guardadas.
+- Al pulsar el mapa o el pin se abre Google Maps externo directamente en `latitude,longitude`, evitando el error “Error al cargar la información del lugar”.
+- Añade el mismo mapa de ubicación exacta dentro de **Mi perfil → Nueva/Editar dirección** después de obtener coordenadas.
+- Las direcciones sin coordenadas conservan el fallback por dirección escrita en los detalles administrativos.
+- No añade migraciones ni variables de entorno; la última migración continúa siendo `000036_customer_address_geolocation`.
+
+---
+
 # WAMERCIO 2.8.9 — Ubicación exacta en direcciones de clientes
 
 - Reemplaza el campo visible **Referencia** por **Ubicación exacta** en el perfil y en el registro inicial del cliente.

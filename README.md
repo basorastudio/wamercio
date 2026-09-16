@@ -1,3 +1,17 @@
+# WAMERCIO 2.8.10
+
+## Mapa sincronizado de ubicación del cliente
+
+La ubicación exacta del cliente utiliza ahora un componente compartido en Superadmin, negocio y perfil del cliente. El preview de Google Maps no permite pan/zoom independiente, por lo que la foto de WhatsApp permanece alineada con el punto guardado. Al pulsar el mapa o el pin se abre Google Maps en una pestaña nueva con las coordenadas exactas.
+
+En **Mi perfil → Direcciones**, después de **Obtener mi ubicación**, el cliente ve inmediatamente el mapa de la dirección con su propia imagen de WhatsApp como pin.
+
+El modal **Detalles del cliente** fue simplificado eliminando métricas comerciales y badges de verificación para priorizar identidad, dirección y ubicación.
+
+No hay migraciones nuevas sobre 2.8.9.
+
+---
+
 # WAMERCIO 2.8.9
 
 ## Ubicación exacta de direcciones

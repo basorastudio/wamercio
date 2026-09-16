@@ -5,12 +5,13 @@ import {api} from '@/lib/api'
 import {loadAddressTerritory} from '@/lib/customer-address-territory'
 import {applyStoreScopeToAddress,normalizeServiceScope,scopeContextLabel,scopeFieldVisibility} from '@/lib/store-service-scope'
 import {LoaderCircle,MapPin} from 'lucide-react'
+import CustomerLocationMap from '@/components/customer-location-map'
 
 const blank={id:'',label:'Principal',province_code:'',province:'',city_id:'',municipality:'',neighborhood_id:'',neighborhood:'',street:'',street_number:'',reference:'',latitude:null as number|null,longitude:null as number|null,is_primary:false}
 const unwrap=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 const same=(a:any,b:any)=>String(a||'').trim().toLowerCase()===String(b||'').trim().toLowerCase()
 
-export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?:any;onSaved:()=>void;onCancel:()=>void}){
+export default function CustomerAddressForm({initial,onSaved,onCancel,profilePictureUrl,profileName}:{initial?:any;onSaved:()=>void;onCancel:()=>void;profilePictureUrl?:string|null;profileName?:string}){
   const[form,setForm]=useState<any>({...blank,...(initial||{})})
   const[territory,setTerritory]=useState(false)
   const[available,setAvailable]=useState(true)
@@ -153,7 +154,7 @@ export default function CustomerAddressForm({initial,onSaved,onCancel}:{initial?
         <div className="flex items-start gap-3"><div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><MapPin className="h-4 w-4"/></div><div><p className="text-sm font-semibold text-ink-900">Ubicación exacta</p><p className="mt-1 text-xs leading-5 text-[#8d92aa]">Guarda las coordenadas de este dispositivo junto a la dirección para ubicarla con precisión en el mapa.</p></div></div>
         <button type="button" onClick={captureLocation} disabled={locating} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 disabled:opacity-60">{locating?<LoaderCircle className="h-4 w-4 animate-spin"/>:<MapPin className="h-4 w-4"/>}{hasLocation?'Actualizar ubicación':'Obtener mi ubicación'}</button>
       </div>
-      {hasLocation&&<p className="mt-3 text-xs font-semibold text-emerald-700">Ubicación guardada · {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p>}
+      {hasLocation&&<><p className="mt-3 text-xs font-semibold text-emerald-700">Ubicación guardada · {Number(form.latitude).toFixed(6)}, {Number(form.longitude).toFixed(6)}</p><CustomerLocationMap latitude={form.latitude} longitude={form.longitude} profilePictureUrl={profilePictureUrl} profileName={profileName||form.label||'Cliente'} compact className="mt-3"/></>}
       {locationMessage&&<p className={`mt-2 text-xs ${locationMessage.startsWith('Ubicación exacta')?'text-emerald-700':'text-amber-700'}`}>{locationMessage}</p>}
     </div>
     {error&&<p className="mt-3 text-sm text-rose-600">{error}</p>}

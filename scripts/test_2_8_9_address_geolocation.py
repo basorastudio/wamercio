@@ -29,8 +29,11 @@ assert 'navigator.geolocation.getCurrentPosition' in access, 'registration addre
 assert '<label className="label">Referencia</label>' not in access, 'registration still exposes Referencia'
 
 detail=text(Path('apps/web/components/customer-detail-view.tsx'))
+location_map=text(Path('apps/web/components/customer-location-map.tsx'))
 assert 'primary?.latitude' in detail and 'primary?.longitude' in detail, 'detail map does not prefer exact coordinates'
-assert 'mapQuery' in detail, 'detail map fallback removed unexpectedly'
-assert 'ProfileAvatar profile={profile} size="pin"' in detail, 'WhatsApp avatar pin missing'
+assert 'CustomerLocationMap' in detail, 'detail map component missing'
+assert "address={primary?.map_query||primary?.formatted_address||''}" in detail, 'detail map fallback removed unexpectedly'
+assert 'profilePictureUrl={profile.profile_picture_url}' in detail, 'WhatsApp avatar pin missing'
+assert 'profilePictureUrl' in location_map and 'pointer-events-none' in location_map, 'shared exact-location map missing synchronized avatar pin'
 
 print('PASS: WAMERCIO 2.8.9 customer address geolocation contract')
