@@ -152,7 +152,7 @@ func applyLoyaltyRedemption(ctx context.Context, tx pgx.Tx, prepared loyaltyRede
 	if err != nil {
 		return err
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if res.RowsAffected() == 0 {
 		return fmt.Errorf("El saldo de puntos cambió; inténtalo nuevamente")
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO loyalty_ledger(account_id,order_id,entry_type,points,description) VALUES($1,$2,'redeem',$3,$4)`, prepared.AccountID, orderID, -prepared.Points, fmt.Sprintf("Canje en pedido: %d puntos", prepared.Points))

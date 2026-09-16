@@ -1,3 +1,14 @@
+# WAMERCIO 2.8.1 — Hotfix de compilación de producción
+
+- Corrige cuatro usos incompatibles de `pgx/v5` donde `RowsAffected()` se trataba erróneamente como una función de dos valores; `pgx` devuelve un único `int64`.
+- Corrige `kds_stations.go` en validación de categorías, productos y actualización de estaciones.
+- Corrige `loyalty.go` en la aplicación transaccional de canjes de puntos.
+- Añade una regresión específica que bloquea futuros usos de la forma inválida `n, _ := res.RowsAffected()`.
+- Añade `verify-2.8.1.sh` y conserva las migraciones `000032`/`000033` sin cambios de esquema.
+- No agrega variables de entorno, dependencias ni migraciones nuevas.
+
+---
+
 # WAMERCIO 2.8.0 — Operación avanzada, crecimiento y fidelización
 
 - Añade **modificadores reutilizables** con grupos, opciones, selección mínima/máxima y asignación a múltiples productos, preservando los extras históricos por producto.

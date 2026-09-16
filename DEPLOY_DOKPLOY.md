@@ -1,3 +1,19 @@
+# Despliegue WAMERCIO 2.8.1 en Dokploy
+
+## Hotfix 2.8.1 · Compilación API pgx
+
+Esta versión sustituye **2.8.0** para despliegues nuevos. Corrige el fallo de compilación del API causado por cuatro asignaciones inválidas de `RowsAffected()` en KDS y Fidelización. No agrega migraciones ni variables de entorno.
+
+1. Reemplaza el código 2.8.0 por **WAMERCIO 2.8.1**.
+2. Conserva PostgreSQL, Redis, uploads y todas las variables de entorno actuales. No uses **Fresh Volumes**.
+3. Ejecuta primero `sh scripts/verify-2.8.1.sh`.
+4. Confirma que el CI de GitHub complete **Frontend**, **Go API**, **WhatsApp bridge** y **Docker compose validation** antes de desplegar.
+5. En Dokploy ejecuta **Rebuild + Redeploy**. Las migraciones `000032` y `000033` siguen siendo las últimas y no se vuelven a crear.
+
+El Dockerfile del API continúa compilando con `go build -mod=readonly`; el hotfix usa la firma correcta `res.RowsAffected() == 0`.
+
+---
+
 # Despliegue WAMERCIO 2.8.0 en Dokploy
 
 ## Actualización 2.8.0 · Operación avanzada y crecimiento

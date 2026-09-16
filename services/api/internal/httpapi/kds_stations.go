@@ -76,7 +76,7 @@ func (s *Server) saveKDSStationCategories(r *http.Request, stationID, storeID st
 		if e != nil {
 			return e
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
+		if res.RowsAffected() == 0 {
 			return errInvalidStationCategory
 		}
 	}
@@ -99,7 +99,7 @@ func (s *Server) saveKDSStationProducts(r *http.Request, stationID, storeID stri
 		if e != nil {
 			return e
 		}
-		if n, _ := res.RowsAffected(); n == 0 {
+		if res.RowsAffected() == 0 {
 			return errInvalidStationProduct
 		}
 	}
@@ -167,7 +167,7 @@ func (s *Server) updateKDSStation(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 409, "No se pudo guardar la estación")
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
+	if res.RowsAffected() == 0 {
 		jsonErr(w, 404, "Estación no encontrada")
 		return
 	}

@@ -42,4 +42,12 @@ for key in ['product_media','product_translations','Reseñas','loyalty']:
 shell=text(Path('apps/web/components/store-shell.tsx'))
 for key in ['Reseñas','Fidelización']:
     assert key in shell, f'navigation missing {key}'
+
+# Compile guard: pgx/v5 pgconn.CommandTag.RowsAffected returns a single int64.
+# Reject the tuple-assignment pattern that breaks the production Docker build.
+for go_file in (root/'services/api/internal/httpapi').glob('*.go'):
+    body=go_file.read_text(encoding='utf-8')
+    assert '_, _ := res.RowsAffected()' not in body, f'{go_file.name}: invalid RowsAffected tuple assignment'
+    assert 'n, _ := res.RowsAffected()' not in body, f'{go_file.name}: invalid RowsAffected tuple assignment'
+
 print('PASS: WAMERCIO 2.8.0 phase 3 feature contract')
