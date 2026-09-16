@@ -1,11 +1,33 @@
+# WAMERCIO 2.8.5
+
+## Corrección de identidad global y relación comercial
+
+WAMERCIO vuelve a separar explícitamente dos conceptos distintos:
+
+- **Identidad global:** una persona se registra una sola vez en la plataforma y puede iniciar sesión en cualquier negocio sin volver a registrarse.
+- **Cliente del negocio:** una identidad global pasa a ser cliente de una tienda únicamente cuando registra su primera compra no cancelada y que no sea cotización.
+
+Cuando un usuario global escribe por WhatsApp a una tienda donde nunca ha comprado, WAMERCIO muestra su **nombre y apellido registrados en la plataforma** como identidad principal, conserva el nombre de perfil de WhatsApp como información secundaria y lo clasifica como **Contacto**.
+
+La migración `000035_global_identity_contact_semantics` corrige instalaciones que hayan desplegado 2.8.4: desvincula de la conversación relaciones de cliente sin compra y actualiza el nombre visible desde la identidad global, sin borrar la cuenta, direcciones, PIN ni historial global.
+
+La protección contra conversaciones creadas con el propio WhatsApp del negocio introducida en 2.8.4 se conserva.
+
+Para despliegue y actualización consulta `DEPLOY_DOKPLOY.md`.
+
+---
+
 # WAMERCIO 2.8.4
 
 
 ## Cambios 2.8.4
 
+> **Nota:** la promoción automática de una identidad global a Cliente introducida en 2.8.4 fue corregida por 2.8.5. Se mantiene únicamente la higiene del número propio y el reconocimiento del nombre global.
+
+
 - Higiene de identidad WhatsApp: el número propio de cada negocio no puede aparecer como conversación del negocio.
-- Reconocimiento inmediato de clientes globales registrados por WhatsApp, incluso antes de la primera compra.
-- Backfill automático mediante la migración `000034_whatsapp_registered_customer_identity`.
+- Reconocimiento del nombre de identidades globales registradas por WhatsApp. La clasificación comercial anterior a la primera compra fue corregida en 2.8.5.
+- Backfill histórico mediante `000034`; la migración correctiva `000035` restaura la separación Contacto/Cliente.
 
 La tienda pública es ahora completamente identificada por cada negocio: nombre, logo, colores, favicon, PWA y portada configurable. El propietario puede ocultar o reposicionar los elementos superpuestos a la portada desde **Configuración → Mi negocio** y en móvil la búsqueda se mantiene contraída hasta pulsar la lupa.
 

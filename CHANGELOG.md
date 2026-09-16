@@ -1,3 +1,18 @@
+# WAMERCIO 2.8.5 — Identidad global sin promoción comercial automática
+
+- Corrige la interpretación de 2.8.4: estar registrado globalmente en WAMERCIO **no convierte** a una persona en cliente de cada negocio al que escribe.
+- Un contacto con cuenta global activa muestra como nombre principal el **nombre + apellido registrados en WAMERCIO**; `whatsapp_name` se conserva y se muestra como perfil de WhatsApp secundario.
+- La bandeja de conversaciones y la pestaña **Contactos** clasifican como Cliente solamente cuando existe una compra no cancelada y distinta de cotización en ese negocio.
+- El webhook WhatsApp separa `registeredIdentityForWhatsApp` (identidad global para nombre) de `purchasedCustomerForWhatsApp` (relación comercial real). Ya no crea registros `customers` por el simple hecho de recibir un mensaje.
+- La actualización de foto/nombre de perfil WhatsApp ya no puede reemplazar el nombre global registrado cuando ambos existen.
+- La migración `000035_global_identity_contact_semantics` limpia `customer_id` de conversaciones enlazadas por 2.8.4 que todavía no tienen compra y actualiza el nombre visible desde `global_customers`.
+- El Centro SaaS calcula **Negocios** y los registros comerciales únicamente a partir de relaciones con compras reales; escribir por WhatsApp no incrementa esos indicadores.
+- Conserva íntegramente el inicio de sesión global: un usuario se registra una vez en WAMERCIO y puede iniciar sesión en otras tiendas sin volver a crear una cuenta.
+- Conserva los filtros de 2.8.4 que impiden que el WhatsApp propio del negocio aparezca como conversación.
+- Añade `test_2_8_5_global_identity_contact.py` y `verify-2.8.5.sh`.
+
+---
+
 # WAMERCIO 2.8.4 — Identidad WhatsApp y reconocimiento de clientes
 
 - Corrige conversaciones fantasma creadas con el propio WhatsApp del negocio. El bridge ya no toma el número de la sesión como fallback del contacto remoto y el API aplica una segunda validación defensiva por JID/teléfono.

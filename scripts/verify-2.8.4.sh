@@ -17,10 +17,11 @@ awk 'BEGIN{skip=1} /^python3 scripts\/test_2_8_3_store_branding.py/{skip=0} !ski
 sed -i '/PASS: WAMERCIO 2.8.3 tenant branding\/editor verification/d' "$tmp"
 sh "$tmp"
 
-# The business identity must never be a visible conversation and registered
-# platform identities must not depend on a prior purchase.
+# The business identity must never be a visible conversation. Global identity
+# lookup is separate from store-level customer classification.
 grep -q 'isOwnWhatsAppEvent' services/api/internal/httpapi/server.go || fail 'API self identity guard'
 grep -q 'isOwnConversationJID' services/whatsapp-bridge/internal/bridge/bridge.go || fail 'bridge self identity guard'
-grep -q 'registeredCustomerForWhatsApp' services/api/internal/httpapi/server.go || fail 'registered customer resolver'
+grep -q 'registeredIdentityForWhatsApp' services/api/internal/httpapi/server.go || fail 'registered identity resolver'
+grep -q 'purchasedCustomerForWhatsApp' services/api/internal/httpapi/server.go || fail 'purchase-aware customer resolver'
 
-echo 'PASS: WAMERCIO 2.8.4 WhatsApp identity/customer verification'
+echo 'PASS: WAMERCIO 2.8.4 WhatsApp self-identity verification (with 2.8.5 semantics)'

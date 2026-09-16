@@ -13,7 +13,7 @@ refresh=server.split('func (s *Server) refreshCustomerStats',1)[1].split('func (
 dashboard=server.split('func (s *Server) dashboard',1)[1].split('func slugify',1)[0]
 admin_dashboard=server.split('func (s *Server) adminDashboard',1)[1].split('func (s *Server) adminUsers',1)[0]
 
-need(list_convs, "CASE WHEN c.customer_id IS NOT NULL THEN 'customer' ELSE 'contact' END", 'conversation classification must use resolved customer identity, not purchase history')
+need(list_convs, "EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote')", 'conversation classification must require a real non-quote purchase')
 for block,name in [(list_customers,'customer list'),(list_contacts,'contact list'),(refresh,'customer statistics'),(dashboard,'merchant dashboard'),(admin_dashboard,'platform dashboard')]:
     need(block,"flow_type<>'quote'",f'{name} must exclude quotations from purchase metrics')
 

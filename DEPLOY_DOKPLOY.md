@@ -1,3 +1,27 @@
+# Despliegue WAMERCIO 2.8.5 en Dokploy
+
+## Corrección 2.8.5 · Identidad global vs. cliente del negocio
+
+Esta versión sustituye **2.8.4** y agrega la migración `000035_global_identity_contact_semantics`. No añade variables de entorno ni dependencias nuevas.
+
+1. Reemplaza el código anterior por **WAMERCIO 2.8.5** conservando PostgreSQL, Redis, uploads y todas las variables de entorno. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.5.sh`.
+3. Sube el código al repositorio y confirma que el CI complete `npm run build`, `go test ./...`, `go build ./...` y la validación de Compose.
+4. En Dokploy usa **Rebuild + Redeploy** para reconstruir al menos API, Web y WhatsApp Bridge.
+5. Al iniciar, el API aplicará `000035`. Esta migración no borra la cuenta global: solo elimina de las conversaciones el vínculo `customer_id` cuando no existe una compra válida y restaura el nombre visible desde la identidad global.
+6. Prueba con un usuario registrado globalmente que nunca haya comprado en la tienda: debe aparecer en **Contactos** con su nombre y apellido de WAMERCIO; el nombre de WhatsApp debe quedar como dato secundario.
+7. Realiza una primera compra con ese mismo usuario y confirma que, a partir de entonces, la conversación cambie a **Cliente** para ese negocio.
+
+### Resultado esperado
+
+- Cuenta global registrada + 0 compras en la tienda → **Contacto** con nombre global.
+- Cuenta global registrada + ≥1 compra válida en la tienda → **Cliente**.
+- Número no registrado + 0 compras → **Contacto** con nombre de WhatsApp.
+- El número/JID propio del negocio nunca aparece como conversación.
+- El usuario global sigue pudiendo iniciar sesión en cualquier tienda sin volver a registrarse.
+
+---
+
 # Despliegue WAMERCIO 2.8.4 en Dokploy
 
 ## Personalización pública por negocio
