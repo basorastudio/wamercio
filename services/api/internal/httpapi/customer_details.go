@@ -116,12 +116,36 @@ func (s *Server) globalCustomerDetailData(ctx context.Context, id string) (map[s
 		}
 	}
 
+	blocks := []map[string]any{}
+	blockRows, blockErr := s.db.Query(ctx, `
+		SELECT c.store_id::text,st.name,coalesce(c.blocked_reason,''),c.blocked_at,coalesce(u.name,''),coalesce(u.last_name,'')
+		FROM customers c
+		JOIN stores st ON st.id=c.store_id
+		LEFT JOIN users u ON u.id=c.blocked_by_user_id
+		JOIN global_customers g ON g.id=$1
+		WHERE c.status='blocked'
+		  AND (c.global_customer_id=g.id OR regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')=regexp_replace(coalesce(g.phone,''),'[^0-9]','','g'))
+		ORDER BY c.blocked_at DESC NULLS LAST,c.updated_at DESC`, id)
+	if blockErr == nil {
+		defer blockRows.Close()
+		for blockRows.Next() {
+			var storeID, storeName, reason, actorName, actorLastName string
+			var blockedAt *time.Time
+			if blockRows.Scan(&storeID, &storeName, &reason, &blockedAt, &actorName, &actorLastName) == nil {
+				blocks = append(blocks, map[string]any{
+					"store_id": storeID, "store_name": storeName, "reason": reason, "blocked_at": blockedAt,
+					"blocked_by": strings.TrimSpace(strings.TrimSpace(actorName) + " " + strings.TrimSpace(actorLastName)),
+				})
+			}
+		}
+	}
+
 	return map[string]any{
 		"id": id, "phone": phone, "name": name, "last_name": lastName, "full_name": fullName, "national_id": nationalID,
 		"birth_date": birthDate, "gender": gender, "status": status, "identity_verified": identityVerified, "whatsapp_verified": whatsappVerified,
 		"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "last_login_at": lastLogin, "created_at": createdAt, "updated_at": updatedAt,
-		"addresses": addresses, "primary_address": primaryAddress, "businesses": businesses, "loyalty_accounts": loyalty,
-		"business_count": businessCount, "order_count": orderCount, "total_spent": totalSpent, "last_order_at": lastOrderAt,
+		"addresses": addresses, "primary_address": primaryAddress, "businesses": businesses, "loyalty_accounts": loyalty, "blocks": blocks,
+		"blocked_businesses": len(blocks), "business_count": businessCount, "order_count": orderCount, "total_spent": totalSpent, "last_order_at": lastOrderAt,
 	}, nil
 }
 

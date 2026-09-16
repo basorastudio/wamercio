@@ -1,4 +1,4 @@
-const CACHE='wamercio-store-v2.8.11-'+self.location.hostname;
+const CACHE='wamercio-store-v2.8.12-'+self.location.hostname;
 const SHELL=['/'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).finally(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));

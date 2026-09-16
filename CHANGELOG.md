@@ -1,3 +1,13 @@
+# WAMERCIO 2.8.12
+
+- Reemplaza la edición rápida del cliente por Bloquear/Desbloquear por negocio.
+- Todo bloqueo exige un motivo y registra fecha, actor y evento de auditoría.
+- Un cliente bloqueado conserva su identidad global WAMERCIO y puede comprar en otras tiendas, pero no puede operar comercialmente en el negocio que lo bloqueó.
+- El bloqueo se aplica a checkout, reservas, pedidos desde conversación, POS y reseñas verificadas.
+- Superadmin muestra cuántos negocios han bloqueado al cliente y el detalle con negocio, fecha, motivo y actor.
+- La vista de cada negocio mantiene aislamiento multi-tenant y no expone bloqueos de otras tiendas.
+- Añade la migración reversible `000037_store_customer_blocking`.
+
 # WAMERCIO 2.8.11 — Mapa interactivo con marcador geográfico real
 
 ## Correcciones

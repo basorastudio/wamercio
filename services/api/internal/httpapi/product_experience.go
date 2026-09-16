@@ -200,6 +200,10 @@ func (s *Server) createPublicReview(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
+	if blocked, reason := s.customerBlockedInStore(r.Context(), storeID, c.UserID, ""); blocked {
+		jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
+		return
+	}
 	var eligible bool
 	_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders o JOIN order_items oi ON oi.order_id=o.id WHERE o.id=$1 AND o.store_id=$2 AND o.global_customer_id=$3 AND o.status IN ('delivered','picked_up','completed') AND oi.product_id=$4)`, in.OrderID, storeID, c.UserID, in.ProductID).Scan(&eligible)
 	if !eligible {

@@ -203,6 +203,8 @@ func (s *Server) Router() http.Handler {
 			p.Get("/banks", s.listActiveBanks)
 			p.Get("/customers/{id}", s.getCustomer)
 			p.Put("/customers/{id}", s.updateCustomer)
+			p.Patch("/customers/{id}/block", s.blockCustomer)
+			p.Patch("/customers/{id}/unblock", s.unblockCustomer)
 			p.Get("/staff", s.listStoreStaff)
 			p.Post("/staff", s.createStoreStaff)
 			p.Put("/staff/{id}", s.updateStoreStaff)
@@ -3410,6 +3412,10 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		jsonErr(w, 400, "No se pudo determinar el WhatsApp del cliente")
 		return
 	}
+	if blocked, reason := s.customerBlockedInStore(r.Context(), storeID, "", phone); blocked {
+		jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
+		return
+	}
 
 	var pickupEnabled, deliveryEnabled, cashEnabled, codEnabled, transferEnabled, acceptingOrders bool
 	var storeName, storeSlug, businessEngine string
@@ -3710,6 +3716,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	customerName := strings.TrimSpace(strings.TrimSpace(customerFirstName) + " " + strings.TrimSpace(customerLastName))
 	if customerName == "" {
 		customerName = strings.TrimSpace(customerFirstName)
+	}
+	if blocked, reason := s.customerBlockedInStore(r.Context(), sid, customerClaims.UserID, customerPhone); blocked {
+		jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
+		return
 	}
 	in.CouponCode = strings.ToUpper(strings.TrimSpace(in.CouponCode))
 	if in.DeliveryType == "" {
@@ -4939,7 +4949,7 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := s.db.Query(r.Context(), `
-		SELECT cu.id,cu.name,cu.phone,coalesce(cu.address,''),coalesce(cu.notes,''),cu.status,
+		SELECT cu.id,cu.name,cu.phone,coalesce(cu.address,''),coalesce(cu.notes,''),cu.status,coalesce(cu.blocked_reason,''),cu.blocked_at,
 		       cu.order_count,cu.total_spent,cu.last_order_at,cu.created_at,
 		       coalesce(latest.whatsapp_name,''),coalesce(latest.profile_picture_url,'')
 		FROM customers cu
@@ -4963,14 +4973,15 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, address, notes, status, whatsappName, profilePictureURL string
+		var id, name, phone, address, notes, status, blockedReason, whatsappName, profilePictureURL string
+		var blockedAt *time.Time
 		var count int
 		var spent float64
 		var last *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created, &whatsappName, &profilePictureURL)
+		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &blockedReason, &blockedAt, &count, &spent, &last, &created, &whatsappName, &profilePictureURL)
 		out = append(out, map[string]any{
-			"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status,
+			"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "blocked_reason": blockedReason, "blocked_at": blockedAt,
 			"order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created,
 			"store_id": sid, "owner": c.UserID, "contact_type": "customer",
 			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL,
@@ -5039,12 +5050,13 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	var sid, name, phone, address, notes, status, globalCustomerID, conversationID string
+	var sid, name, phone, address, notes, status, blockedReason, globalCustomerID, conversationID string
+	var blockedAt *time.Time
 	var count, loyaltyPoints int
 	var spent float64
 	var last *time.Time
 	var created time.Time
-	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.address,''),coalesce(c.notes,''),c.status,c.order_count,c.total_spent,c.last_order_at,c.created_at,
+	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.address,''),coalesce(c.notes,''),c.status,coalesce(c.blocked_reason,''),c.blocked_at,c.order_count,c.total_spent,c.last_order_at,c.created_at,
 	             coalesce(c.global_customer_id::text,''),coalesce(la.points_balance,0),coalesce(conv.id::text,'')
 	      FROM customers c
 	      JOIN stores s ON s.id=c.store_id
@@ -5063,7 +5075,7 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 		q += ` AND s.user_id=$2`
 		args = append(args, c.UserID)
 	}
-	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created, &globalCustomerID, &loyaltyPoints, &conversationID) != nil {
+	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &address, &notes, &status, &blockedReason, &blockedAt, &count, &spent, &last, &created, &globalCustomerID, &loyaltyPoints, &conversationID) != nil {
 		jsonErr(w, 404, "Cliente no encontrado")
 		return
 	}
@@ -5080,7 +5092,7 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 			orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": st, "payment_status": ps, "created_at": at})
 		}
 	}
-	out := map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders, "loyalty_points": loyaltyPoints, "conversation_id": conversationID}
+	out := map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "blocked_reason": blockedReason, "blocked_at": blockedAt, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders, "loyalty_points": loyaltyPoints, "conversation_id": conversationID}
 	if globalCustomerID != "" {
 		if profile, err := s.globalCustomerDetailData(r.Context(), globalCustomerID); err == nil {
 			// Tenant views receive the reusable identity/profile only. Cross-business
@@ -5091,6 +5103,8 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 			delete(profile, "order_count")
 			delete(profile, "total_spent")
 			delete(profile, "last_order_at")
+			delete(profile, "blocks")
+			delete(profile, "blocked_businesses")
 			out["global_profile"] = profile
 		}
 	}
@@ -5111,15 +5125,14 @@ func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Cliente no encontrado")
 		return
 	}
-	var in struct{ Name, Address, Notes, Status string }
+	var in struct{ Name, Address, Notes string }
 	if decode(r, &in) != nil || strings.TrimSpace(in.Name) == "" {
 		jsonErr(w, 400, "Nombre obligatorio")
 		return
 	}
-	if in.Status != "active" && in.Status != "blocked" {
-		in.Status = "active"
-	}
-	_, err := s.db.Exec(r.Context(), `UPDATE customers SET name=$1,address=$2,notes=$3,status=$4,updated_at=now() WHERE id=$5`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Address), in.Notes, in.Status, id)
+	// El estado comercial se cambia exclusivamente mediante los endpoints
+	// /block y /unblock para que todo bloqueo tenga motivo y auditoría.
+	_, err := s.db.Exec(r.Context(), `UPDATE customers SET name=$1,address=$2,notes=$3,updated_at=now() WHERE id=$4`, strings.TrimSpace(in.Name), strings.TrimSpace(in.Address), in.Notes, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo actualizar el cliente")
 		return
@@ -7592,6 +7605,7 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 			(SELECT coalesce(sum(c.total_spent),0) FROM customers c WHERE c.global_customer_id=g.id),
 			(SELECT max(c.last_order_at) FROM customers c WHERE c.global_customer_id=g.id),
 			(SELECT count(a.id)::int FROM customer_addresses a WHERE a.global_customer_id=g.id),
+			(SELECT count(DISTINCT c.store_id)::int FROM customers c WHERE c.status='blocked' AND (c.global_customer_id=g.id OR regexp_replace(coalesce(c.phone,''),'[^0-9]','','g')=regexp_replace(coalesce(g.phone,''),'[^0-9]','','g'))),
 			g.updated_at
 		FROM global_customers g
 		ORDER BY g.updated_at DESC`)
@@ -7604,11 +7618,11 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var id, phone, name, lastName, nationalID, status, whatsappName, profilePictureURL string
 		var identityVerified, whatsappVerified bool
-		var stores, records, orders, addressCount int
+		var stores, records, orders, addressCount, blockedBusinesses int
 		var spent float64
 		var last *time.Time
 		var updated time.Time
-		if rows.Scan(&id, &phone, &name, &lastName, &nationalID, &status, &identityVerified, &whatsappVerified, &whatsappName, &profilePictureURL, &stores, &records, &orders, &spent, &last, &addressCount, &updated) == nil {
+		if rows.Scan(&id, &phone, &name, &lastName, &nationalID, &status, &identityVerified, &whatsappVerified, &whatsappName, &profilePictureURL, &stores, &records, &orders, &spent, &last, &addressCount, &blockedBusinesses, &updated) == nil {
 			fullName := strings.TrimSpace(strings.TrimSpace(name) + " " + strings.TrimSpace(lastName))
 			out = append(out, map[string]any{
 				"id":                  id,
@@ -7628,6 +7642,7 @@ func (s *Server) adminGlobalCustomers(w http.ResponseWriter, r *http.Request) {
 				"total_spent":         spent,
 				"last_order_at":       last,
 				"address_count":       addressCount,
+				"blocked_businesses":  blockedBusinesses,
 				"updated_at":          updated,
 			})
 		}
@@ -8089,11 +8104,21 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(in.CustomerName)
 	phone := normalizePhone(in.CustomerPhone)
+	if phone != "" {
+		if blocked, reason := s.customerBlockedInStore(r.Context(), in.StoreID, "", phone); blocked {
+			jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
+			return
+		}
+	}
 	var customerID any
 	if strings.TrimSpace(in.CustomerID) != "" {
-		var cid, customerName, customerPhone string
-		if tx.QueryRow(r.Context(), `SELECT id::text,name,phone FROM customers WHERE id=$1 AND store_id=$2 AND status='active'`, in.CustomerID, in.StoreID).Scan(&cid, &customerName, &customerPhone) != nil {
+		var cid, customerName, customerPhone, customerStatus, blockedReason string
+		if tx.QueryRow(r.Context(), `SELECT id::text,name,phone,coalesce(status,'active'),coalesce(blocked_reason,'') FROM customers WHERE id=$1 AND store_id=$2`, in.CustomerID, in.StoreID).Scan(&cid, &customerName, &customerPhone, &customerStatus, &blockedReason) != nil {
 			jsonErr(w, 400, "Cliente inválido")
+			return
+		}
+		if customerStatus == "blocked" {
+			jsonErr(w, http.StatusForbidden, blockedCustomerMessage(blockedReason))
 			return
 		}
 		customerID = cid

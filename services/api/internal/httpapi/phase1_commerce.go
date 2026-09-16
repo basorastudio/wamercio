@@ -550,10 +550,14 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	guestPhone := normalizePhone(in.GuestPhone)
 	var customerID any
+	var globalCustomerID string
 	if guestPhone != "" {
-		var id string
-		if tx.QueryRow(r.Context(), `SELECT id::text FROM global_customers WHERE regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 LIMIT 1`, guestPhone).Scan(&id) == nil {
-			customerID = id
+		if tx.QueryRow(r.Context(), `SELECT id::text FROM global_customers WHERE regexp_replace(coalesce(phone,''),'[^0-9]','','g')=$1 LIMIT 1`, guestPhone).Scan(&globalCustomerID) == nil {
+			customerID = globalCustomerID
+		}
+		if blocked, reason := s.customerBlockedInStore(r.Context(), in.StoreID, globalCustomerID, guestPhone); blocked {
+			jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
+			return
 		}
 	}
 	var id string
