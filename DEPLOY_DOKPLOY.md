@@ -1,4 +1,15 @@
-# Despliegue WAMERCIO 2.5.8 en Dokploy
+# Despliegue WAMERCIO 2.6.0 en Dokploy
+
+## Actualización 2.6.0 · Comercio inteligente
+
+1. Sustituye el código por WAMERCIO 2.6.0 y conserva las variables de entorno actuales.
+2. Despliega primero la API para que `golang-migrate` aplique `000031_promotions_phase1`.
+3. Despliega la web después de la API. El Service Worker usa el caché `wamercio-store-v2.6.0-*`, por lo que la PWA invalida la versión anterior.
+4. Verifica en una tienda de prueba: Cupones, Promociones, Analítica y un checkout con descuento.
+5. Para un negocio con `dine_in_enabled=true`, verifica Reservaciones, QR por mesa y KDS.
+
+**No se añaden variables de entorno ni dependencias nuevas en 2.6.0.**
+
 
 ## ENV
 

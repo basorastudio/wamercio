@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
-  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed
+  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed,BarChart3,TicketPercent,CalendarClock,ChefHat
 } from 'lucide-react'
 
 const SIDEBAR_KEY='wamercio_sidebar_collapsed'
@@ -20,9 +20,12 @@ const commerce=[
   {href:'/orders',label:'Pedidos',icon:ShoppingBag},
   {href:'/conversations',label:'WhatsApp',icon:WhatsAppIcon},
   {href:'/customers',label:'Clientes',icon:UsersRound},
+  {href:'/analytics',label:'Analítica',icon:BarChart3},
 ]
 const catalog=[
   {href:'/catalog/products',label:'Catálogo',icon:Boxes},
+  {href:'/coupons',label:'Cupones',icon:TicketPercent},
+  {href:'/promotions',label:'Promociones',icon:Tags},
 ]
 const baseStoreTools=[
   {href:'/staff',label:'Usuarios',icon:UserCog},
@@ -30,6 +33,8 @@ const baseStoreTools=[
   {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},
   {href:'/settings/store',label:'Configuración',icon:SlidersHorizontal},
 ]
+const reservationsNav={href:'/reservations',label:'Reservaciones',icon:CalendarClock}
+const kdsNav={href:'/kds',label:'KDS',icon:ChefHat}
 const tablesNav={href:'/tables',label:'Gestión de mesas',icon:UtensilsCrossed}
 const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
 const account=[
@@ -64,7 +69,7 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
  const storeCount=stores?.length??null
  const primaryStore=useMemo(()=>stores?.find((store:any)=>store.is_active!==false)??stores?.[0]??null,[stores])
- const storeTools=useMemo(()=>{const tools=dineInNav?[...baseStoreTools.slice(0,2),tablesNav,...baseStoreTools.slice(2)]:baseStoreTools;return storeCount!==null&&storeCount>1?[...tools,storesNav]:tools},[storeCount,dineInNav])
+ const storeTools=useMemo(()=>{const tools=dineInNav?[...baseStoreTools.slice(0,2),reservationsNav,kdsNav,tablesNav,...baseStoreTools.slice(2)]:baseStoreTools;return storeCount!==null&&storeCount>1?[...tools,storesNav]:tools},[storeCount,dineInNav])
  const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[storeTools])
  const all=useMemo(()=>[...commerce,...catalog,...storeTools,...account],[storeTools])
  return <div data-sidebar-collapsed={collapsed?'true':'false'} className="group/shell min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">

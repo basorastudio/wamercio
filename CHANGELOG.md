@@ -1,3 +1,17 @@
+# WAMERCIO 2.6.0 — Promociones, Analítica, Reservaciones, QR por mesa y KDS
+
+- Los **cupones** permiten programar fecha/hora de inicio y fin desde la interfaz, conservando compatibilidad con cupones sin vencimiento.
+- Añade **Promociones** como entidad independiente del cupón: descuento automático por todo el catálogo, productos o categorías, compra mínima, vigencia, límite de usos y estado.
+- El checkout calcula la mejor promoción automática y la compara con el cupón ingresado; aplica solamente el mayor descuento y guarda `promotion_id`/`promotion_name` en el pedido para trazabilidad.
+- Incorpora **Analítica** por períodos de 7, 30 y 90 días con ventas, pedidos, ticket promedio, clientes, modalidades, métodos de pago, top de productos y rendimiento de promociones.
+- Incorpora **Reservaciones** administrativas con agenda, creación manual, validación de capacidad y conflictos, y estados `reserved`, `confirmed`, `seated`, `completed`, `canceled` y `no_show`.
+- **Gestión de mesas** genera un QR individual por mesa, permite copiar/probar/descargar el SVG y abre el storefront mediante `?table=<uuid>` con modalidad Mesa y mesa preseleccionada.
+- Añade **KDS · Cocina** con columnas Nuevos / Preparando / Listos, polling ligero cada 15 segundos y avance mediante el endpoint de estados existente.
+- La navegación mantiene Promociones y Analítica como herramientas horizontales; Reservaciones/KDS/Mesas aparecen solo cuando `dine_in_enabled` está activo.
+- Añade la migración reversible `000031_promotions_phase1` y la suite `verify-2.6.0.sh`. No agrega dependencias ni variables de entorno.
+
+---
+
 ## 2.5.8 · Áreas de mesas y métodos de pago por modalidad
 - **Gestión de mesas** incorpora una capa de **Áreas**: el comercio crea Salón, Terraza, VIP u otras áreas y cada mesa selecciona su área mediante un selector. Una misma área puede agrupar decenas de mesas y el listado muestra cantidad de mesas y capacidad acumulada.
 - Las mesas históricas se preservan mediante una migración automática a **Área principal**; los nombres de mesa pueden repetirse en áreas distintas sin perder reservas existentes.

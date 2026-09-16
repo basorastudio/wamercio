@@ -72,6 +72,16 @@ export default function Storefront(){
   },[])
   useEffect(()=>{if(data?.store?.name)document.title=`${data.store.name} · WAMERCIO`},[data?.store?.name])
   useEffect(()=>{
+    if(!data?.store||typeof window==='undefined')return
+    const params=new URLSearchParams(window.location.search)
+    const tableID=params.get('table')
+    if(!tableID)return
+    const caps=resolveBusinessCapabilities(data.store)
+    const table=(data.tables||[]).find((row:any)=>String(row.id)===String(tableID))
+    if(!table||!caps.supportsDineIn||!data.store.dine_in_enabled)return
+    setForm(current=>({...current,delivery_type:'dine_in',table_id:String(table.id),party_size:Math.max(1,Math.min(Number(current.party_size||2),Number(table.capacity||1))),reservation_at:current.reservation_at||reservationInputDefault()}))
+  },[data])
+  useEffect(()=>{
     if(!data?.store)return
     const caps=resolveBusinessCapabilities(data.store)
     if(!caps.requiresPayment)return

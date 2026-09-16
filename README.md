@@ -1,6 +1,19 @@
-# WAMERCIO 2.5.8
+# WAMERCIO 2.6.0
 
 WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, SPA + PWA y multi-tenant.
+
+## Comercio inteligente 2.6.0
+
+WAMERCIO amplía el núcleo comercial sin convertir la plataforma en un sistema exclusivo para restaurantes:
+
+- **Cupones programables:** fecha/hora de inicio y fin sobre el motor de cupones existente.
+- **Promociones automáticas:** descuentos por todo el catálogo, productos o categorías, con compra mínima, vigencia y límite de usos. El checkout compara promoción y cupón y conserva el mejor descuento, sin acumulación opaca.
+- **Analítica:** ventas, pedidos, ticket promedio, clientes, modalidades, métodos de pago, productos con mayor facturación y rendimiento de promociones en 7, 30 o 90 días.
+- **Reservaciones:** agenda administrativa, creación manual, validación de capacidad/conflictos y estados operativos.
+- **QR por mesa:** cada mesa puede generar, copiar, abrir y descargar su QR; la tienda pública abre con la mesa preseleccionada mediante `?table=<uuid>`.
+- **KDS:** pantalla de cocina con Nuevos / Preparando / Listos, actualización automática y reutilización del ciclo de estados de pedidos.
+
+Reservaciones, KDS y Gestión de mesas continúan siendo capacidades contextuales: solo se muestran cuando el negocio tiene habilitada la modalidad dine-in. No se agregan dependencias ni variables de entorno.
 
 ## Compra progresiva
 

@@ -137,6 +137,11 @@ func (s *Server) Router() http.Handler {
 			p.Post("/coupons", s.createCoupon)
 			p.Put("/coupons/{id}", s.updateCoupon)
 			p.Delete("/coupons/{id}", s.deleteCoupon)
+			p.Get("/promotions", s.listPromotions)
+			p.Post("/promotions", s.createPromotion)
+			p.Put("/promotions/{id}", s.updatePromotion)
+			p.Delete("/promotions/{id}", s.deletePromotion)
+			p.Get("/analytics", s.storeAnalytics)
 			p.Get("/shipping", s.listShipping)
 			p.Post("/shipping", s.createShipping)
 			p.Put("/shipping/{id}", s.updateShipping)
@@ -149,6 +154,10 @@ func (s *Server) Router() http.Handler {
 			p.Post("/tables", s.createStoreTable)
 			p.Put("/tables/{id}", s.updateStoreTable)
 			p.Delete("/tables/{id}", s.deleteStoreTable)
+			p.Get("/reservations", s.listReservations)
+			p.Post("/reservations", s.createReservation)
+			p.Patch("/reservations/{id}/status", s.updateReservationStatus)
+			p.Get("/kds", s.kitchenDisplay)
 			p.Get("/quick-replies", s.listQuickReplies)
 			p.Post("/quick-replies", s.createQuickReply)
 			p.Put("/quick-replies/{id}", s.updateQuickReply)
@@ -1666,12 +1675,14 @@ func (s *Server) listCoupons(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) createCoupon(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		StoreID       string  `json:"store_id"`
-		Code          string  `json:"code"`
-		DiscountType  string  `json:"discount_type"`
-		DiscountValue float64 `json:"discount_value"`
-		MinOrder      float64 `json:"min_order"`
-		UsageLimit    *int    `json:"usage_limit"`
+		StoreID       string     `json:"store_id"`
+		Code          string     `json:"code"`
+		DiscountType  string     `json:"discount_type"`
+		DiscountValue float64    `json:"discount_value"`
+		MinOrder      float64    `json:"min_order"`
+		UsageLimit    *int       `json:"usage_limit"`
+		StartsAt      *time.Time `json:"starts_at"`
+		EndsAt        *time.Time `json:"ends_at"`
 	}
 	if decode(r, &in) != nil || in.StoreID == "" || in.Code == "" {
 		jsonErr(w, 400, "Datos incompletos")
@@ -1686,7 +1697,7 @@ func (s *Server) createCoupon(w http.ResponseWriter, r *http.Request) {
 		in.DiscountType = "flat"
 	}
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO coupons(store_id,code,discount_type,discount_value,min_order,usage_limit) VALUES($1,upper($2),$3,$4,$5,$6) RETURNING id`, in.StoreID, in.Code, in.DiscountType, in.DiscountValue, in.MinOrder, in.UsageLimit).Scan(&id)
+	err := s.db.QueryRow(r.Context(), `INSERT INTO coupons(store_id,code,discount_type,discount_value,min_order,starts_at,ends_at,usage_limit) VALUES($1,upper($2),$3,$4,$5,$6,$7,$8) RETURNING id`, in.StoreID, in.Code, in.DiscountType, in.DiscountValue, in.MinOrder, in.StartsAt, in.EndsAt, in.UsageLimit).Scan(&id)
 	if err != nil {
 		jsonErr(w, 409, "Cupón duplicado")
 		return
@@ -1696,13 +1707,15 @@ func (s *Server) createCoupon(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateCoupon(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in struct {
-		StoreID       string  `json:"store_id"`
-		Code          string  `json:"code"`
-		DiscountType  string  `json:"discount_type"`
-		DiscountValue float64 `json:"discount_value"`
-		MinOrder      float64 `json:"min_order"`
-		UsageLimit    *int    `json:"usage_limit"`
-		IsActive      bool    `json:"is_active"`
+		StoreID       string     `json:"store_id"`
+		Code          string     `json:"code"`
+		DiscountType  string     `json:"discount_type"`
+		DiscountValue float64    `json:"discount_value"`
+		MinOrder      float64    `json:"min_order"`
+		UsageLimit    *int       `json:"usage_limit"`
+		StartsAt      *time.Time `json:"starts_at"`
+		EndsAt        *time.Time `json:"ends_at"`
+		IsActive      bool       `json:"is_active"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
@@ -1713,7 +1726,7 @@ func (s *Server) updateCoupon(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	_, err := s.db.Exec(r.Context(), `UPDATE coupons SET code=upper($1),discount_type=$2,discount_value=$3,min_order=$4,usage_limit=$5,is_active=$6 WHERE id=$7 AND store_id=$8`, in.Code, in.DiscountType, in.DiscountValue, in.MinOrder, in.UsageLimit, in.IsActive, id, in.StoreID)
+	_, err := s.db.Exec(r.Context(), `UPDATE coupons SET code=upper($1),discount_type=$2,discount_value=$3,min_order=$4,usage_limit=$5,starts_at=$6,ends_at=$7,is_active=$8 WHERE id=$9 AND store_id=$10`, in.Code, in.DiscountType, in.DiscountValue, in.MinOrder, in.UsageLimit, in.StartsAt, in.EndsAt, in.IsActive, id, in.StoreID)
 	if err != nil {
 		jsonErr(w, 409, "No se pudo actualizar")
 		return
@@ -2195,7 +2208,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	c := claims(r)
-	var sid, customerID, name, phone, address, deliveryType, coupon, pm, ps, status, notes, source, proof, flowType, tableID, tableName string
+	var sid, customerID, name, phone, address, deliveryType, coupon, promotionName, pm, ps, status, notes, source, proof, flowType, tableID, tableName string
 	var num int64
 	var subtotal, discount, shipping, total, cashTendered float64
 	var cashChangeRequested bool
@@ -2203,7 +2216,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	var reservationAt *time.Time
 	var partySize int
 	var customFieldsRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.flow_type,o.custom_fields,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &flowType, &customFieldsRaw, &cr, &tableID, &tableName, &reservationAt, &partySize)
+	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),coalesce(o.promotion_name,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.flow_type,o.custom_fields,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &promotionName, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &flowType, &customFieldsRaw, &cr, &tableID, &tableName, &reservationAt, &partySize)
 	if err != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
@@ -2224,7 +2237,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 			items = append(items, map[string]any{"id": iid, "product_id": pid, "product_name": pn, "variant_name": vn, "extras": ex, "unit_price": unit, "quantity": qty, "line_total": line})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "coupon_code": coupon, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "flow_type": flowType, "custom_fields": customFields, "created_at": cr, "items": items})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "coupon_code": coupon, "promotion_name": promotionName, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "flow_type": flowType, "custom_fields": customFields, "created_at": cr, "items": items})
 }
 func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -3662,7 +3675,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 			reservationDuration = 90
 		}
 		var conflicts int
-		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM table_reservations WHERE store_id=$1 AND table_id=$2 AND status NOT IN ('canceled','cancelled','completed') AND reserved_at < $3 + ($4 * interval '1 minute') AND reserved_at + (duration_minutes * interval '1 minute') > $3`, sid, in.TableID, parsed, reservationDuration).Scan(&conflicts)
+		_ = tx.QueryRow(r.Context(), `SELECT count(*) FROM table_reservations WHERE store_id=$1 AND table_id=$2 AND status NOT IN ('canceled','cancelled','completed','no_show') AND reserved_at < $3 + ($4 * interval '1 minute') AND reserved_at + (duration_minutes * interval '1 minute') > $3`, sid, in.TableID, parsed, reservationDuration).Scan(&conflicts)
 		if conflicts > 0 {
 			jsonErr(w, 409, "Esa mesa ya está reservada para ese horario")
 			return
@@ -3676,10 +3689,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		Price float64 `json:"price"`
 	}
 	type resolved struct {
-		pid, name, variant string
-		extras             []map[string]any
-		unit, qty, line    float64
-		trackStock         bool
+		pid, categoryID, name, variant string
+		extras                         []map[string]any
+		unit, qty, line                float64
+		trackStock                     bool
 	}
 	resolvedItems := []resolved{}
 	subtotal := 0.0
@@ -3687,11 +3700,11 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		if it.Quantity <= 0 || it.Quantity > 999 {
 			continue
 		}
-		var name string
+		var name, categoryID string
 		var base, stock float64
 		var active, trackStock bool
 		var variantsRaw, extrasRaw []byte
-		if tx.QueryRow(r.Context(), `SELECT name,price,coalesce(stock,0),track_stock,is_active,variants,extras FROM products WHERE id=$1 AND store_id=$2 FOR UPDATE`, it.ProductID, sid).Scan(&name, &base, &stock, &trackStock, &active, &variantsRaw, &extrasRaw) != nil || !active {
+		if tx.QueryRow(r.Context(), `SELECT name,coalesce(category_id::text,''),price,coalesce(stock,0),track_stock,is_active,variants,extras FROM products WHERE id=$1 AND store_id=$2 FOR UPDATE`, it.ProductID, sid).Scan(&name, &categoryID, &base, &stock, &trackStock, &active, &variantsRaw, &extrasRaw) != nil || !active {
 			jsonErr(w, 400, "Uno de los productos ya no está disponible")
 			return
 		}
@@ -3746,7 +3759,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		}
 		line := unit * it.Quantity
 		subtotal += line
-		resolvedItems = append(resolvedItems, resolved{it.ProductID, name, variantName, normalizedExtras, unit, it.Quantity, line, trackStock})
+		resolvedItems = append(resolvedItems, resolved{it.ProductID, categoryID, name, variantName, normalizedExtras, unit, it.Quantity, line, trackStock})
 	}
 	if len(resolvedItems) == 0 {
 		jsonErr(w, 400, "El pedido no contiene productos válidos")
@@ -3758,24 +3771,50 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	discount := 0.0
+	appliedCouponCode := ""
+	var appliedPromotionID any
+	appliedPromotionName := ""
+	promotionLines := make([]promotionCheckoutLine, 0, len(resolvedItems))
+	for _, item := range resolvedItems {
+		promotionLines = append(promotionLines, promotionCheckoutLine{ProductID: item.pid, CategoryID: item.categoryID, LineTotal: item.line})
+	}
+	bestPromotion, promotionErr := bestPromotionForCheckout(r.Context(), tx, sid, subtotal, promotionLines)
+	if promotionErr != nil {
+		jsonErr(w, 500, "No se pudieron evaluar las promociones")
+		return
+	}
+	if bestPromotion.Discount > 0 {
+		discount = bestPromotion.Discount
+		appliedPromotionID = bestPromotion.ID
+		appliedPromotionName = bestPromotion.Name
+	}
+	couponDiscount := 0.0
 	if in.CouponCode != "" {
 		var typ string
 		var val, min float64
 		var active bool
 		var limit *int
 		var used int
-		err := tx.QueryRow(r.Context(), `SELECT discount_type,discount_value,min_order,is_active,usage_limit,used_count FROM coupons WHERE store_id=$1 AND code=upper($2) AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>=now())`, sid, in.CouponCode).Scan(&typ, &val, &min, &active, &limit, &used)
+		err := tx.QueryRow(r.Context(), `SELECT discount_type,discount_value,min_order,is_active,usage_limit,used_count FROM coupons WHERE store_id=$1 AND code=upper($2) AND (starts_at IS NULL OR starts_at<=now()) AND (ends_at IS NULL OR ends_at>=now()) FOR UPDATE`, sid, in.CouponCode).Scan(&typ, &val, &min, &active, &limit, &used)
 		if err == nil && active && subtotal >= min && (limit == nil || used < *limit) {
 			if typ == "percentage" {
-				discount = subtotal * (val / 100)
+				couponDiscount = subtotal * (val / 100)
 			} else {
-				discount = val
+				couponDiscount = val
 			}
-			if discount > subtotal {
-				discount = subtotal
+			if couponDiscount > subtotal {
+				couponDiscount = subtotal
 			}
-			_, _ = tx.Exec(r.Context(), `UPDATE coupons SET used_count=used_count+1 WHERE store_id=$1 AND code=upper($2)`, sid, in.CouponCode)
 		}
+	}
+	if couponDiscount > discount {
+		discount = couponDiscount
+		appliedCouponCode = in.CouponCode
+		appliedPromotionID = nil
+		appliedPromotionName = ""
+		_, _ = tx.Exec(r.Context(), `UPDATE coupons SET used_count=used_count+1 WHERE store_id=$1 AND code=upper($2)`, sid, in.CouponCode)
+	} else if bestPromotion.Discount > 0 {
+		_, _ = tx.Exec(r.Context(), `UPDATE promotions SET used_count=used_count+1,updated_at=now() WHERE id=$1`, bestPromotion.ID)
 	}
 
 	shipping := 0.0
@@ -3803,7 +3842,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	var orderID, publicToken string
 	var num int64
-	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,subtotal,discount,shipping,total,payment_method,cash_change_requested,cash_tendered,notes,custom_fields,flow_type,table_id,reservation_at,party_size,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, in.CouponCode, subtotal, discount, shipping, total, in.PaymentMethod, cashChangeRequested, cashTendered, in.Notes, customFieldsJSON, flowType, reservedTableID, reservationAt, func() any {
+	err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,global_customer_id,customer_name,customer_phone,delivery_address,delivery_type,shipping_zone_id,coupon_code,promotion_id,promotion_name,subtotal,discount,shipping,total,payment_method,cash_change_requested,cash_tendered,notes,custom_fields,flow_type,table_id,reservation_at,party_size,source) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,'web') RETURNING id,order_number,public_token::text`, sid, customerID, customerClaims.UserID, customerName, customerPhone, deliveryAddress, in.DeliveryType, zone, appliedCouponCode, appliedPromotionID, appliedPromotionName, subtotal, discount, shipping, total, in.PaymentMethod, cashChangeRequested, cashTendered, in.Notes, customFieldsJSON, flowType, reservedTableID, reservationAt, func() any {
 		if in.DeliveryType == "dine_in" {
 			return partySize
 		}
@@ -3851,7 +3890,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		"seguimiento": trackingURL,
 	})
 	_ = s.queueWhatsApp(context.Background(), sid, "", customerPhone, message, "order")
-	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType, "table_id": reservedTableID, "reservation_at": reservationAt, "party_size": func() any {
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "promotion_name": appliedPromotionName, "coupon_code": appliedCouponCode, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType, "table_id": reservedTableID, "reservation_at": reservationAt, "party_size": func() any {
 		if in.DeliveryType == "dine_in" {
 			return partySize
 		}
