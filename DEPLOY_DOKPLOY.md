@@ -1,3 +1,19 @@
+# Despliegue WAMERCIO 2.8.2 en Dokploy
+
+## Hotfix 2.8.2 · Compilación frontend TypeScript
+
+Esta versión sustituye **2.8.1**. El API ya compila correctamente; 2.8.2 corrige el siguiente bloqueo detectado por Dokploy en `npm run build`: el updater de `setLoyalty` usaba un estado `any`, por lo que TypeScript `strict` marcaba el parámetro como `implicit any`.
+
+1. Reemplaza el código 2.8.1 por **WAMERCIO 2.8.2**.
+2. Conserva PostgreSQL, Redis, uploads y todas las variables de entorno. **No uses Fresh Volumes.**
+3. Ejecuta `sh scripts/verify-2.8.2.sh`.
+4. Sube el código a GitHub y confirma que el workflow **WAMERCIO CI** complete Frontend, Go API, WhatsApp bridge y Docker compose validation.
+5. En Dokploy ejecuta **Rebuild + Redeploy**. No hay migraciones nuevas: `000032` y `000033` continúan siendo las últimas.
+
+La corrección no desactiva `strict`, no añade `skip` de compilación y no oculta errores: tipa explícitamente el estado de fidelización y la respuesta de `/customer/loyalty`.
+
+---
+
 # Despliegue WAMERCIO 2.8.1 en Dokploy
 
 ## Hotfix 2.8.1 · Compilación API pgx

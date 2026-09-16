@@ -1,4 +1,4 @@
-# WAMERCIO 2.8.1
+# WAMERCIO 2.8.2
 
 Hotfix de producción sobre 2.8.0: corrige la compilación Go/pgx de KDS y Fidelización y añade guardas de regresión para `RowsAffected()`.
 

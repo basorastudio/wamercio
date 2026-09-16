@@ -1,3 +1,13 @@
+# WAMERCIO 2.8.2 — Hotfix de compilación frontend
+
+- Corrige el fallo de `next build` en `components/storefront.tsx` causado por un updater funcional sobre un estado `any`, que dejaba el parámetro de `setLoyalty` sin tipado contextual bajo `strict: true`.
+- Introduce `LoyaltyState` con los campos reales devueltos por `/customer/loyalty` y tipa tanto la llamada API como el estado y su actualización posterior al checkout.
+- Añade `test_2_8_2_web_type_guard.py` y `verify-2.8.2.sh` para impedir que este patrón vuelva a romper la compilación de producción.
+- Conserva el hotfix Go de 2.8.1, las migraciones `000032`/`000033`, el modelo de datos y las variables de entorno sin cambios.
+- No agrega dependencias ni migraciones nuevas.
+
+---
+
 # WAMERCIO 2.8.1 — Hotfix de compilación de producción
 
 - Corrige cuatro usos incompatibles de `pgx/v5` donde `RowsAffected()` se trataba erróneamente como una función de dos valores; `pgx` devuelve un único `int64`.

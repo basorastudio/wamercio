@@ -17,6 +17,7 @@ const ratioClass:Record<string,string>={'1:1':'aspect-square','4:3':'aspect-[4/3
 const gridClass:Record<number,string>={1:'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',2:'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}
 type PaymentMethod='cash'|'cash_on_delivery'|'bank_transfer'
 type Fulfillment='delivery'|'pickup'|'dine_in'
+type LoyaltyState={is_active:boolean;points_per_currency:number;redemption_value:number;min_redeem:number;points_balance:number;total_earned:number;total_redeemed:number}
 const paymentMethodOrder:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer']
 function paymentMethodsForFulfillment(store:any,fulfillment:string):PaymentMethod[]{
   const globals=store?.payment_methods||{}
@@ -52,7 +53,7 @@ export default function Storefront(){
   const[productLocale,setProductLocale]=useState('es')
   const[mediaIndex,setMediaIndex]=useState(0)
   const[productReviews,setProductReviews]=useState<any[]>([])
-  const[loyalty,setLoyalty]=useState<any|null>(null)
+  const[loyalty,setLoyalty]=useState<LoyaltyState|null>(null)
   const[cartNotice,setCartNotice]=useState('')
   const[cart,setCart]=useState<CartItem[]>([])
   const[cartOpen,setCartOpen]=useState(false)
@@ -102,7 +103,7 @@ export default function Storefront(){
   useEffect(()=>{
     const storeID=String(data?.store?.id||'')
     if(!customer||!storeID||!data?.loyalty?.is_active){setLoyalty(null);setForm(v=>v.loyalty_points?{...v,loyalty_points:0}:v);return}
-    api<any>(`/customer/loyalty?store_id=${storeID}`).then(setLoyalty).catch(()=>setLoyalty(null))
+    api<LoyaltyState>(`/customer/loyalty?store_id=${storeID}`).then(setLoyalty).catch(()=>setLoyalty(null))
   },[customer?.id,data?.store?.id,data?.loyalty?.is_active])
   useEffect(()=>{
     if(!pick){setProductReviews([]);return}
@@ -237,7 +238,7 @@ export default function Storefront(){
     try{
       const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',table_id:form.delivery_type==='dine_in'?form.table_id:'',reservation_at:form.delivery_type==='dine_in'&&form.reservation_at?new Date(form.reservation_at).toISOString():'',party_size:form.delivery_type==='dine_in'?form.party_size:0,needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras,modifier_option_ids:x.modifier_option_ids||[]}))}
       const out=await api('/public/store/checkout',{method:'POST',body:JSON.stringify(payload)})
-      setDone(out);setCart([]);setCartOpen(false);setCashOtherOpen(false);setForm(v=>({...v,needs_change:null,cash_tendered:0,loyalty_points:0,custom_fields:{},notes:''}));setLoyalty(v=>v?{...v,points_balance:Math.max(0,Number(v.points_balance||0)-loyaltyRequested)}:v)
+      setDone(out);setCart([]);setCartOpen(false);setCashOtherOpen(false);setForm(v=>({...v,needs_change:null,cash_tendered:0,loyalty_points:0,custom_fields:{},notes:''}));setLoyalty((current:LoyaltyState|null)=>current?{...current,points_balance:Math.max(0,Number(current.points_balance||0)-loyaltyRequested)}:current)
     }catch(e:any){
       const message=e.message||'No pudimos confirmar el pedido'
       setError(message)
