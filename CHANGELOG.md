@@ -1,3 +1,21 @@
+# WAMERCIO 2.8.3 — Identidad total de tienda y editor libre de portada
+
+- Fija el menú paralelo de **Configuración** en escritorio para que permanezca visible mientras se recorre el lienzo de ajustes.
+- Simplifica la vista previa lateral eliminando el nombre del preset y el texto explicativo redundante.
+- Añade controles independientes para mostrar u ocultar **etiqueta superior, nombre del negocio, descripción, WhatsApp, dirección y pedido mínimo** sobre la foto de portada.
+- Añade un editor visual de portada con arrastre por puntero/táctil; cada posición se guarda como coordenadas porcentuales dentro de `theme_config`, sin migraciones nuevas.
+- El storefront reproduce exactamente la visibilidad y posición guardadas y conserva el diseño histórico mientras el propietario no activa la posición libre.
+- Elimina el branding público de WAMERCIO del catálogo y del acceso de clientes; nombre, logo e identidad visual provienen del negocio.
+- El título del navegador usa solamente el nombre del negocio y favicon/apple-touch-icon usan el logo del negocio; cuando no hay logo se genera un icono neutro con la inicial y color de la tienda, nunca la W de la plataforma.
+- El `manifest.webmanifest` se resuelve por host y publica nombre, descripción, logo/icono y colores del negocio para la instalación PWA.
+- El `theme-color` de navegador/PWA se genera desde el color primario del negocio en servidor y se sincroniza en cliente.
+- La búsqueda móvil queda contraída por defecto a un botón de lupa; al pulsarlo abre una fila de búsqueda y puede cerrarse con el mismo botón o Escape.
+- El portal del cliente hereda logo y color principal del negocio en lugar de estados visuales verdes fijos.
+- El Service Worker `v2.8.3` deja de precachear el manifest y los iconos globales para evitar conservar identidad WAMERCIO en dominios de tiendas.
+- Añade `test_2_8_3_store_branding.py` y `verify-2.8.3.sh`. No agrega dependencias, variables de entorno ni migraciones.
+
+---
+
 # WAMERCIO 2.8.2 — Hotfix de compilación frontend
 
 - Corrige el fallo de `next build` en `components/storefront.tsx` causado por un updater funcional sobre un estado `any`, que dejaba el parámetro de `setLoyalty` sin tipado contextual bajo `strict: true`.

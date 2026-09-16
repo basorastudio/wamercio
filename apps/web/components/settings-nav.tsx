@@ -14,7 +14,7 @@ const items=[
 type SettingsTab=(typeof items)[number]['id']
 type LocalTab='general'|'design'|'sales'|'hours'|'domains'
 export default function SettingsNav({active,onSelect}:{active:SettingsTab;onSelect?:(tab:LocalTab)=>void}){
-  return <aside className="card h-fit p-2">{items.map(item=>{
+  return <aside className="card h-fit p-2 xl:sticky xl:top-[82px] xl:self-start">{items.map(item=>{
     const I=item.icon
     const cls=`flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left text-sm font-semibold transition ${active===item.id?'bg-brand-50 text-brand-700':'text-[#747a92] hover:bg-[#fafbfc]'}`
     if((item.id==='general'||item.id==='design'||item.id==='sales'||item.id==='hours'||item.id==='domains')&&onSelect)return <button type="button" key={item.id} onClick={()=>onSelect(item.id)} className={cls}><I className="h-4 w-4"/>{item.label}</button>

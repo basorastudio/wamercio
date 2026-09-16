@@ -1,3 +1,20 @@
+# Despliegue WAMERCIO 2.8.3 en Dokploy
+
+## Personalización pública por negocio
+
+Esta versión sustituye **2.8.2** y no añade migraciones ni variables de entorno. Conserva PostgreSQL, Redis, uploads y las migraciones `000032`/`000033` existentes.
+
+1. Reemplaza el código anterior por **WAMERCIO 2.8.3** y conserva todos los volúmenes actuales. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.3.sh`.
+3. Sube el código al repositorio y deja que el CI ejecute `npm run build`, `go test ./...`, `go build ./...` y validación de Compose.
+4. En Dokploy usa **Rebuild + Redeploy**.
+5. Después del despliegue abre una tienda en ventana privada y verifica: título de pestaña = nombre del negocio, favicon/logo del negocio, color del navegador = color primario, instalación PWA con nombre/logo del negocio y búsqueda móvil contraída.
+6. En **Configuración → Mi negocio** prueba ocultar un elemento de portada, arrastrar otro, guardar, recargar y confirmar que la tienda pública conserva posición y visibilidad.
+
+El Service Worker cambia a `wamercio-store-v2.8.3-*` y deja de precachear el manifest/iconos globales, por lo que una visita nueva no arrastra la identidad PWA de la plataforma. Si el dispositivo ya tenía instalada una PWA anterior, desinstálala una vez y vuelve a instalarla para comprobar inmediatamente el nuevo nombre/icono; Chromium también actualiza manifests instalados de forma periódica.
+
+---
+
 # Despliegue WAMERCIO 2.8.2 en Dokploy
 
 ## Hotfix 2.8.2 · Compilación frontend TypeScript

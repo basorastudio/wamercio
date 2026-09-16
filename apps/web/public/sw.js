@@ -1,5 +1,5 @@
-const CACHE='wamercio-store-v2.8.2-'+self.location.hostname;
-const SHELL=['/','/manifest.webmanifest','/icon.svg','/favicon.ico'];
+const CACHE='wamercio-store-v2.8.3-'+self.location.hostname;
+const SHELL=['/'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(c=>c.addAll(SHELL)).finally(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()])));
 self.addEventListener('fetch',event=>{

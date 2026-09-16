@@ -2,6 +2,7 @@
 
 import {useEffect,useRef,useState} from 'react'
 import {api} from '@/lib/api'
+import type {StorefrontBrand} from '@/lib/store-browser-brand'
 import PhoneInput from '@/components/phone-input'
 import PinInput from '@/components/pin-input'
 import {applyStoreScopeToAddress,normalizeServiceScope,scopeContextLabel,scopeFieldVisibility} from '@/lib/store-service-scope'
@@ -21,7 +22,7 @@ const digits=(value:string)=>String(value||'').replace(/\D/g,'')
 const formatCedula=(value:string)=>{const d=digits(value).slice(0,11);return [d.slice(0,3),d.slice(3,10),d.slice(10,11)].filter(Boolean).join('-')}
 const unwrapList=(v:any)=>Array.isArray(v)?v:Array.isArray(v?.data)?v.data:Array.isArray(v?.items)?v.items:[]
 
-export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open:boolean;onClose:()=>void;onAuthenticated?:(customer:any)=>void}){
+export default function CustomerAccessModal({open,onClose,onAuthenticated,brand}:{open:boolean;onClose:()=>void;onAuthenticated?:(customer:any)=>void;brand?:StorefrontBrand}){
   const[step,setStep]=useState<Step>('phone')
   const[phone,setPhone]=useState('')
   const[phoneValid,setPhoneValid]=useState(false)
@@ -47,6 +48,8 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
   const[cities,setCities]=useState<any[]>([])
   const[neighborhoods,setNeighborhoods]=useState<any[]>([])
   const phoneLookupSeq=useRef(0)
+  const brandName=brand?.name||'Mi tienda'
+  const brandColor=String(brand?.theme_config?.colors?.primary||brand?.primary_color||'#10b981')
 
   useEffect(()=>{
     if(!open)return
@@ -291,23 +294,23 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
     <button className="absolute inset-0" aria-label="Cerrar" onClick={close}/>
     <div className={`relative w-full overflow-hidden rounded-[26px] bg-white shadow-2xl ${step==='register'?'max-w-3xl':'max-w-md'}`}>
       <div className="flex items-center border-b border-slate-100 px-5 py-4">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-500 text-sm font-bold text-white">W</div>
-        <div className="ml-3"><div className="font-bold text-[#26304f]">WAMERCIO</div><div className="text-[10px] font-semibold uppercase tracking-[.18em] text-emerald-600">{accountType==='owner'&&step==='pin'?'Propietario':'Cliente'}</div></div>
+        <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-xl text-sm font-bold text-white" style={{background:brandColor}}>{brand?.logo_url?<img src={brand.logo_url} alt={brandName} className="h-full w-full object-cover"/>:brandName.slice(0,1).toUpperCase()}</div>
+        <div className="ml-3"><div className="font-bold text-[#26304f]">{brandName}</div><div className="text-[10px] font-semibold uppercase tracking-[.18em]" style={{color:brandColor}}>{accountType==='owner'&&step==='pin'?'Propietario':'Cliente'}</div></div>
         <button onClick={close} className="ml-auto rounded-full bg-slate-50 p-2 text-slate-400"><X className="h-4 w-4"/></button>
       </div>
       <div className={`scroll-clean max-h-[calc(100vh-9rem)] overflow-y-auto p-5 sm:p-6 ${step==='register'?'sm:p-7':''}`}>
         {step!=='phone'&&<button onClick={back} className="mb-4 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600"><ArrowLeft className="h-3.5 w-3.5"/>Cambiar WhatsApp</button>}
         {step==='phone'&&<div>
           <div className="mb-4 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><MessageCircleMore/></div>
-          <h2 className="text-2xl font-semibold text-[#26304f]">Tu WhatsApp abre WAMERCIO</h2>
-          <p className="mt-2 text-sm leading-6 text-[#8d92aa]">Escríbelo una sola vez. WAMERCIO comprobará automáticamente si ya tienes cuenta y te llevará al siguiente paso.</p>
+          <h2 className="text-2xl font-semibold text-[#26304f]">Tu WhatsApp abre {brandName}</h2>
+          <p className="mt-2 text-sm leading-6 text-[#8d92aa]">Escríbelo una sola vez. Comprobaremos automáticamente si ya tienes cuenta y te llevaremos al siguiente paso.</p>
           <div className="mt-5"><label className="label">Número de WhatsApp</label><PhoneInput value={phone} onChange={setPhone} onValidityChange={setPhoneValid} autoFocus required/></div>
           <div data-testid="customer-phone-auto-status" className="mt-3 min-h-6 text-xs">
             {(phoneAutoState==='waiting'||phoneAutoState==='checking')&&<span className="inline-flex items-center gap-2 font-semibold text-emerald-600"><LoaderCircle className="h-4 w-4 animate-spin"/>Verificando WhatsApp automáticamente...</span>}
             {phoneAutoState==='error'&&<span className="text-rose-600">{error}</span>}
             {phoneAutoState==='idle'&&phone&&<span className="text-slate-400">Completa un número válido para continuar automáticamente.</span>}
           </div>
-          {customDomain&&<a href={ssoURL} className="mt-3 block w-full rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center text-xs font-semibold text-emerald-700">Ya tengo sesión en WAMERCIO</a>}
+          {customDomain&&<a href={ssoURL} className="mt-3 block w-full rounded-xl border border-emerald-100 bg-emerald-50/60 px-4 py-3 text-center text-xs font-semibold text-emerald-700">Ya tengo sesión</a>}
         </div>}
         {step==='pin'&&<div>
           <div className="mb-4 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><ShieldCheck/></div>
@@ -320,7 +323,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
           {busy&&<p className="mt-3 flex items-center gap-2 text-xs text-emerald-600"><LoaderCircle className="h-4 w-4 animate-spin"/>Verificando acceso...</p>}
         </div>}
         {step==='register'&&<form onSubmit={register} className="space-y-5">
-          <div><div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><UserRound/></div><h2 className="text-2xl font-semibold text-[#26304f]">Crea tu cuenta de cliente</h2><p className="mt-1 text-sm text-[#8d92aa]">Tu WhatsApp no tiene cuenta todavía. Completa tus datos una sola vez para comprar en cualquier negocio de WAMERCIO.</p></div>
+          <div><div className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-emerald-50 text-emerald-600"><UserRound/></div><h2 className="text-2xl font-semibold text-[#26304f]">Crea tu cuenta de cliente</h2><p className="mt-1 text-sm text-[#8d92aa]">Tu WhatsApp no tiene cuenta todavía. Completa tus datos una sola vez para continuar con tus compras.</p></div>
           <section className="rounded-2xl border border-slate-100 p-4 sm:p-5">
             <div className="mb-4"><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Identidad</div><h3 className="font-semibold text-[#26304f]">Datos personales</h3></div>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -335,7 +338,7 @@ export default function CustomerAccessModal({open,onClose,onAuthenticated}:{open
           </section>
           <section className="rounded-2xl border border-slate-100 p-4 sm:p-5">
             <div className="mb-4 flex items-start gap-3"><div className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-600"><MapPin className="h-4 w-4"/></div><div><div className="text-[10px] font-bold uppercase tracking-[.18em] text-emerald-600">Dirección principal</div><h3 className="font-semibold text-[#26304f]">¿Dónde recibirás tus pedidos?</h3></div></div>
-            {serviceScope!=='national'&&<div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-800"><strong>Alcance {serviceScope==='provincial'?'provincial':'municipal'}:</strong> {scopeContextLabel(storeTerritory,serviceScope)}. WAMERCIO fija automáticamente esta ubicación.</div>}
+            {serviceScope!=='national'&&<div className="mb-4 rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 text-xs text-emerald-800"><strong>Alcance {serviceScope==='provincial'?'provincial':'municipal'}:</strong> {scopeContextLabel(storeTerritory,serviceScope)}. La tienda fija automáticamente esta ubicación.</div>}
             {territoryEnabled&&territoryAvailable?<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><select className="field" value={form.province_code} onChange={e=>chooseProvince(e.target.value)}><option value="">Selecciona provincia</option>{provinces.map((p:any)=><option key={String(p.code)} value={String(p.code)}>{p.name}</option>)}</select></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><select className="field" value={form.city_id} disabled={scopeFields.province?!form.province_code:false} onChange={e=>chooseCity(e.target.value)}><option value="">Selecciona municipio</option>{cities.map((c:any)=><option key={String(c.cityId||c.id)} value={String(c.cityId||c.id)}>{c.name}</option>)}</select></div>}<div><label className="label">Barrio *</label><select className="field" value={form.neighborhood_id} disabled={scopeFields.municipality?!form.city_id:false} onChange={e=>chooseNeighborhood(e.target.value)}><option value="">Selecciona barrio</option>{neighborhoods.map((n:any)=><option key={String(n.neighborhoodId||n.id)} value={String(n.neighborhoodId||n.id)}>{n.name}</option>)}</select></div></div>:<div className={`grid gap-4 ${scopeFields.province?'sm:grid-cols-3':scopeFields.municipality?'sm:grid-cols-2':'sm:grid-cols-1'}`}>{scopeFields.province&&<div><label className="label">Provincia *</label><input className="field" value={form.province} onChange={e=>setForm(v=>({...v,province:e.target.value}))}/></div>}{scopeFields.municipality&&<div><label className="label">Municipio / Distrito *</label><input className="field" value={form.municipality} onChange={e=>setForm(v=>({...v,municipality:e.target.value}))}/></div>}<div><label className="label">Barrio *</label><input className="field" value={form.neighborhood} onChange={e=>setForm(v=>({...v,neighborhood:e.target.value}))}/></div></div>}
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_150px]"><div><label className="label">Calle *</label><input className="field" value={form.street} onChange={e=>setForm(v=>({...v,street:e.target.value}))}/></div><div><label className="label">Número *</label><input className="field" value={form.street_number} onChange={e=>setForm(v=>({...v,street_number:e.target.value}))}/></div></div>
             <div className="mt-4"><label className="label">Referencia</label><input className="field" value={form.reference} onChange={e=>setForm(v=>({...v,reference:e.target.value}))} placeholder="Ej.: casa azul, frente al parque"/></div>

@@ -1,9 +1,11 @@
+export type StoreHeroElementConfig={visible:boolean;x:number;y:number}
+export type StoreHeroContentConfig={freePosition:boolean;label:StoreHeroElementConfig;title:StoreHeroElementConfig;description:StoreHeroElementConfig;whatsapp:StoreHeroElementConfig;address:StoreHeroElementConfig;minimum:StoreHeroElementConfig}
 export type StoreThemeConfig={
   colors:{primary:string;secondary:string;accent:string;background:string;surface:string;text:string;muted:string;border:string;buttonText:string}
   typography:{heading:string;body:string;scale:'compact'|'normal'|'large'}
   shape:{radius:number;buttonRadius:number;shadow:'none'|'soft'|'medium'|'strong'}
   header:{variant:'classic'|'centered'|'minimal'|'glass';sticky:boolean}
-  hero:{variant:'gradient'|'overlay'|'editorial'|'split'|'compact';height:'compact'|'normal'|'large'}
+  hero:{variant:'gradient'|'overlay'|'editorial'|'split'|'compact';height:'compact'|'normal'|'large';freePosition?:boolean;label?:Partial<StoreHeroElementConfig>;title?:Partial<StoreHeroElementConfig>;description?:Partial<StoreHeroElementConfig>;whatsapp?:Partial<StoreHeroElementConfig>;address?:Partial<StoreHeroElementConfig>;minimum?:Partial<StoreHeroElementConfig>}
   categories:{variant:'pills'|'circles'|'cards'|'underline'}
   products:{card:'clean'|'editorial'|'dense'|'industrial'|'luxury';imageRatio:'1:1'|'4:3'|'3:4'|'16:9';columnsMobile:1|2}
   buttons:{variant:'solid'|'soft'|'outline'}
@@ -25,6 +27,24 @@ export const STORE_THEMES:StoreThemePreset[]=[
   {id:'industrial-pro',name:'Ferretería Pro',description:'Más técnico y compacto para catálogos grandes donde importan precio, marca y disponibilidad.',bestFor:'Ferreterías, repuestos, materiales y suministros',config:{...base(c('#e06c19','#29323c','#3b4652','#f2f4f5','#ffffff','#263039','#6f7a83','#d9dee2')),typography:{heading:'Roboto Condensed',body:'Inter',scale:'compact'},shape:{radius:10,buttonRadius:8,shadow:'none'},header:{variant:'classic',sticky:true},hero:{variant:'compact',height:'compact'},categories:{variant:'cards'},products:{card:'industrial',imageRatio:'1:1',columnsMobile:1}}},
   {id:'minimal-shop',name:'Tienda Minimalista',description:'Neutral, flexible y profesional. Una base segura para casi cualquier negocio.',bestFor:'Tiendas generales, servicios y negocios variados',config:{...base(c('#36b385','#82d6b7','#2e3154','#f7f9fc','#ffffff','#2e3154','#858aa7','#e7eaf0')),typography:{heading:'Inter',body:'Inter',scale:'normal'},shape:{radius:18,buttonRadius:12,shadow:'soft'},header:{variant:'minimal',sticky:true},hero:{variant:'gradient',height:'normal'},categories:{variant:'pills'},products:{card:'clean',imageRatio:'4:3',columnsMobile:2}}},
 ]
+
+
+export const DEFAULT_HERO_CONTENT:StoreHeroContentConfig={
+ freePosition:false,
+ label:{visible:true,x:4,y:12},
+ title:{visible:true,x:4,y:28},
+ description:{visible:true,x:4,y:48},
+ whatsapp:{visible:true,x:4,y:72},
+ address:{visible:true,x:19,y:72},
+ minimum:{visible:true,x:54,y:72},
+}
+export function resolvedHeroContent(hero?:StoreThemeConfig['hero']|Record<string,any>):StoreHeroContentConfig{
+ const src=hero||{}
+ const out:any={freePosition:!!src.freePosition}
+ for(const key of ['label','title','description','whatsapp','address','minimum'] as const){out[key]={...DEFAULT_HERO_CONTENT[key],...(src[key]||{})}}
+ return out as StoreHeroContentConfig
+}
+export function heroElementStyle(item:StoreHeroElementConfig):{left:string;top:string}{return{left:`${Math.max(0,Math.min(96,Number(item.x)||0))}%`,top:`${Math.max(0,Math.min(96,Number(item.y)||0))}%`}}
 
 export const FONT_OPTIONS=['Inter','Poppins','Montserrat','Manrope','DM Sans','Outfit','Nunito','Rubik','Sora','Oswald','Playfair Display','Merriweather','Roboto Condensed']
 export function getStoreTheme(id?:string){return STORE_THEMES.find(x=>x.id===id)||STORE_THEMES.find(x=>x.id==='minimal-shop')!}

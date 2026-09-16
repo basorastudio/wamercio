@@ -7,7 +7,7 @@ auth=(root/'apps/web/components/customer-access-modal.tsx').read_text()
 checks={
     'automatic customer phone resolution': 'autoResolvePhone' in auth and 'phoneAutoState' in auth,
     'phone stage has no continue submit': 'data-testid="customer-phone-auto-status"' in auth and '>Continuar</button>' not in auth,
-    'topbar storefront search': 'data-testid="storefront-top-search"' in store,
+    'topbar storefront search': 'storefront-top-search' in store and 'hidden md:block' in store,
     'contextual search result menu': 'data-testid="storefront-search-results"' in store and 'openSearchProduct' in store,
     'search does not filter catalog canvas': 'const products=useMemo(()=>data?.products?.filter((p:Product)=>(cat===' not in store,
     'header address removed': 'data-testid="storefront-header-subtitle"' in store and "s.address||'Catálogo en línea'" not in store,

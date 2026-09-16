@@ -17,7 +17,10 @@ need(Path('services/api/internal/httpapi/server.go'),'api.Get("/public/store", s
 need(Path('services/api/internal/httpapi/server.go'),'api.Post("/public/store/checkout", s.checkout)','host checkout route')
 forbid(Path('services/api/internal/httpapi/server.go'),'api.Get("/public/stores/{slug}"','legacy slug API route removed')
 if (root/'apps/web/app/store/[slug]/page.tsx').exists(): errors.append('legacy app/store/[slug]/page.tsx must be removed')
-need(Path('apps/web/app/page.tsx'),'headers','root host boundary')
+page=(root/'apps/web/app/page.tsx').read_text(errors='ignore') if (root/'apps/web/app/page.tsx').exists() else ''
+brand=(root/'apps/web/lib/server-store-brand.ts').read_text(errors='ignore') if (root/'apps/web/lib/server-store-brand.ts').exists() else ''
+if not (('headers' in page) or ('currentRequestHost' in page and "from 'next/headers'" in brand)):
+    errors.append('root host boundary: request host is not resolved by page or server-store-brand helper')
 need(Path('apps/web/app/manifest.webmanifest/route.ts'),'manifest','dynamic tenant manifest')
 need(Path('apps/web/components/storefront-mobile-nav.tsx'),'safe-area-inset-bottom','mobile storefront safe area')
 need(Path('infra/traefik/wamercio.yml'),'HostRegexp','wildcard tenant router')

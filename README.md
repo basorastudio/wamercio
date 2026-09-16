@@ -1,3 +1,11 @@
+# WAMERCIO 2.8.3
+
+La tienda pública es ahora completamente identificada por cada negocio: nombre, logo, colores, favicon, PWA y portada configurable. El propietario puede ocultar o reposicionar los elementos superpuestos a la portada desde **Configuración → Mi negocio** y en móvil la búsqueda se mantiene contraída hasta pulsar la lupa.
+
+Para despliegue y actualización consulta `DEPLOY_DOKPLOY.md`.
+
+---
+
 # WAMERCIO 2.8.2
 
 Hotfix de producción sobre 2.8.0: corrige la compilación Go/pgx de KDS y Fidelización y añade guardas de regresión para `RowsAffected()`.
