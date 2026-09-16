@@ -1,3 +1,15 @@
+# WAMERCIO 2.8.6
+
+## Creación automática de mesas
+
+Gestión de mesas mantiene el modo individual y añade **Creación automática** para generar lotes completos dentro de un área. El propietario define nombre base, sufijo numérico/alfabético/mixto, cantidad y capacidad; una vista previa muestra los primeros nombres antes de crear.
+
+La API usa `POST /tables/bulk` y realiza toda la operación en una sola transacción. Si uno de los nombres ya existe o una inserción falla, se revierte el lote completo. El máximo es de 500 mesas por operación. No se añaden migraciones ni variables de entorno.
+
+Para despliegue y actualización consulta `DEPLOY_DOKPLOY.md`.
+
+---
+
 # WAMERCIO 2.8.5
 
 ## Corrección de identidad global y relación comercial

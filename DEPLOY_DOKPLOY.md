@@ -1,3 +1,20 @@
+# Despliegue WAMERCIO 2.8.6 en Dokploy
+
+## Gestión de mesas · creación automática
+
+Esta versión sustituye 2.8.5 y no agrega migraciones ni variables de entorno.
+
+1. Reemplaza el código anterior por **WAMERCIO 2.8.6** conservando PostgreSQL, Redis, uploads y variables actuales. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.6.sh`.
+3. Sube el código al repositorio y confirma que el CI ejecute `npm run build`, `go test ./...`, `go build ./...` y validación de Compose.
+4. En Dokploy usa **Rebuild + Redeploy** para API y Web.
+5. En **Gestión de mesas**, crea/selecciona un área, cambia a **Creación automática**, prueba un lote pequeño y confirma que las mesas aparecen agrupadas en el área elegida.
+6. Prueba un nombre que ya exista: la API debe devolver el conflicto y no crear ninguna mesa del lote.
+
+No hay migración `000036`; la última migración continúa siendo `000035_global_identity_contact_semantics`.
+
+---
+
 # Despliegue WAMERCIO 2.8.5 en Dokploy
 
 ## Corrección 2.8.5 · Identidad global vs. cliente del negocio

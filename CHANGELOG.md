@@ -1,3 +1,17 @@
+# WAMERCIO 2.8.6 — Creación automática de mesas
+
+- Añade selector **Individual / Creación automática** en Gestión de mesas.
+- Permite definir el área, nombre base (por defecto `Mesa`), sufijo **Numérico**, **Alfabético** o **Mixto**, cantidad y capacidad.
+- Añade vista previa de nombres antes de crear el lote.
+- Añade `POST /tables/bulk` con creación transaccional y máximo de 500 mesas por operación.
+- Si un nombre ya existe, el lote completo se cancela y no quedan mesas creadas parcialmente.
+- El sufijo alfabético continúa después de Z (`AA`, `AB`, etc.); el mixto genera `A1`, `A2`, `A3`...
+- Sincroniza el área seleccionada entre creación individual y automática.
+- Añade pruebas de generación de nombres y `test_2_8_6_bulk_tables.py`.
+- No añade migraciones, dependencias ni variables de entorno.
+
+---
+
 # WAMERCIO 2.8.5 — Identidad global sin promoción comercial automática
 
 - Corrige la interpretación de 2.8.4: estar registrado globalmente en WAMERCIO **no convierte** a una persona en cliente de cada negocio al que escribe.

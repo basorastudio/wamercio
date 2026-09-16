@@ -171,6 +171,7 @@ func (s *Server) Router() http.Handler {
 			p.Delete("/table-areas/{id}", s.deleteStoreTableArea)
 			p.Get("/tables", s.listStoreTables)
 			p.Post("/tables", s.createStoreTable)
+			p.Post("/tables/bulk", s.createStoreTablesBulk)
 			p.Put("/tables/{id}", s.updateStoreTable)
 			p.Delete("/tables/{id}", s.deleteStoreTable)
 			p.Get("/reservations", s.listReservations)
