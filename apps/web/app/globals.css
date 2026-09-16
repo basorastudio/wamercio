@@ -94,3 +94,11 @@ button,a,input,select,textarea { touch-action:manipulation; }
   [data-sidebar-collapsed="false"] .pos-product-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   [data-sidebar-collapsed="true"] .pos-product-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
 }
+
+/* Customer location map: interactive marker anchored to stored coordinates. */
+.customer-map-div-icon { background:transparent !important; border:0 !important; }
+.customer-map-marker-shell { position:relative; width:56px; height:66px; display:flex; justify-content:center; align-items:flex-start; }
+.customer-map-marker-avatar { position:relative; z-index:2; display:grid; place-items:center; width:54px; height:54px; overflow:hidden; border:4px solid #fff; border-radius:9999px; background:#eefaf6; color:#2d8f70; font-size:18px; font-weight:800; object-fit:cover; box-shadow:0 8px 22px rgba(30,41,59,.28); }
+.customer-map-marker-tip { position:absolute; z-index:1; left:50%; bottom:5px; width:18px; height:18px; transform:translateX(-50%) rotate(45deg); border-right:4px solid #fff; border-bottom:4px solid #fff; border-radius:2px; background:#36b385; box-shadow:3px 3px 8px rgba(30,41,59,.16); }
+.leaflet-container { font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.leaflet-control-zoom a { color:#2e3154 !important; }

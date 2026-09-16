@@ -34,6 +34,6 @@ assert 'primary?.latitude' in detail and 'primary?.longitude' in detail, 'detail
 assert 'CustomerLocationMap' in detail, 'detail map component missing'
 assert "address={primary?.map_query||primary?.formatted_address||''}" in detail, 'detail map fallback removed unexpectedly'
 assert 'profilePictureUrl={profile.profile_picture_url}' in detail, 'WhatsApp avatar pin missing'
-assert 'profilePictureUrl' in location_map and 'pointer-events-none' in location_map, 'shared exact-location map missing synchronized avatar pin'
+assert 'profilePictureUrl' in location_map and ('L.marker' in location_map or 'marker(' in location_map), 'shared exact-location map missing coordinate-anchored avatar pin'
 
 print('PASS: WAMERCIO 2.8.9 customer address geolocation contract')

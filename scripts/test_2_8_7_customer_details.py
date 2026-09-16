@@ -9,7 +9,7 @@ assert 'Puntos' in customers and 'loyalty_points' in customers, 'commercial loya
 assert 'Ficha comercial consolidada automáticamente.' not in customers, 'legacy subtitle still present'
 assert "new URLSearchParams({store_id:store})" in customers and "params.set('conversation_id'" in customers and "window.location.href=`/conversations?" in customers, 'internal conversation navigation missing'
 assert 'Detalles del cliente' in customers, 'customer details button missing'
-assert 'CustomerLocationMap' in detail_view and 'maps.google.com' in location_map and 'profilePictureUrl' in location_map, 'global customer map/avatar pin missing'
+assert 'CustomerLocationMap' in detail_view and 'profilePictureUrl' in location_map and ('L.marker' in location_map or 'marker(' in location_map), 'global customer map/avatar pin missing'
 assert 'onClick={()=>openDetail' in global_page or 'onClick={() => openDetail' in global_page, 'row detail interaction missing'
 assert '/admin/global-customers/{id}' in server and 'adminGlobalCustomerDetail' in server, 'admin detail endpoint missing'
 assert 'points_balance' in server and 'loyalty_points' in server, 'loyalty points not exposed in customer detail'

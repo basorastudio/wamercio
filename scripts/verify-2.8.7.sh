@@ -18,7 +18,7 @@ grep -q 'Get("/admin/global-customers/{id}", s.adminGlobalCustomerDetail)' servi
 grep -q 'loyalty_points' services/api/internal/httpapi/server.go || fail 'customer loyalty points'
 grep -q 'Detalles del cliente' apps/web/app/customers/page.tsx || fail 'customer detail button'
 grep -q 'CustomerLocationMap' apps/web/components/customer-detail-view.tsx || fail 'Google Maps detail component'
-grep -q 'maps.google.com' apps/web/components/customer-location-map.tsx || fail 'Google Maps shared preview'
+grep -q 'profilePictureUrl' apps/web/components/customer-location-map.tsx || fail 'shared customer location map avatar' 
 grep -q 'conversation_id' apps/web/app/conversations/page.tsx || fail 'conversation deep link'
 
 echo 'PASS: WAMERCIO 2.8.7 customer detail experience verification'

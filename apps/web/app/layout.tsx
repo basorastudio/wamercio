@@ -1,5 +1,6 @@
 import './globals.css'
 import 'intl-tel-input/styles'
+import 'leaflet/dist/leaflet.css'
 import type {Metadata,Viewport} from 'next'
 import PWARegister from '@/components/pwa-register'
 import {currentRequestHost,currentTenantStore,isPlatformRequestHost} from '@/lib/server-store-brand'
