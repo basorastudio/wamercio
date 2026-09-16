@@ -3,9 +3,9 @@
 import {useEffect,useMemo,useState} from 'react'
 import CustomerShell from '@/components/customer-shell'
 import {api,dateTime,money} from '@/lib/api'
-import {CalendarClock,MapPin,Package,ReceiptText,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
+import {CalendarClock,Check,MapPin,Package,ReceiptText,Star,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
 
-const labels:any={pending:'Pendiente',confirmed:'Confirmado',processing:'Preparando',preparing:'Preparando',ready:'Listo',out_for_delivery:'En camino',delivered:'Entregado',completed:'Completado',canceled:'Cancelado',cancelled:'Cancelado'}
+const labels:any={pending:'Pendiente',confirmed:'Confirmado',processing:'Preparando',preparing:'Preparando',ready:'Listo',out_for_delivery:'En camino',delivered:'Entregado',picked_up:'Recogido',completed:'Completado',canceled:'Cancelado',cancelled:'Cancelado'}
 const paymentLabels:any={cash:'Efectivo',cash_on_delivery:'Tarjeta en terminal',bank_transfer:'Transferencia electrónica',pending_quote:'Pendiente de cotización'}
 const deliveryLabels:any={delivery:'Delivery',pickup:'Recoger',dine_in:'Mesa'}
 const flowLabel=(v?:string)=>v==='reservation'?'Reserva':v==='quote'?'Solicitud':'Pedido'
@@ -29,6 +29,11 @@ export default function CustomerOrdersPage(){
  const[detail,setDetail]=useState<any|null>(null)
  const[detailLoading,setDetailLoading]=useState(false)
  const[detailError,setDetailError]=useState('')
+ const[reviewTarget,setReviewTarget]=useState<any|null>(null)
+ const[reviewRating,setReviewRating]=useState(5)
+ const[reviewBody,setReviewBody]=useState('')
+ const[reviewBusy,setReviewBusy]=useState(false)
+ const[reviewMessage,setReviewMessage]=useState('')
 
  useEffect(()=>{api<any[]>('/customer/orders').then(setOrders).finally(()=>setLoading(false))},[])
  useEffect(()=>{
@@ -41,8 +46,8 @@ export default function CustomerOrdersPage(){
  },[detailId])
 
  const rows=useMemo(()=>filter==='all'?orders:orders.filter(o=>o.status===filter),[orders,filter])
- const completed=orders.filter(o=>['delivered','completed'].includes(o.status)).length
- const active=orders.filter(o=>!['delivered','completed','canceled','cancelled'].includes(o.status)).length
+ const completed=orders.filter(o=>['delivered','picked_up','completed'].includes(o.status)).length
+ const active=orders.filter(o=>!['delivered','picked_up','completed','canceled','cancelled'].includes(o.status)).length
  const canceled=orders.filter(o=>['canceled','cancelled'].includes(o.status)).length
 
  const openDetail=async(id:string)=>{
@@ -50,12 +55,21 @@ export default function CustomerOrdersPage(){
   setDetail(null)
   setDetailError('')
   setDetailLoading(true)
+  setReviewTarget(null);setReviewMessage('');setReviewBody('');setReviewRating(5)
   try{setDetail(await api<any>(`/customer/orders/${id}`))}
   catch(e:any){setDetailError(e?.message||'No se pudo cargar el detalle de la operación')}
   finally{setDetailLoading(false)}
  }
- const closeDetail=()=>{setDetailId(null);setDetail(null);setDetailError('')}
+ const closeDetail=()=>{setDetailId(null);setDetail(null);setDetailError('');setReviewTarget(null);setReviewMessage('')}
  const rowForDetail=orders.find(o=>o.id===detailId)
+ const canReview=detail&&['delivered','picked_up','completed'].includes(detail.status)
+ const submitReview=async()=>{
+  if(!detail?.id||!reviewTarget?.product_id)return
+  setReviewBusy(true);setReviewMessage('')
+  try{await api('/public/store/reviews',{method:'POST',body:JSON.stringify({order_id:detail.id,product_id:reviewTarget.product_id,rating:reviewRating,body:reviewBody})});setReviewMessage('Reseña enviada. El negocio la revisará antes de publicarla.');setReviewTarget(null);setReviewBody('');setReviewRating(5)}
+  catch(e:any){setReviewMessage(e?.message||'No se pudo enviar la reseña')}
+  finally{setReviewBusy(false)}
+ }
 
  return <CustomerShell active="orders">
   <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
@@ -91,7 +105,7 @@ export default function CustomerOrdersPage(){
      {detailLoading?<div className="grid min-h-56 place-items-center text-sm text-slate-400">Cargando detalle...</div>:detailError?<div className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">{detailError}</div>:detail&&<div className="space-y-4">
       <section className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4">
        <div className="mb-3 flex items-center gap-2"><Package className="h-4 w-4 text-emerald-600"/><h3 className="font-semibold">Productos</h3></div>
-       <div className="divide-y divide-slate-100">{(detail.items||[]).map((item:any,index:number)=>{const extras=extrasText(item.extras);return <div key={`${item.name}-${index}`} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><div className="font-medium">{item.name}</div>{item.variant_name&&<div className="mt-0.5 text-xs text-slate-500">{item.variant_name}</div>}{extras&&<div className="mt-0.5 text-xs text-slate-400">{extras}</div>}<div className="mt-1 text-xs text-slate-400">{item.quantity} × {money(item.unit_price)}</div></div><strong className="shrink-0 text-sm">{money(item.line_total)}</strong></div>})}</div>
+       <div className="divide-y divide-slate-100">{(detail.items||[]).map((item:any,index:number)=>{const extras=extrasText(item.extras);return <div key={`${item.name}-${index}`} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0"><div className="min-w-0 flex-1"><div className="font-medium">{item.name}</div>{item.variant_name&&<div className="mt-0.5 text-xs text-slate-500">{item.variant_name}</div>}{extras&&<div className="mt-0.5 text-xs text-slate-400">{extras}</div>}<div className="mt-1 text-xs text-slate-400">{item.quantity} × {money(item.unit_price)}</div>{canReview&&item.product_id&&<button type="button" onClick={()=>{setReviewTarget(item);setReviewMessage('')}} className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-700"><Star className="h-3 w-3"/>Reseñar</button>}</div><strong className="shrink-0 text-sm">{money(item.line_total)}</strong></div>})}</div>{reviewMessage&&<div className="mt-3 flex items-start gap-2 rounded-xl bg-emerald-50 p-3 text-xs font-semibold text-emerald-700"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0"/>{reviewMessage}</div>}{reviewTarget&&<div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50/50 p-4"><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-amber-700">Compra verificada</p><h4 className="mt-1 font-semibold">¿Qué te pareció {reviewTarget.name}?</h4></div><button type="button" onClick={()=>setReviewTarget(null)} className="grid h-8 w-8 place-items-center rounded-lg bg-white text-slate-500"><X className="h-3.5 w-3.5"/></button></div><div className="mt-3 flex gap-1">{[1,2,3,4,5].map(value=><button type="button" key={value} onClick={()=>setReviewRating(value)} aria-label={`${value} estrellas`}><Star className={`h-7 w-7 ${value<=reviewRating?'fill-amber-400 text-amber-400':'text-slate-250'}`}/></button>)}</div><textarea className="field mt-3 min-h-24" value={reviewBody} onChange={e=>setReviewBody(e.target.value)} placeholder="Cuéntanos tu experiencia (opcional)"/><button type="button" disabled={reviewBusy} onClick={()=>void submitReview()} className="btn-primary mt-3 disabled:opacity-50">{reviewBusy?'Enviando...':'Enviar reseña'}</button></div>}
       </section>
 
       <div className="grid gap-3 sm:grid-cols-2">

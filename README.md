@@ -1,8 +1,14 @@
-# WAMERCIO 2.6.0
+# WAMERCIO 2.8.0
 
 WAMERCIO es una plataforma dominicana de comercio conversacional, mobile-first, SPA + PWA y multi-tenant.
 
-## Comercio inteligente 2.6.0
+## Comercio inteligente 2.8.0
+
+### Novedades 2.8.0
+
+WAMERCIO 2.8.0 completa las fases de profundidad operativa y crecimiento sobre la base 2.6.0: modificadores reutilizables, combos, alérgenos, automatizaciones WhatsApp, analítica avanzada, galería/traducciones, reseñas verificadas, fidelización, estaciones KDS y diseñador QR general/por mesa.
+
+Las capacidades gastronómicas continúan condicionadas por el tipo de negocio; catálogo, pedidos, POS, WhatsApp, checkout y multi-tenant conservan compatibilidad con tiendas existentes. Las migraciones nuevas son `000032_phase2_operations` y `000033_phase3_growth_experience`.
 
 WAMERCIO amplía el núcleo comercial sin convertir la plataforma en un sistema exclusivo para restaurantes:
 

@@ -195,6 +195,9 @@ func (s *Server) createPromotion(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo guardar la promoción")
 		return
 	}
+	if in.StartsAt == nil || !in.StartsAt.After(time.Now()) {
+		go s.triggerAutomationEvent(context.Background(), in.StoreID, automationPromotionStarted, map[string]string{"entity_id": id, "promocion": in.Name})
+	}
 	jsonOut(w, 201, map[string]string{"id": id})
 }
 
@@ -345,9 +348,29 @@ func (s *Server) storeAnalytics(w http.ResponseWriter, r *http.Request) {
 	}
 	rangeName, days := analyticsRange(r.URL.Query().Get("range"))
 	since := time.Now().AddDate(0, 0, -(days - 1)).Truncate(24 * time.Hour)
+	previousSince := since.AddDate(0, 0, -days)
 	var orders, customers int
 	var revenue, average float64
-	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,coalesce(sum(total),0),coalesce(avg(total),0),count(DISTINCT coalesce(global_customer_id::text,nullif(customer_phone,'')))::int FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote'`, storeID, since).Scan(&orders, &revenue, &average, &customers)
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,coalesce(sum(total),0),coalesce(avg(total),0),count(DISTINCT coalesce(global_customer_id::text,nullif(regexp_replace(customer_phone,'[^0-9]','','g'),'')))::int FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote'`, storeID, since).Scan(&orders, &revenue, &average, &customers)
+
+	previousPeriod := map[string]any{"orders": 0, "revenue": 0.0, "average_ticket": 0.0, "customers": 0}
+	var previousOrders, previousCustomers int
+	var previousRevenue, previousAverage float64
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,coalesce(sum(total),0),coalesce(avg(total),0),count(DISTINCT coalesce(global_customer_id::text,nullif(regexp_replace(customer_phone,'[^0-9]','','g'),'')))::int FROM orders WHERE store_id=$1 AND created_at>=$2 AND created_at<$3 AND status<>'canceled' AND flow_type<>'quote'`, storeID, previousSince, since).Scan(&previousOrders, &previousRevenue, &previousAverage, &previousCustomers)
+	previousPeriod = map[string]any{"orders": previousOrders, "revenue": previousRevenue, "average_ticket": previousAverage, "customers": previousCustomers}
+
+	var repeatCustomers int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int FROM (SELECT coalesce(global_customer_id::text,nullif(regexp_replace(customer_phone,'[^0-9]','','g'),'')) identity FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote' GROUP BY 1 HAVING count(*)>1) q WHERE identity IS NOT NULL`, storeID, since).Scan(&repeatCustomers)
+	repeatCustomerRate := 0.0
+	if customers > 0 {
+		repeatCustomerRate = float64(repeatCustomers) * 100 / float64(customers)
+	}
+	var allOrders, canceledOrders int
+	_ = s.db.QueryRow(r.Context(), `SELECT count(*)::int,count(*) FILTER(WHERE status='canceled')::int FROM orders WHERE store_id=$1 AND created_at>=$2 AND flow_type<>'quote'`, storeID, since).Scan(&allOrders, &canceledOrders)
+	cancellationRate := 0.0
+	if allOrders > 0 {
+		cancellationRate = float64(canceledOrders) * 100 / float64(allOrders)
+	}
 
 	daily := []map[string]any{}
 	if rows, err := s.db.Query(r.Context(), `SELECT to_char(date_trunc('day',created_at),'YYYY-MM-DD'),count(*)::int,coalesce(sum(total),0) FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote' GROUP BY 1 ORDER BY 1`, storeID, since); err == nil {
@@ -385,6 +408,18 @@ func (s *Server) storeAnalytics(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	}
+	sourceBreakdown := []map[string]any{}
+	if rows, err := s.db.Query(r.Context(), `SELECT coalesce(nullif(source,''),'storefront'),count(*)::int,coalesce(sum(total),0) FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote' GROUP BY 1 ORDER BY 3 DESC`, storeID, since); err == nil {
+		for rows.Next() {
+			var name string
+			var count int
+			var total float64
+			if rows.Scan(&name, &count, &total) == nil {
+				sourceBreakdown = append(sourceBreakdown, map[string]any{"name": name, "orders": count, "revenue": total})
+			}
+		}
+		rows.Close()
+	}
 	topProducts := []map[string]any{}
 	if rows, err := s.db.Query(r.Context(), `SELECT oi.product_name,coalesce(sum(oi.quantity),0),coalesce(sum(oi.line_total),0) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.store_id=$1 AND o.created_at>=$2 AND o.status<>'canceled' AND o.flow_type<>'quote' GROUP BY oi.product_name ORDER BY 3 DESC LIMIT 10`, storeID, since); err == nil {
 		for rows.Next() {
@@ -397,21 +432,30 @@ func (s *Server) storeAnalytics(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	promotions := []map[string]any{}
+	promotionOrders := 0
 	if rows, err := s.db.Query(r.Context(), `SELECT promotion_name,count(*)::int,coalesce(sum(discount),0),coalesce(sum(total),0) FROM orders WHERE store_id=$1 AND created_at>=$2 AND status<>'canceled' AND flow_type<>'quote' AND promotion_id IS NOT NULL GROUP BY promotion_name ORDER BY 4 DESC`, storeID, since); err == nil {
 		for rows.Next() {
 			var name string
 			var count int
 			var discount, total float64
 			if rows.Scan(&name, &count, &discount, &total) == nil {
+				promotionOrders += count
 				promotions = append(promotions, map[string]any{"name": name, "orders": count, "discount": discount, "revenue": total})
 			}
 		}
 		rows.Close()
 	}
+	promotionRate := 0.0
+	if orders > 0 {
+		promotionRate = float64(promotionOrders) * 100 / float64(orders)
+	}
+	promotionConversion := map[string]any{"orders": promotionOrders, "rate": promotionRate, "total_orders": orders}
+
 	jsonOut(w, 200, map[string]any{
 		"range": rangeName, "from": since,
-		"metrics": map[string]any{"orders": orders, "revenue": revenue, "average_ticket": average, "customers": customers},
-		"daily":   daily, "fulfillment": fulfillment, "payments": payments, "top_products": topProducts, "promotions": promotions,
+		"metrics":         map[string]any{"orders": orders, "revenue": revenue, "average_ticket": average, "customers": customers, "repeat_customer_rate": repeatCustomerRate, "cancellation_rate": cancellationRate},
+		"previous_period": previousPeriod,
+		"daily":           daily, "fulfillment": fulfillment, "payments": payments, "source_breakdown": sourceBreakdown, "top_products": topProducts, "promotions": promotions, "promotion_conversion": promotionConversion,
 	})
 }
 
@@ -489,7 +533,8 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	var capacity int
-	if tx.QueryRow(r.Context(), `SELECT capacity FROM store_tables WHERE id=$1 AND store_id=$2 AND is_active=true FOR UPDATE`, in.TableID, in.StoreID).Scan(&capacity) != nil {
+	var tableName string
+	if tx.QueryRow(r.Context(), `SELECT capacity,name FROM store_tables WHERE id=$1 AND store_id=$2 AND is_active=true FOR UPDATE`, in.TableID, in.StoreID).Scan(&capacity, &tableName) != nil {
 		jsonErr(w, 400, "La mesa seleccionada no está disponible")
 		return
 	}
@@ -520,6 +565,13 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo confirmar la reservación")
 		return
 	}
+	guestName := strings.TrimSpace(in.GuestName)
+	if guestName == "" {
+		guestName = "Cliente"
+	}
+	go s.triggerAutomationEvent(context.Background(), in.StoreID, automationReservationCreated, map[string]string{
+		"entity_id": id, "telefono": guestPhone, "cliente": guestName, "mesa": tableName, "fecha": in.ReservedAt.In(time.FixedZone("AST", -4*60*60)).Format("02/01/2006 15:04"),
+	})
 	jsonOut(w, 201, map[string]string{"id": id})
 }
 
@@ -556,9 +608,25 @@ func (s *Server) kitchenDisplay(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT o.id::text,o.order_number,o.customer_name,o.customer_phone,o.status,o.delivery_type,coalesce(o.notes,''),o.created_at,o.total,coalesce(t.name,''),coalesce(a.name,'')
+	stationID := strings.TrimSpace(r.URL.Query().Get("station_id"))
+	if stationID != "" {
+		var exists bool
+		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM kds_stations WHERE id=$1 AND store_id=$2 AND is_active=true)`, stationID, storeID).Scan(&exists)
+		if !exists {
+			jsonErr(w, 404, "Estación no encontrada")
+			return
+		}
+	}
+	query := `SELECT o.id::text,o.order_number,o.customer_name,o.customer_phone,o.status,o.delivery_type,coalesce(o.notes,''),o.created_at,o.total,coalesce(t.name,''),coalesce(a.name,'')
 		FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id LEFT JOIN store_table_areas a ON a.id=t.area_id
-		WHERE o.store_id=$1 AND o.flow_type<>'quote' AND o.status IN ('pending','confirmed','processing','preparing','ready') ORDER BY o.created_at`, storeID)
+		WHERE o.store_id=$1 AND o.flow_type<>'quote' AND o.status IN ('pending','confirmed','processing','preparing','ready')`
+	args := []any{storeID}
+	if stationID != "" {
+		query += ` AND EXISTS(SELECT 1 FROM order_items oi JOIN products p ON p.id=oi.product_id WHERE oi.order_id=o.id AND (EXISTS(SELECT 1 FROM kds_station_categories ksc WHERE ksc.category_id=p.category_id AND ksc.station_id=$2) OR EXISTS(SELECT 1 FROM kds_station_products ksp WHERE ksp.product_id=p.id AND ksp.station_id=$2)))`
+		args = append(args, stationID)
+	}
+	query += ` ORDER BY o.created_at`
+	rows, err := s.db.Query(r.Context(), query, args...)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo cargar cocina")
 		return
@@ -574,20 +642,27 @@ func (s *Server) kitchenDisplay(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		items := []map[string]any{}
-		if itemRows, qerr := s.db.Query(r.Context(), `SELECT product_name,coalesce(variant_name,''),extras,quantity FROM order_items WHERE order_id=$1 ORDER BY id`, id); qerr == nil {
+		itemQuery := `SELECT oi.product_name,coalesce(oi.variant_name,''),oi.extras,oi.quantity,coalesce(oi.product_id::text,'') FROM order_items oi WHERE oi.order_id=$1`
+		itemArgs := []any{id}
+		if stationID != "" {
+			itemQuery += ` AND EXISTS(SELECT 1 FROM products p WHERE p.id=oi.product_id AND (EXISTS(SELECT 1 FROM kds_station_categories ksc WHERE ksc.category_id=p.category_id AND ksc.station_id=$2) OR EXISTS(SELECT 1 FROM kds_station_products ksp WHERE ksp.product_id=p.id AND ksp.station_id=$2)))`
+			itemArgs = append(itemArgs, stationID)
+		}
+		itemQuery += ` ORDER BY oi.id`
+		if itemRows, qerr := s.db.Query(r.Context(), itemQuery, itemArgs...); qerr == nil {
 			for itemRows.Next() {
-				var productName, variantName string
+				var productName, variantName, productID string
 				var extras []byte
 				var quantity float64
-				if itemRows.Scan(&productName, &variantName, &extras, &quantity) == nil {
+				if itemRows.Scan(&productName, &variantName, &extras, &quantity, &productID) == nil {
 					var decoded any
 					_ = json.Unmarshal(extras, &decoded)
-					items = append(items, map[string]any{"product_name": productName, "variant_name": variantName, "extras": decoded, "quantity": quantity})
+					items = append(items, map[string]any{"product_id": productID, "product_name": productName, "variant_name": variantName, "extras": decoded, "quantity": quantity})
 				}
 			}
 			itemRows.Close()
 		}
-		out = append(out, map[string]any{"id": id, "number": number, "customer_name": customerName, "customer_phone": customerPhone, "status": status, "delivery_type": deliveryType, "notes": notes, "created_at": createdAt, "total": total, "table_name": tableName, "area_name": areaName, "items": items})
+		out = append(out, map[string]any{"id": id, "number": number, "customer_name": customerName, "customer_phone": customerPhone, "status": status, "delivery_type": deliveryType, "notes": notes, "created_at": createdAt, "total": total, "table_name": tableName, "area_name": areaName, "station_id": stationID, "items": items})
 	}
 	jsonOut(w, 200, out)
 }

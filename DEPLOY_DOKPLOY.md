@@ -1,4 +1,23 @@
-# Despliegue WAMERCIO 2.6.0 en Dokploy
+# Despliegue WAMERCIO 2.8.0 en Dokploy
+
+## Actualización 2.8.0 · Operación avanzada y crecimiento
+
+1. Sustituye el código por **WAMERCIO 2.8.0** conservando las variables de entorno actuales.
+2. Despliega/reconstruye la **API primero** para que ejecute, en orden, `000032_phase2_operations` y `000033_phase3_growth_experience`. Ambas migraciones son aditivas y conservan productos, extras, imágenes, pedidos, reservas y QR existentes.
+3. Despliega la web después de la API. El Service Worker usa `wamercio-store-v2.8.0-*`, por lo que la PWA invalida el caché anterior.
+4. No se requieren variables de entorno obligatorias nuevas para Fase 2/3.
+
+Después del despliegue valida: **Atributos/Modificadores**, **Automatizaciones**, **Analítica**, **Reseñas**, **Fidelización**, estaciones de **KDS** y **Gestión de mesas → Diseñar QR**. En una mesa de prueba verifica tanto **Personalizar esta mesa** como **Usar diseño general**.
+
+Antes de publicar puedes ejecutar:
+
+```bash
+sh scripts/verify-2.8.0.sh
+```
+
+> Si tu entorno compila los servicios Go, utiliza la toolchain declarada por cada `go.mod`. El verificador estático no reduce ni modifica esas versiones.
+
+---
 
 ## Actualización 2.6.0 · Comercio inteligente
 

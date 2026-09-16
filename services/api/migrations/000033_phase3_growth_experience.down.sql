@@ -1,0 +1,12 @@
+DROP INDEX IF EXISTS uq_loyalty_order_earn;
+DROP TABLE IF EXISTS loyalty_ledger;
+DROP TABLE IF EXISTS loyalty_accounts;
+DROP TABLE IF EXISTS loyalty_programs;
+DROP TABLE IF EXISTS table_qr_styles;
+DROP TABLE IF EXISTS store_qr_styles;
+DROP TABLE IF EXISTS kds_station_products;
+DROP TABLE IF EXISTS kds_station_categories;
+DROP TABLE IF EXISTS kds_stations;
+DROP TABLE IF EXISTS product_reviews;
+DROP TABLE IF EXISTS product_translations;
+DROP TABLE IF EXISTS product_media;

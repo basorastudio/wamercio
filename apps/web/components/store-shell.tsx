@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
-  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed,BarChart3,TicketPercent,CalendarClock,ChefHat
+  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed,BarChart3,TicketPercent,CalendarClock,ChefHat,WandSparkles,TriangleAlert,Star,Gift
 } from 'lucide-react'
 
 const SIDEBAR_KEY='wamercio_sidebar_collapsed'
@@ -20,14 +20,18 @@ const commerce=[
   {href:'/orders',label:'Pedidos',icon:ShoppingBag},
   {href:'/conversations',label:'WhatsApp',icon:WhatsAppIcon},
   {href:'/customers',label:'Clientes',icon:UsersRound},
+  {href:'/reviews',label:'Reseñas',icon:Star},
+  {href:'/loyalty',label:'Fidelización',icon:Gift},
   {href:'/analytics',label:'Analítica',icon:BarChart3},
 ]
 const catalog=[
   {href:'/catalog/products',label:'Catálogo',icon:Boxes},
   {href:'/coupons',label:'Cupones',icon:TicketPercent},
   {href:'/promotions',label:'Promociones',icon:Tags},
+  {href:'/product-attributes',label:'Atributos',icon:TriangleAlert},
 ]
 const baseStoreTools=[
+  {href:'/automations',label:'Automatizaciones',icon:WandSparkles},
   {href:'/staff',label:'Usuarios',icon:UserCog},
   {href:'/delivery',label:'Entregas',icon:Truck},
   {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},

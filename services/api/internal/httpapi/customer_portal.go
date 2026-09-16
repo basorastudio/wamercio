@@ -275,15 +275,15 @@ func (s *Server) customerOrder(w http.ResponseWriter, r *http.Request) {
 	customFields := map[string]any{}
 	_ = json.Unmarshal(customFieldsRaw, &customFields)
 	items := []map[string]any{}
-	rows, _ := s.db.Query(r.Context(), `SELECT product_name,coalesce(variant_name,''),extras,unit_price,quantity,line_total FROM order_items WHERE order_id=$1 ORDER BY id`, id)
+	rows, _ := s.db.Query(r.Context(), `SELECT product_id::text,product_name,coalesce(variant_name,''),extras,unit_price,quantity,line_total FROM order_items WHERE order_id=$1 ORDER BY id`, id)
 	if rows != nil {
 		defer rows.Close()
 		for rows.Next() {
-			var name, variant string
+			var productID, name, variant string
 			var extras any
 			var unit, qty, line float64
-			if rows.Scan(&name, &variant, &extras, &unit, &qty, &line) == nil {
-				items = append(items, map[string]any{"name": name, "variant_name": variant, "extras": extras, "unit_price": unit, "quantity": qty, "line_total": line})
+			if rows.Scan(&productID, &name, &variant, &extras, &unit, &qty, &line) == nil {
+				items = append(items, map[string]any{"product_id": productID, "name": name, "variant_name": variant, "extras": extras, "unit_price": unit, "quantity": qty, "line_total": line})
 			}
 		}
 	}

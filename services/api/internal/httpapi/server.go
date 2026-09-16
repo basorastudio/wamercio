@@ -54,6 +54,7 @@ func New(cfg config.Config, db *pgxpool.Pool) *Server {
 	}
 	srv := &Server{cfg: cfg, db: db, cache: cache, http: &http.Client{Timeout: 12 * time.Second}}
 	go srv.outboxLoop()
+	go srv.automationLoop()
 	return srv
 }
 
@@ -99,6 +100,7 @@ func (s *Server) Router() http.Handler {
 		api.Get("/templates", s.listBusinessTemplates)
 		api.Get("/templates/{slug}", s.getBusinessTemplate)
 		api.Get("/public/store", s.publicStore)
+		api.Get("/public/store/reviews", s.listPublicReviews)
 		api.Post("/public/store/checkout", s.checkout)
 		api.Get("/public/orders/{token}", s.publicOrder)
 		api.Post("/public/orders/{token}/proof", s.publicOrderProof)
@@ -133,6 +135,18 @@ func (s *Server) Router() http.Handler {
 			p.Post("/products", s.createProduct)
 			p.Put("/products/{id}", s.updateProduct)
 			p.Delete("/products/{id}", s.deleteProduct)
+			p.Get("/products/{id}/composition", s.getProductComposition)
+			p.Put("/products/{id}/composition", s.updateProductComposition)
+			p.Get("/products/{id}/experience", s.getProductExperience)
+			p.Put("/products/{id}/experience", s.updateProductExperience)
+			p.Get("/modifier-groups", s.listModifierGroups)
+			p.Post("/modifier-groups", s.createModifierGroup)
+			p.Put("/modifier-groups/{id}", s.updateModifierGroup)
+			p.Delete("/modifier-groups/{id}", s.deleteModifierGroup)
+			p.Get("/allergens", s.listAllergens)
+			p.Post("/allergens", s.createAllergen)
+			p.Put("/allergens/{id}", s.updateAllergen)
+			p.Delete("/allergens/{id}", s.deleteAllergen)
 			p.Get("/coupons", s.listCoupons)
 			p.Post("/coupons", s.createCoupon)
 			p.Put("/coupons/{id}", s.updateCoupon)
@@ -141,6 +155,11 @@ func (s *Server) Router() http.Handler {
 			p.Post("/promotions", s.createPromotion)
 			p.Put("/promotions/{id}", s.updatePromotion)
 			p.Delete("/promotions/{id}", s.deletePromotion)
+			p.Get("/automations", s.listAutomationRules)
+			p.Post("/automations", s.createAutomationRule)
+			p.Put("/automations/{id}", s.updateAutomationRule)
+			p.Delete("/automations/{id}", s.deleteAutomationRule)
+			p.Get("/automations/runs", s.listAutomationRuns)
 			p.Get("/analytics", s.storeAnalytics)
 			p.Get("/shipping", s.listShipping)
 			p.Post("/shipping", s.createShipping)
@@ -158,6 +177,18 @@ func (s *Server) Router() http.Handler {
 			p.Post("/reservations", s.createReservation)
 			p.Patch("/reservations/{id}/status", s.updateReservationStatus)
 			p.Get("/kds", s.kitchenDisplay)
+			p.Get("/kds/stations", s.listKDSStations)
+			p.Post("/kds/stations", s.createKDSStation)
+			p.Put("/kds/stations/{id}", s.updateKDSStation)
+			p.Delete("/kds/stations/{id}", s.deleteKDSStation)
+			p.Get("/qr-style", s.getQRStyle)
+			p.Put("/qr-style", s.updateQRStyle)
+			p.Delete("/qr-style/table/{id}", s.deleteTableQRStyle)
+			p.Get("/reviews", s.listReviews)
+			p.Patch("/reviews/{id}", s.updateReviewStatus)
+			p.Get("/loyalty", s.getLoyaltyProgram)
+			p.Put("/loyalty", s.updateLoyaltyProgram)
+			p.Get("/loyalty/accounts", s.listLoyaltyAccounts)
 			p.Get("/quick-replies", s.listQuickReplies)
 			p.Post("/quick-replies", s.createQuickReply)
 			p.Put("/quick-replies/{id}", s.updateQuickReply)
@@ -221,6 +252,8 @@ func (s *Server) Router() http.Handler {
 			c.Delete("/customer/addresses/{id}", s.customerDeleteAddress)
 			c.Get("/customer/orders", s.customerOrders)
 			c.Get("/customer/orders/{id}", s.customerOrder)
+			c.Get("/customer/loyalty", s.customerLoyalty)
+			c.Post("/public/store/reviews", s.createPublicReview)
 			c.Post("/customer/sso/start", s.customerSSOStart)
 		})
 
@@ -1474,7 +1507,7 @@ func (s *Server) listProducts(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		p, e := scanProduct(rows)
 		if e == nil {
-			out = append(out, p)
+			out = append(out, s.enrichProductComposition(r.Context(), p))
 		}
 	}
 	jsonOut(w, 200, out)
@@ -2273,13 +2306,26 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback(r.Context())
 	if currentStatus != "canceled" && in.Status == "canceled" {
-		rows, _ := tx.Query(r.Context(), `SELECT product_id,quantity FROM order_items WHERE order_id=$1 AND product_id IS NOT NULL`, id)
+		rows, _ := tx.Query(r.Context(), `SELECT product_id,quantity,extras FROM order_items WHERE order_id=$1 AND product_id IS NOT NULL`, id)
 		if rows != nil {
 			for rows.Next() {
 				var pid string
 				var qty float64
-				_ = rows.Scan(&pid, &qty)
+				var extrasRaw []byte
+				_ = rows.Scan(&pid, &qty, &extrasRaw)
 				_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=coalesce(stock,0)+$1,updated_at=now() WHERE id=$2 AND track_stock=true`, qty, pid)
+				var extras []map[string]any
+				_ = json.Unmarshal(extrasRaw, &extras)
+				for _, extra := range extras {
+					if fmt.Sprint(extra["source"]) != "bundle" {
+						continue
+					}
+					componentID := strings.TrimSpace(fmt.Sprint(extra["product_id"]))
+					componentQty, _ := strconv.ParseFloat(fmt.Sprint(extra["quantity"]), 64)
+					if componentID != "" && componentQty > 0 {
+						_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=coalesce(stock,0)+$1,updated_at=now() WHERE id=$2 AND track_stock=true`, componentQty*qty, componentID)
+					}
+				}
 			}
 			rows.Close()
 		}
@@ -2327,6 +2373,23 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	go s.trySendWhatsApp(context.Background(), sid, phone, message)
+	automationEvent := ""
+	switch in.Status {
+	case "confirmed":
+		automationEvent = automationOrderConfirmed
+	case "ready":
+		automationEvent = automationOrderReady
+	case "delivered", "picked_up":
+		automationEvent = automationOrderCompleted
+	}
+	if automationEvent != "" {
+		data := map[string]string{"entity_id": id, "telefono": phone, "cliente": customerName, "negocio": storeName, "pedido": fmt.Sprint(num), "total": fmt.Sprintf("RD$ %.2f", total), "estado": spanishStatus(in.Status)}
+		go s.triggerAutomationEvent(context.Background(), sid, automationEvent, data)
+		if automationEvent == automationOrderCompleted {
+			go s.triggerAutomationEvent(context.Background(), sid, automationReviewRequest, data)
+			go s.awardOrderLoyalty(context.Background(), id)
+		}
+	}
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2895,7 +2958,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, 500, "No se pudo leer un producto del catálogo")
 			return
 		}
-		prods = append(prods, p)
+		prods = append(prods, s.enrichProductComposition(r.Context(), p))
 	}
 	zones := []map[string]any{}
 	zr, _ := s.db.Query(r.Context(), `SELECT id,name,charge,estimated_minutes FROM shipping_zones WHERE store_id=$1 AND is_active=true ORDER BY name`, sid)
@@ -2933,7 +2996,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 			"payment_methods_by_fulfillment": paymentMethodsByFulfillmentFromRaw(paymentRulesRaw, map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer}),
 			"bank_transfer":                  map[string]any{"bank_name": bankName, "account_name": accountName, "account_number": accountNumber, "account_type": accountType},
 		},
-		"categories": cats, "products": prods, "shipping_zones": zones, "tables": tables,
+		"categories": cats, "products": prods, "shipping_zones": zones, "tables": tables, "loyalty": s.publicLoyaltyProgram(r.Context(), sid),
 	})
 }
 
@@ -2976,10 +3039,11 @@ func (s *Server) publicOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 type checkoutItem struct {
-	ProductID   string           `json:"product_id"`
-	Quantity    float64          `json:"quantity"`
-	VariantName string           `json:"variant_name"`
-	Extras      []map[string]any `json:"extras"`
+	ProductID         string           `json:"product_id"`
+	Quantity          float64          `json:"quantity"`
+	VariantName       string           `json:"variant_name"`
+	Extras            []map[string]any `json:"extras"`
+	ModifierOptionIDs []string         `json:"modifier_option_ids"`
 }
 
 func normalizeCheckoutFieldKey(value string) string {
@@ -3343,6 +3407,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	type resolvedItem struct {
 		pid, name, variant string
 		extras             []map[string]any
+		bundle             []bundleResolvedComponent
 		unit, qty, line    float64
 		trackStock         bool
 	}
@@ -3400,7 +3465,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 				if allowed.Name == reqName {
 					found = true
 					unit += allowed.Price
-					normalizedExtras = append(normalizedExtras, map[string]any{"name": allowed.Name, "price": allowed.Price})
+					normalizedExtras = append(normalizedExtras, map[string]any{"source": "legacy_extra", "name": allowed.Name, "price": allowed.Price})
 					break
 				}
 			}
@@ -3409,9 +3474,22 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 				return
 			}
 		}
+		modifierExtras, modifierPrice, modifierErr := resolveModifierOptions(r.Context(), tx, storeID, item.ProductID, item.ModifierOptionIDs)
+		if modifierErr != nil {
+			jsonErr(w, 400, modifierErr.Error())
+			return
+		}
+		unit += modifierPrice
+		normalizedExtras = append(normalizedExtras, modifierExtras...)
+		bundle, bundleErr := resolveBundleComponents(r.Context(), tx, storeID, item.ProductID, item.Quantity)
+		if bundleErr != nil {
+			jsonErr(w, 400, bundleErr.Error())
+			return
+		}
+		normalizedExtras = append(normalizedExtras, bundleSnapshotExtras(bundle)...)
 		line := unit * item.Quantity
 		subtotal += line
-		resolvedItems = append(resolvedItems, resolvedItem{item.ProductID, name, variantName, normalizedExtras, unit, item.Quantity, line, trackStock})
+		resolvedItems = append(resolvedItems, resolvedItem{item.ProductID, name, variantName, normalizedExtras, bundle, unit, item.Quantity, line, trackStock})
 	}
 	if len(resolvedItems) == 0 {
 		jsonErr(w, 400, "El pedido no contiene productos válidos")
@@ -3449,6 +3527,11 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		}
 		if item.trackStock {
 			_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, item.qty, item.pid)
+		}
+		for _, component := range item.bundle {
+			if component.Track {
+				_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, component.Quantity*item.qty, component.ProductID)
+			}
 		}
 	}
 	if err = tx.Commit(r.Context()); err != nil {
@@ -3508,6 +3591,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		TableID        string         `json:"table_id"`
 		ReservationAt  string         `json:"reservation_at"`
 		PartySize      int            `json:"party_size"`
+		LoyaltyPoints  int            `json:"loyalty_points"`
 		Notes          string         `json:"notes"`
 		CustomFields   map[string]any `json:"custom_fields"`
 		Items          []checkoutItem `json:"items"`
@@ -3691,6 +3775,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	type resolved struct {
 		pid, categoryID, name, variant string
 		extras                         []map[string]any
+		bundle                         []bundleResolvedComponent
 		unit, qty, line                float64
 		trackStock                     bool
 	}
@@ -3748,7 +3833,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 				if allowed.Name == reqName {
 					found = true
 					unit += allowed.Price
-					normalizedExtras = append(normalizedExtras, map[string]any{"name": allowed.Name, "price": allowed.Price})
+					normalizedExtras = append(normalizedExtras, map[string]any{"source": "legacy_extra", "name": allowed.Name, "price": allowed.Price})
 					break
 				}
 			}
@@ -3757,9 +3842,22 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
+		modifierExtras, modifierPrice, modifierErr := resolveModifierOptions(r.Context(), tx, sid, it.ProductID, it.ModifierOptionIDs)
+		if modifierErr != nil {
+			jsonErr(w, 400, modifierErr.Error())
+			return
+		}
+		unit += modifierPrice
+		normalizedExtras = append(normalizedExtras, modifierExtras...)
+		bundle, bundleErr := resolveBundleComponents(r.Context(), tx, sid, it.ProductID, it.Quantity)
+		if bundleErr != nil {
+			jsonErr(w, 400, bundleErr.Error())
+			return
+		}
+		normalizedExtras = append(normalizedExtras, bundleSnapshotExtras(bundle)...)
 		line := unit * it.Quantity
 		subtotal += line
-		resolvedItems = append(resolvedItems, resolved{it.ProductID, categoryID, name, variantName, normalizedExtras, unit, it.Quantity, line, trackStock})
+		resolvedItems = append(resolvedItems, resolved{it.ProductID, categoryID, name, variantName, normalizedExtras, bundle, unit, it.Quantity, line, trackStock})
 	}
 	if len(resolvedItems) == 0 {
 		jsonErr(w, 400, "El pedido no contiene productos válidos")
@@ -3827,6 +3925,12 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	loyaltyRedemption, loyaltyErr := s.prepareLoyaltyRedemption(r.Context(), tx, sid, customerClaims.UserID, in.LoyaltyPoints, subtotal-discount+shipping)
+	if loyaltyErr != nil {
+		jsonErr(w, 400, loyaltyErr.Error())
+		return
+	}
+	discount += loyaltyRedemption.Discount
 	total := subtotal - discount + shipping
 	cashChangeRequested := false
 	var cashTendered any
@@ -3852,6 +3956,10 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo crear el pedido")
 		return
 	}
+	if err = applyLoyaltyRedemption(r.Context(), tx, loyaltyRedemption, orderID); err != nil {
+		jsonErr(w, 409, err.Error())
+		return
+	}
 	if in.DeliveryType == "dine_in" && reservationAt != nil {
 		if _, err = tx.Exec(r.Context(), `INSERT INTO table_reservations(store_id,table_id,global_customer_id,order_id,reserved_at,duration_minutes,party_size,status) VALUES($1,$2,$3,$4,$5,$6,$7,'reserved')`, sid, in.TableID, customerClaims.UserID, orderID, *reservationAt, reservationDuration, partySize); err != nil {
 			jsonErr(w, 409, "No se pudo reservar la mesa seleccionada")
@@ -3868,6 +3976,11 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		}
 		if it.trackStock {
 			_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, it.qty, it.pid)
+		}
+		for _, component := range it.bundle {
+			if component.Track {
+				_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, component.Quantity*it.qty, component.ProductID)
+			}
 		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {

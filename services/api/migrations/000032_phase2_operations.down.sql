@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS automation_runs;
+DROP TABLE IF EXISTS automation_rules;
+DROP TABLE IF EXISTS product_dietary_tags;
+DROP TABLE IF EXISTS product_allergens;
+DROP TABLE IF EXISTS allergens;
+DROP TABLE IF EXISTS bundle_components;
+DROP TABLE IF EXISTS product_modifier_groups;
+DROP TABLE IF EXISTS modifier_options;
+DROP TABLE IF EXISTS modifier_groups;

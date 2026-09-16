@@ -8,7 +8,15 @@ export type Store={
 }
 export type Category={id:string;name:string;slug:string;description:string;image_url:string;sort_order:number;is_active:boolean}
 export type PriceOption={name:string;price:number}
-export type Product={id:string;store_id:string;category_id:string;name:string;slug:string;sku:string;description:string;image_url:string;price:number;compare_price?:number|null;stock?:number|null;track_stock:boolean;variants:PriceOption[];extras:PriceOption[];attributes?:Record<string,any>;tag?:string;is_featured?:boolean;sort_order?:number;is_active:boolean;created_at:string}
+export type ModifierOption={id:string;name:string;price_delta:number;is_active:boolean;sort_order:number}
+export type ModifierGroup={id:string;name:string;description:string;min_select:number;max_select:number;is_required:boolean;is_active:boolean;sort_order:number;options:ModifierOption[]}
+export type Allergen={id:string;name:string;icon:string;is_active:boolean;sort_order:number}
+export type BundleComponent={product_id:string;name?:string;quantity:number;sort_order?:number}
+export type ProductMedia={id?:string;url:string;alt_text:string;sort_order:number}
+export type ProductTranslation={locale:string;name:string;description:string}
+export type Product={id:string;store_id:string;category_id:string;name:string;slug:string;sku:string;description:string;image_url:string;price:number;compare_price?:number|null;stock?:number|null;track_stock:boolean;variants:PriceOption[];extras:PriceOption[];attributes?:Record<string,any>;tag?:string;is_featured?:boolean;sort_order?:number;is_active:boolean;created_at:string;modifier_groups?:ModifierGroup[];modifier_group_ids?:string[];bundle_components?:BundleComponent[];allergens?:Allergen[];allergen_ids?:string[];dietary_tags?:string[];product_media?:ProductMedia[];product_translations?:ProductTranslation[];rating_average?:number;review_count?:number}
+export type AutomationRule={id:string;name:string;event:string;audience:'event_customer'|'all_customers';template_text:string;delay_minutes:number;is_active:boolean;created_at:string;updated_at?:string}
+export type AutomationRun={id:string;rule_name:string;event:string;entity_id:string;destination:string;rendered_text:string;status:'queued'|'sent'|'skipped'|'failed';error:string;scheduled_for:string;created_at:string}
 export type Coupon={id:string;code:string;discount_type:'flat'|'percentage';discount_value:number;min_order:number;starts_at?:string|null;ends_at?:string|null;usage_limit?:number|null;used_count:number;is_active:boolean;created_at?:string}
 
 export type Promotion={id:string;name:string;discount_type:'flat'|'percentage';discount_value:number;scope:'all'|'products'|'categories';min_order:number;starts_at?:string|null;ends_at?:string|null;usage_limit?:number|null;used_count:number;is_active:boolean;product_ids:string[];category_ids:string[];created_at:string}

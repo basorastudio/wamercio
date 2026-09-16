@@ -8,14 +8,16 @@ export type StorefrontCartLine={
   unit_price:number
   variant_name:string
   extras:Array<{name:string;price:number}>
+  modifier_option_ids?:string[]
+  modifiers?:Array<{id:string;name:string;price:number}>
   sale_mode?:'unit'|'weight'|'amount'
   unit_label?:string
   requested_amount?:number
   quantity_step?:number
 }
 
-export function cartKey(productID:string,variantName:string,extras:Array<{name:string;price?:number}>){
-  return [productID,variantName||'',...extras.map(x=>String(x.name||'').trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es'))].join('|')
+export function cartKey(productID:string,variantName:string,extras:Array<{name:string;price?:number}>,modifierOptionIDs:string[]=[]){
+  return [productID,variantName||'',...extras.map(x=>String(x.name||'').trim()).filter(Boolean).sort((a,b)=>a.localeCompare(b,'es')),...modifierOptionIDs.map(x=>`m:${x}`).sort()].join('|')
 }
 
 export function roundQuantity(value:number){return Math.round((Number(value)||0)*1000)/1000}

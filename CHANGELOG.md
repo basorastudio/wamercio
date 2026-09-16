@@ -1,3 +1,21 @@
+# WAMERCIO 2.8.0 — Operación avanzada, crecimiento y fidelización
+
+- Añade **modificadores reutilizables** con grupos, opciones, selección mínima/máxima y asignación a múltiples productos, preservando los extras históricos por producto.
+- Añade **combos/bundles estructurados** sobre productos existentes, con composición inmutable en el pedido y ajuste de inventario de componentes cuando corresponde.
+- Incorpora **alérgenos y atributos dietéticos** reutilizables para negocios con capacidad gastronómica.
+- Incorpora **Automatizaciones WhatsApp** para promociones, reservaciones, recordatorios, cambios de estado y postventa, reutilizando el outbox existente y registrando cada ejecución.
+- Amplía **Analítica** con clientes recurrentes, cancelaciones, origen de pedidos, conversión de promociones y comparación contra el período anterior.
+- Añade **galería de productos** y **traducciones opcionales**, manteniendo español, `image_url` y los campos actuales como fallback compatible.
+- Añade **reseñas verificadas** ligadas a pedidos completados, con moderación del comercio y exposición pública exclusiva de reseñas aprobadas.
+- Añade **Fidelización por puntos** con configuración por negocio, cuentas por cliente, libro mayor auditable, acreditación idempotente y canje transaccional en checkout.
+- Amplía el **KDS** con estaciones configurables y asignación por categorías o productos específicos sin duplicar pedidos.
+- Completa el **Diseñador QR** con estilo general del negocio y override opcional por mesa; colores, marco, texto y logo cambian sin alterar el destino `?table=<uuid>`.
+- Añade las migraciones reversibles `000032_phase2_operations` y `000033_phase3_growth_experience`.
+- Añade `verify-2.8.0.sh` para ejecutar contratos de Fase 1/2/3, regresiones históricas, TypeScript, JSON/YAML, migraciones, shell y formato Go.
+- No agrega variables de entorno obligatorias ni sustituye módulos existentes.
+
+---
+
 # WAMERCIO 2.6.0 — Promociones, Analítica, Reservaciones, QR por mesa y KDS
 
 - Los **cupones** permiten programar fecha/hora de inicio y fin desde la interfaz, conservando compatibilidad con cupones sin vencimiento.

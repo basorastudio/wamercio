@@ -3,10 +3,10 @@
 import {useEffect,useMemo,useState} from 'react'
 import Link from 'next/link'
 import {api,money} from '@/lib/api'
-import type {Product,PriceOption} from '@/lib/types'
+import type {Product,PriceOption,ModifierOption} from '@/lib/types'
 import CustomerAccessModal from '@/components/customer-access-modal'
 import {resolvedTheme,themeCSSVars,type StoreThemeConfig} from '@/lib/store-themes'
-import {Banknote,CalendarClock,Check,ChevronRight,Clock3,MapPin,MessageCircleMore,Minus,Plus,RefreshCw,Search,ShoppingBag,Store as StoreIcon,Truck,UserRound,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
+import {Banknote,CalendarClock,Check,ChevronLeft,ChevronRight,Clock3,Gift,Languages,MapPin,MessageCircleMore,Minus,Plus,RefreshCw,Search,ShoppingBag,Star,Store as StoreIcon,Truck,UserRound,UsersRound,UtensilsCrossed,WalletCards,X} from 'lucide-react'
 import StorefrontMobileNav from '@/components/storefront-mobile-nav'
 import {cartKey,formatCartQuantity,initialProductQuantity,mergeCartItem,normalizeStoredCart,productCartLines,quantityFromAmount,replaceCartItem,roundQuantity,weightedSaleConfig,type StorefrontCartLine} from '@/lib/storefront-cart'
 import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
@@ -44,10 +44,15 @@ export default function Storefront(){
   const[pick,setPick]=useState<Product|null>(null)
   const[variant,setVariant]=useState<PriceOption|null>(null)
   const[extras,setExtras]=useState<PriceOption[]>([])
+  const[modifierOptionIDs,setModifierOptionIDs]=useState<string[]>([])
   const[qty,setQty]=useState(1)
   const[purchaseMode,setPurchaseMode]=useState<'weight'|'amount'>('weight')
   const[amountValue,setAmountValue]=useState(0)
   const[editingKey,setEditingKey]=useState('')
+  const[productLocale,setProductLocale]=useState('es')
+  const[mediaIndex,setMediaIndex]=useState(0)
+  const[productReviews,setProductReviews]=useState<any[]>([])
+  const[loyalty,setLoyalty]=useState<any|null>(null)
   const[cartNotice,setCartNotice]=useState('')
   const[cart,setCart]=useState<CartItem[]>([])
   const[cartOpen,setCartOpen]=useState(false)
@@ -55,7 +60,7 @@ export default function Storefront(){
   const[done,setDone]=useState<any>(null)
   const[customer,setCustomer]=useState<any>(null)
   const[customerAuthOpen,setCustomerAuthOpen]=useState(false)
-  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',notes:'',needs_change:null as boolean|null,cash_tendered:0,table_id:'',reservation_at:reservationInputDefault(),party_size:2,custom_fields:{} as Record<string,string|number>})
+  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',notes:'',needs_change:null as boolean|null,cash_tendered:0,table_id:'',reservation_at:reservationInputDefault(),party_size:2,loyalty_points:0,custom_fields:{} as Record<string,string|number>})
   const[addressPickerOpen,setAddressPickerOpen]=useState(false)
   const[cashOtherOpen,setCashOtherOpen]=useState(false)
   const[perkIndex,setPerkIndex]=useState(0)
@@ -94,6 +99,15 @@ export default function Storefront(){
   const applyCustomer=(c:any)=>{setCustomer(c);const primary=Array.isArray(c?.addresses)?(c.addresses.find((a:any)=>a.is_primary)||c.addresses[0]):null;if(primary)setForm(v=>({...v,address_id:primary.id}))}
   const loadCustomer=()=>api<any>('/customer/me').then(applyCustomer).catch(()=>setCustomer(null))
   useEffect(()=>{void loadCustomer()},[])
+  useEffect(()=>{
+    const storeID=String(data?.store?.id||'')
+    if(!customer||!storeID||!data?.loyalty?.is_active){setLoyalty(null);setForm(v=>v.loyalty_points?{...v,loyalty_points:0}:v);return}
+    api<any>(`/customer/loyalty?store_id=${storeID}`).then(setLoyalty).catch(()=>setLoyalty(null))
+  },[customer?.id,data?.store?.id,data?.loyalty?.is_active])
+  useEffect(()=>{
+    if(!pick){setProductReviews([]);return}
+    api<any[]>(`/public/store/reviews?product_id=${encodeURIComponent(pick.id)}`).then(setProductReviews).catch(()=>setProductReviews([]))
+  },[pick?.id])
   useEffect(()=>{try{const v=localStorage.getItem(`wamercio-cart-${window.location.hostname}`);if(v)setCart(normalizeStoredCart(JSON.parse(v)))}catch{}},[])
   useEffect(()=>{if(typeof window!=='undefined')localStorage.setItem(`wamercio-cart-${window.location.hostname}`,JSON.stringify(cart))},[cart])
   useEffect(()=>{if(typeof window!=='undefined'&&window.location.hash==='#pedido')setCartOpen(true)},[])
@@ -102,12 +116,12 @@ export default function Storefront(){
     const store=data.store
     const caps=resolveBusinessCapabilities(store)
     const hasFulfillmentPerk=(caps.supportsDelivery&&store.delivery_enabled)||(caps.supportsPickup&&store.pickup_enabled)||(caps.supportsDineIn&&store.dine_in_enabled)
-    const count=2+(hasFulfillmentPerk?1:0)
+    const count=2+(hasFulfillmentPerk?1:0)+(data?.loyalty?.is_active?1:0)
     setPerkIndex(v=>Math.min(v,count-1))
     if(count<2)return
     const timer=window.setInterval(()=>setPerkIndex(v=>(v+1)%count),3200)
     return()=>window.clearInterval(timer)
-  },[data?.store])
+  },[data?.store,data?.loyalty?.is_active])
   useEffect(()=>{
     if(typeof document==='undefined')return
     if(!pick&&!done)return
@@ -123,11 +137,30 @@ export default function Storefront(){
     if(!needle||!data?.products)return [] as Product[]
     return (data.products as Product[]).filter(p=>(`${p.name} ${p.description||''} ${p.tag||''} ${categoryById.get(String(p.category_id))||''}`).toLowerCase().includes(needle)).sort((a,b)=>Number(!!b.is_featured)-Number(!!a.is_featured)).slice(0,8)
   },[data,search,categoryById])
+  const productMedia=useMemo(()=>{
+    if(!pick)return[] as {url:string;alt_text?:string}[]
+    const seen=new Set<string>(),out:{url:string;alt_text?:string}[]=[]
+    const add=(url?:string,alt_text?:string)=>{const clean=String(url||'').trim();if(clean&&!seen.has(clean)){seen.add(clean);out.push({url:clean,alt_text})}}
+    add(pick.image_url,pick.name)
+    ;(pick.product_media||[]).forEach(media=>add(media.url,media.alt_text))
+    return out
+  },[pick])
+  const productTranslation=useMemo(()=>pick?.product_translations?.find(item=>item.locale===productLocale)||null,[pick,productLocale])
+  const translatedProductName=productTranslation?.name||pick?.name||''
+  const translatedProductDescription=productTranslation?.description||pick?.description||''
   const itemCount=cart.reduce((a,x)=>a+((x.sale_mode==='weight'||x.sale_mode==='amount')?1:x.quantity),0)
   const subtotal=cart.reduce((a,x)=>a+x.unit_price*x.quantity,0)
   const zone=data?.shipping_zones?.find((z:any)=>z.id===form.shipping_zone_id)
   const shipping=form.delivery_type==='delivery'?Number(zone?.charge||0):0
-  const total=subtotal+shipping
+  const loyaltyProgram=data?.loyalty||null
+  const loyaltyBalance=Number(loyalty?.points_balance||0)
+  const loyaltyValue=Number(loyalty?.redemption_value||loyaltyProgram?.redemption_value||0)
+  const loyaltyMin=Number(loyalty?.min_redeem||loyaltyProgram?.min_redeem||0)
+  const loyaltyRequested=Math.max(0,Math.min(loyaltyBalance,Number(form.loyalty_points||0)))
+  const loyaltyDiscount=Math.min(subtotal+shipping,loyaltyRequested*loyaltyValue)
+  const loyaltyMaxByOrder=loyaltyValue>0?Math.floor((subtotal+shipping)/loyaltyValue):0
+  const loyaltyRedemptionValid=loyaltyRequested===0||(loyaltyRequested>=loyaltyMin&&loyaltyRequested<=loyaltyBalance&&loyaltyRequested<=loyaltyMaxByOrder)
+  const total=Math.max(0,subtotal+shipping-loyaltyDiscount)
   const needsCashChangeDecision=form.delivery_type==='delivery'&&form.payment_method==='cash'
   const cashTendered=Number(form.cash_tendered||0)
   const cashChangeValid=!needsCashChangeDecision||form.needs_change===false||(form.needs_change===true&&cashTendered>total)
@@ -141,9 +174,12 @@ export default function Storefront(){
     const current=line||(existing.length===1?existing[0]:undefined)
     const weighted=weightedSaleConfig(p)
     setPick(p)
+    setProductLocale('es')
+    setMediaIndex(0)
     setEditingKey(current?.key||'')
     setVariant(current?.variant_name?(p.variants||[]).find(v=>v.name===current.variant_name)||p.variants?.[0]||null:p.variants?.[0]||null)
     setExtras(current?.extras||[])
+    setModifierOptionIDs(current?.modifier_option_ids||[])
     setPurchaseMode(current?.sale_mode==='amount'?'amount':'weight')
     setQty(initialProductQuantity(p,current))
     setAmountValue(Number(current?.requested_amount||0))
@@ -160,8 +196,11 @@ export default function Storefront(){
     openProduct(p)
   }
   const toggleExtra=(x:PriceOption)=>setExtras(v=>v.some(y=>y.name===x.name)?v.filter(y=>y.name!==x.name):[...v,x])
+  const toggleModifier=(group:any,option:ModifierOption)=>setModifierOptionIDs(current=>{const optionIDs=new Set((group.options||[]).map((x:any)=>x.id));const groupSelected=current.filter(id=>optionIDs.has(id));if(current.includes(option.id))return current.filter(id=>id!==option.id);const max=Math.max(1,Number(group.max_select||1));if(groupSelected.length>=max){const remove=new Set(groupSelected.slice(0,groupSelected.length-max+1));return [...current.filter(id=>!remove.has(id)),option.id]}return [...current,option.id]})
+  const selectedModifiers=useMemo(()=>{if(!pick)return[] as {id:string;name:string;price:number}[];const selected=new Set(modifierOptionIDs);return (pick.modifier_groups||[]).flatMap(group=>(group.options||[]).filter(o=>selected.has(o.id)).map(o=>({id:o.id,name:`${group.name}: ${o.name}`,price:Number(o.price_delta||0)})))},[pick,modifierOptionIDs])
+  const modifierValid=useMemo(()=>!pick||(pick.modifier_groups||[]).every(group=>{const ids=new Set((group.options||[]).map(o=>o.id));const count=modifierOptionIDs.filter(id=>ids.has(id)).length;return count>=Number(group.min_select||0)&&count<=Number(group.max_select||1)}),[pick,modifierOptionIDs])
   const weighted=pick?weightedSaleConfig(pick):{enabled:false,unit:'lb',increment:0.25,minimum:0.25,allowAmount:true}
-  const unit=pick?(Number(variant?.price||0)>0?Number(variant?.price):pick.price)+extras.reduce((a,x)=>a+Number(x.price||0),0):0
+  const unit=pick?(Number(variant?.price||0)>0?Number(variant?.price):pick.price)+extras.reduce((a,x)=>a+Number(x.price||0),0)+selectedModifiers.reduce((a,x)=>a+Number(x.price||0),0):0
   const selectedQuantity=weighted.enabled&&purchaseMode==='amount'?quantityFromAmount(amountValue||unit,unit):roundQuantity(qty)
   const selectionTotal=weighted.enabled&&purchaseMode==='amount'?Number(amountValue||unit):unit*selectedQuantity
   const resetAsNewCombination=()=>{
@@ -170,14 +209,16 @@ export default function Storefront(){
     setEditingKey('')
     setVariant(pick.variants?.[0]||null)
     setExtras([])
+    setModifierOptionIDs([])
     setPurchaseMode('weight')
     setQty(cfg.enabled?cfg.minimum:1)
     setAmountValue(0)
   }
   const saveProductSelection=()=>{
     if(!pick||selectedQuantity<=0)return
-    const key=cartKey(pick.id,variant?.name||'',extras)
-    const next:CartItem={key,product_id:pick.id,name:pick.name,image_url:pick.image_url,quantity:selectedQuantity,base_price:pick.price,unit_price:unit,variant_name:variant?.name||'',extras,sale_mode:weighted.enabled?(purchaseMode==='amount'?'amount':'weight'):'unit',unit_label:weighted.enabled?weighted.unit:undefined,requested_amount:weighted.enabled&&purchaseMode==='amount'?Number(amountValue||selectionTotal):undefined,quantity_step:weighted.enabled?weighted.increment:1}
+    if(!modifierValid){setCartNotice('Completa las opciones obligatorias');window.setTimeout(()=>setCartNotice(''),1800);return}
+    const key=cartKey(pick.id,variant?.name||'',extras,modifierOptionIDs)
+    const next:CartItem={key,product_id:pick.id,name:pick.name,image_url:pick.image_url,quantity:selectedQuantity,base_price:pick.price,unit_price:unit,variant_name:variant?.name||'',extras,modifier_option_ids:modifierOptionIDs,modifiers:selectedModifiers,sale_mode:weighted.enabled?(purchaseMode==='amount'?'amount':'weight'):'unit',unit_label:weighted.enabled?weighted.unit:undefined,requested_amount:weighted.enabled&&purchaseMode==='amount'?Number(amountValue||selectionTotal):undefined,quantity_step:weighted.enabled?weighted.increment:1}
     setCart(v=>editingKey?replaceCartItem(v,editingKey,next):mergeCartItem(v,next))
     setCartNotice(editingKey?'Compra actualizada':'Agregado a tu compra')
     window.setTimeout(()=>setCartNotice(''),1800)
@@ -194,9 +235,9 @@ export default function Storefront(){
     if(missingField){setError(`Completa ${missingField.label} para continuar`);return}
     setSending(true);setError('')
     try{
-      const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',table_id:form.delivery_type==='dine_in'?form.table_id:'',reservation_at:form.delivery_type==='dine_in'&&form.reservation_at?new Date(form.reservation_at).toISOString():'',party_size:form.delivery_type==='dine_in'?form.party_size:0,needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras}))}
+      const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',table_id:form.delivery_type==='dine_in'?form.table_id:'',reservation_at:form.delivery_type==='dine_in'&&form.reservation_at?new Date(form.reservation_at).toISOString():'',party_size:form.delivery_type==='dine_in'?form.party_size:0,needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras,modifier_option_ids:x.modifier_option_ids||[]}))}
       const out=await api('/public/store/checkout',{method:'POST',body:JSON.stringify(payload)})
-      setDone(out);setCart([]);setCartOpen(false);setCashOtherOpen(false);setForm(v=>({...v,needs_change:null,cash_tendered:0,custom_fields:{},notes:''}))
+      setDone(out);setCart([]);setCartOpen(false);setCashOtherOpen(false);setForm(v=>({...v,needs_change:null,cash_tendered:0,loyalty_points:0,custom_fields:{},notes:''}));setLoyalty(v=>v?{...v,points_balance:Math.max(0,Number(v.points_balance||0)-loyaltyRequested)}:v)
     }catch(e:any){
       const message=e.message||'No pudimos confirmar el pedido'
       setError(message)
@@ -229,6 +270,7 @@ export default function Storefront(){
     canOrder?{title:'Recibiendo pedidos',detail:'Puedes ordenar ahora',icon:Check}:{title:'Solo catálogo',detail:'Pedidos no disponibles',icon:Clock3},
     capabilities.supportsDelivery&&s.delivery_enabled?{title:'Delivery',detail:'Entrega a domicilio',icon:Truck}:capabilities.supportsPickup&&s.pickup_enabled?{title:capabilities.pickupLabel,detail:capabilities.pickupDetail,icon:StoreIcon}:capabilities.supportsDineIn&&s.dine_in_enabled?{title:'Mesas',detail:'Reserva y come aquí',icon:UtensilsCrossed}:null,
     minimum>0?{title:`Mínimo ${money(minimum)}`,detail:'Para completar el pedido',icon:ShoppingBag}:{title:'Compra fácil',detail:'Agrega y confirma',icon:ShoppingBag},
+    data?.loyalty?.is_active?{title:'Puntos WAMERCIO',detail:customer&&loyalty?`${Number(loyalty.points_balance||0).toLocaleString('es-DO')} puntos disponibles`:'Acumula con tus compras',icon:Gift}:null,
   ].filter(Boolean) as {title:string;detail:string;icon:any}[]
 
   const searchBox=<div data-testid="storefront-top-search" className="relative col-span-3 row-start-2 min-w-0 md:col-span-1 md:row-start-auto md:w-full md:max-w-xl">
@@ -277,7 +319,7 @@ export default function Storefront(){
     </div>
     <div className="space-y-2.5 sm:space-y-3">{cart.map(x=><article data-testid="storefront-cart-item" key={x.key} className="grid grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-x-3 p-3 sm:flex sm:gap-3 sm:p-4" style={surfaceStyle(t)}>
       <button type="button" data-testid="edit-cart-item" onClick={()=>openCartItem(x)} className="h-16 w-16 shrink-0 overflow-hidden text-left sm:h-20 sm:w-20" style={{borderRadius:Math.max(8,t.shape.radius-8),background:t.colors.background}}>{x.image_url?<img src={x.image_url} alt="" className="h-full w-full object-cover"/>:<StoreIcon className="m-5 h-6 w-6 opacity-20 sm:m-6 sm:h-7 sm:w-7"/>}</button>
-      <div className="min-w-0 flex-1"><button type="button" onClick={()=>openCartItem(x)} className="block max-w-full text-left"><div className="truncate text-sm font-semibold sm:text-base">{x.name}</div>{x.variant_name&&<div className="mt-0.5 truncate text-[11px] sm:text-xs" style={{color:t.colors.muted}}>{x.variant_name}</div>}{x.extras.length>0&&<div className="mt-0.5 line-clamp-1 text-[10px] sm:line-clamp-2 sm:text-[11px]" style={{color:t.colors.muted}}>{x.extras.map(y=>y.name).join(', ')}</div>}</button><div className="mt-1.5 flex items-center gap-2 sm:mt-2 sm:gap-3"><span className="text-sm font-bold sm:text-base" style={{color:t.colors.primary}}>{money(x.unit_price*x.quantity)}</span><button type="button" onClick={()=>openCartItem(x)} className="text-[11px] font-semibold sm:text-xs" style={{color:t.colors.primary}}>Editar</button></div></div>
+      <div className="min-w-0 flex-1"><button type="button" onClick={()=>openCartItem(x)} className="block max-w-full text-left"><div className="truncate text-sm font-semibold sm:text-base">{x.name}</div>{x.variant_name&&<div className="mt-0.5 truncate text-[11px] sm:text-xs" style={{color:t.colors.muted}}>{x.variant_name}</div>}{(x.extras.length>0||(x.modifiers||[]).length>0)&&<div className="mt-0.5 line-clamp-1 text-[10px] sm:line-clamp-2 sm:text-[11px]" style={{color:t.colors.muted}}>{[...x.extras.map(y=>y.name),...(x.modifiers||[]).map(y=>y.name)].join(', ')}</div>}</button><div className="mt-1.5 flex items-center gap-2 sm:mt-2 sm:gap-3"><span className="text-sm font-bold sm:text-base" style={{color:t.colors.primary}}>{money(x.unit_price*x.quantity)}</span><button type="button" onClick={()=>openCartItem(x)} className="text-[11px] font-semibold sm:text-xs" style={{color:t.colors.primary}}>Editar</button></div></div>
       <div className="flex flex-col items-end gap-1.5 self-center sm:flex-row sm:items-center sm:gap-2">{x.sale_mode==='weight'||x.sale_mode==='amount'?<button type="button" onClick={()=>openCartItem(x)} className="px-2.5 py-1.5 text-[11px] font-bold sm:px-3 sm:py-2 sm:text-xs" style={{background:t.colors.background,color:t.colors.primary,border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}>{formatCartQuantity(x.quantity,x.unit_label)}</button>:<div className="flex h-9 items-center sm:h-10" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" aria-label="Restar cantidad" className="p-2 sm:p-2.5" onClick={()=>changeQty(x.key,-1)}><Minus className="h-3.5 w-3.5"/></button><span className="w-7 text-center text-xs font-bold sm:w-8 sm:text-sm">{formatCartQuantity(x.quantity)}</span><button type="button" aria-label="Sumar cantidad" className="p-2 sm:p-2.5" onClick={()=>changeQty(x.key,1)}><Plus className="h-3.5 w-3.5"/></button></div>}<button type="button" aria-label={`Eliminar ${x.name}`} onClick={()=>setCart(v=>v.filter(line=>line.key!==x.key))} className="grid h-8 w-8 place-items-center sm:h-10 sm:w-10" style={{background:'#fff1f2',color:'#e11d48',borderRadius:Math.max(6,t.shape.buttonRadius-4)}}><X className="h-3.5 w-3.5 sm:h-4 sm:w-4"/></button></div>
     </article>)}</div>
     {cartCustomFields}
@@ -316,10 +358,12 @@ export default function Storefront(){
       </section>
       </>:<section data-testid="storefront-cart-step-payment" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>2 · Cotización</div><div className="mt-1 text-sm font-semibold">El pago se coordina después</div><p className="mt-1 text-xs leading-5" style={{color:t.colors.muted}}>Envía tu solicitud con los detalles necesarios. El negocio confirmará disponibilidad, precio final y forma de pago por WhatsApp.</p></section>}
 
+      {customer&&loyaltyProgram?.is_active&&<section data-testid="storefront-loyalty" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{background:t.colors.background,color:t.colors.primary}}><Gift className="h-4 w-4"/></span><div className="min-w-0 flex-1"><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>Fidelización</div><div className="mt-1 text-sm font-semibold">Tienes {loyaltyBalance.toLocaleString('es-DO')} puntos</div><p className="mt-0.5 text-[11px] leading-4" style={{color:t.colors.muted}}>Cada punto vale {money(loyaltyValue)}. {loyaltyMin>0?`Canje mínimo: ${loyaltyMin.toLocaleString('es-DO')} puntos.`:''}</p></div></div>{loyaltyBalance>=loyaltyMin&&loyaltyValue>0?<div className="mt-3"><div className="flex items-center justify-between gap-3"><label className="label text-[11px]">Puntos a canjear</label><button type="button" onClick={()=>setForm({...form,loyalty_points:Math.min(loyaltyBalance,loyaltyMaxByOrder)})} className="text-[11px] font-bold" style={{color:t.colors.primary}}>Usar máximo</button></div><div className="flex items-center gap-2"><input aria-label="Puntos a canjear" className="field" type="number" min="0" max={Math.min(loyaltyBalance,loyaltyMaxByOrder)} step="1" value={form.loyalty_points||''} onChange={e=>setForm({...form,loyalty_points:Math.max(0,Math.floor(Number(e.target.value)||0))})} placeholder="0"/>{loyaltyRequested>0&&<button type="button" onClick={()=>setForm({...form,loyalty_points:0})} className="rounded-xl px-3 py-2 text-xs font-bold" style={{background:t.colors.background,color:t.colors.primary}}>Quitar</button>}</div>{loyaltyRequested>0&&<div className={`mt-2 rounded-xl px-3 py-2 text-xs font-semibold ${loyaltyRedemptionValid?'':'text-rose-700'}`} style={{background:loyaltyRedemptionValid?t.colors.background:'#fff1f2',color:loyaltyRedemptionValid?t.colors.primary:undefined}}>{loyaltyRedemptionValid?`Descuento por puntos: ${money(loyaltyDiscount)}`:`El canje debe ser de al menos ${loyaltyMin.toLocaleString('es-DO')} puntos y no superar el total.`}</div>}</div>:<p className="mt-3 rounded-xl p-3 text-xs" style={{background:t.colors.background,color:t.colors.muted}}>Sigue comprando para alcanzar el mínimo de canje.</p>}</section>}
+
       <section data-testid="storefront-cart-summary" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
-        <div className="rounded-2xl p-3.5 text-sm" style={{background:t.colors.background}}><div className="flex justify-between"><span style={{color:t.colors.muted}}>Subtotal</span><strong>{money(subtotal)}</strong></div>{form.delivery_type==='delivery'&&<div className="mt-2 flex justify-between"><span style={{color:t.colors.muted}}>Delivery</span><strong style={{color:t.colors.primary}}>{money(shipping)}</strong></div>}<div className="mt-3 flex justify-between pt-3 text-base" style={{borderTop:`1px solid ${t.colors.border}`}}><span>Total estimado</span><strong className="text-lg">{money(total)}</strong></div></div>
+        <div className="rounded-2xl p-3.5 text-sm" style={{background:t.colors.background}}><div className="flex justify-between"><span style={{color:t.colors.muted}}>Subtotal</span><strong>{money(subtotal)}</strong></div>{form.delivery_type==='delivery'&&<div className="mt-2 flex justify-between"><span style={{color:t.colors.muted}}>Delivery</span><strong style={{color:t.colors.primary}}>{money(shipping)}</strong></div>}{loyaltyDiscount>0&&<div className="mt-2 flex justify-between"><span style={{color:t.colors.muted}}>Puntos ({loyaltyRequested.toLocaleString('es-DO')})</span><strong className="text-emerald-600">- {money(loyaltyDiscount)}</strong></div>}<div className="mt-3 flex justify-between pt-3 text-base" style={{borderTop:`1px solid ${t.colors.border}`}}><span>Total estimado</span><strong className="text-lg">{money(total)}</strong></div></div>
         {minimumMissing>0&&<div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">Agrega {money(minimumMissing)} para alcanzar el pedido mínimo.</div>}
-        <button type="submit" disabled={sending||minimumMissing>0||!canOrder||!cashChangeValid} className="mt-3 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{sending?`Enviando ${capabilities.orderNoun}...`:needsCashChangeDecision&&!cashChangeValid?'Indica si necesitas cambio':canOrder?(capabilities.quotation?'Enviar solicitud':capabilities.appointments?'Confirmar reserva':'Confirmar pedido'):'No disponible'}</button>
+        <button type="submit" disabled={sending||minimumMissing>0||!canOrder||!cashChangeValid||!loyaltyRedemptionValid} className="mt-3 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{sending?`Enviando ${capabilities.orderNoun}...`:needsCashChangeDecision&&!cashChangeValid?'Indica si necesitas cambio':canOrder?(capabilities.quotation?'Enviar solicitud':capabilities.appointments?'Confirmar reserva':'Confirmar pedido'):'No disponible'}</button>
       </section>
     </form>
   </div>
@@ -376,6 +420,7 @@ export default function Storefront(){
             {category&&<div className="mb-1.5 truncate text-[9px] font-bold uppercase tracking-[.12em]" style={{color:t.colors.primary}}>{category}</div>}
             <h3 className={`${t.products.card==='editorial'||t.products.card==='luxury'?'text-base':'text-sm'} line-clamp-2 font-semibold leading-snug`} style={{fontFamily:t.products.card==='editorial'||t.products.card==='luxury'?'var(--store-heading-font)':'inherit'}}>{p.name}</h3>
             {p.description&&<p className={`mt-1.5 ${industrial?'line-clamp-3':'line-clamp-2'} text-xs leading-5`} style={{color:t.colors.muted}}>{p.description}</p>}
+            {Number(p.review_count||0)>0&&<div className="mt-2 flex items-center gap-1 text-[11px] font-semibold" style={{color:t.colors.muted}}><Star className="h-3 w-3 fill-amber-400 text-amber-400"/>{Number(p.rating_average||0).toFixed(1)} <span className="font-normal">({p.review_count})</span></div>}
             <div className="mt-auto grid grid-cols-[minmax(0,1fr)_2.25rem] items-end gap-2 pt-4"><div className="min-w-0 pr-1"><div className="text-[15px] font-bold leading-tight sm:text-base" style={{color:t.colors.primary}}>{p.variants?.length&&<span className="mb-0.5 block text-[9px] font-semibold uppercase tracking-wide sm:mb-0 sm:mr-1 sm:inline" style={{color:t.colors.muted}}>Desde</span>}<span className="whitespace-nowrap">{money(productStartingPrice(p))}</span>{weightedCfg.enabled&&<span className="ml-1 whitespace-nowrap text-[9px] font-semibold sm:text-[10px]" style={{color:t.colors.muted}}>/ {weightedCfg.unit}</span>}</div>{Number(p.compare_price||0)>productStartingPrice(p)&&<div className="text-[10px] line-through" style={{color:t.colors.muted}}>{money(Number(p.compare_price))}</div>}{cartQty>0&&<div data-testid="product-cart-summary" className="mt-1 truncate text-[10px] font-bold" style={{color:t.colors.primary}}>{weightedCfg.enabled?`${formatCartQuantity(cartQty,weightedCfg.unit)} en tu pedido`:`${formatCartQuantity(cartQty)} en tu pedido`}</div>}</div><span className="grid h-9 w-9 shrink-0 place-items-center self-end text-sm font-bold shadow-sm transition group-hover:scale-105" style={{...buttonStyle(t),borderRadius:Math.max(6,t.shape.buttonRadius-4)}}>{cartQty>0&&cartLines.length===1?<Check className="h-4 w-4"/>:<Plus className="h-4 w-4"/>}</span></div>
           </div>
         </button>
@@ -389,21 +434,30 @@ export default function Storefront(){
       <div data-testid="storefront-product-modal" className="relative max-h-[92vh] w-full overflow-hidden sm:max-w-4xl" style={{background:t.colors.surface,color:t.colors.text,borderRadius:0}}>
         <button onClick={closeProduct} className="absolute right-4 top-4 z-20 grid h-9 w-9 place-items-center bg-white/90 shadow"><X className="h-4 w-4"/></button>
         <div className="scroll-clean max-h-[92vh] overflow-y-auto sm:grid sm:max-h-[84vh] sm:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] sm:overflow-hidden">
-          <div data-testid="storefront-product-media" className="relative min-h-0 overflow-hidden" style={{background:t.colors.background}}>
-            {pick.image_url?<img src={pick.image_url} alt={pick.name} className={`w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'} sm:h-full sm:aspect-auto`}/>:<div className="grid aspect-[4/3] w-full place-items-center sm:h-full sm:aspect-auto"><StoreIcon className="h-12 w-12 opacity-20"/></div>}
+          <div data-testid="storefront-product-media" className="relative min-h-0 overflow-hidden sm:flex sm:h-full sm:flex-col" style={{background:t.colors.background}}>
+            <div className="relative min-h-0 flex-1">{productMedia.length>0?<img src={productMedia[Math.min(mediaIndex,productMedia.length-1)]?.url} alt={productMedia[Math.min(mediaIndex,productMedia.length-1)]?.alt_text||translatedProductName} className={`h-full w-full object-cover ${ratioClass[t.products.imageRatio]||'aspect-[4/3]'} sm:aspect-auto`}/>:<div className="grid aspect-[4/3] h-full w-full place-items-center sm:aspect-auto"><StoreIcon className="h-12 w-12 opacity-20"/></div>}{productMedia.length>1&&<><button type="button" aria-label="Imagen anterior" onClick={()=>setMediaIndex(index=>(index-1+productMedia.length)%productMedia.length)} className="absolute left-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow"><ChevronLeft className="h-4 w-4"/></button><button type="button" aria-label="Imagen siguiente" onClick={()=>setMediaIndex(index=>(index+1)%productMedia.length)} className="absolute right-3 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-full bg-white/90 shadow"><ChevronRight className="h-4 w-4"/></button></>}</div>
+            {productMedia.length>1&&<div className="scroll-clean flex shrink-0 gap-2 overflow-x-auto p-3" style={{borderTop:`1px solid ${t.colors.border}`}}>{productMedia.map((media,index)=><button type="button" key={`${media.url}-${index}`} onClick={()=>setMediaIndex(index)} className="h-14 w-14 shrink-0 overflow-hidden rounded-xl" style={{border:`2px solid ${index===mediaIndex?t.colors.primary:t.colors.border}`}}><img src={media.url} alt={media.alt_text||''} className="h-full w-full object-cover"/></button>)}</div>}
           </div>
           <div data-testid="storefront-product-details" className="p-5 sm:min-h-0 sm:overflow-y-auto sm:p-6">
-          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><h3 className="text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>{pick.name}</h3><p className="mt-2 text-sm leading-6" style={{color:t.colors.muted}}>{pick.description}</p></div>{editingKey&&<span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase" style={{background:t.colors.background,color:t.colors.primary}}>En tu pedido</span>}</div>
+          <div className="flex items-start gap-3"><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-2xl font-semibold" style={{fontFamily:'var(--store-heading-font)'}}>{translatedProductName}</h3>{(pick.product_translations||[]).length>0&&<label className="ml-auto inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{background:t.colors.background,color:t.colors.primary}}><Languages className="h-3.5 w-3.5"/><select aria-label="Idioma del producto" value={productLocale} onChange={e=>setProductLocale(e.target.value)} className="bg-transparent outline-none"><option value="es">ES</option>{(pick.product_translations||[]).map(item=><option key={item.locale} value={item.locale}>{item.locale.toUpperCase()}</option>)}</select></label>}</div><p className="mt-2 text-sm leading-6" style={{color:t.colors.muted}}>{translatedProductDescription}</p>{Number(pick.review_count||0)>0&&<div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold" style={{color:t.colors.muted}}><Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400"/><span>{Number(pick.rating_average||0).toFixed(1)}</span><span>· {pick.review_count} reseña(s)</span></div>}</div>{editingKey&&<span className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase" style={{background:t.colors.background,color:t.colors.primary}}>En tu pedido</span>}</div>
           <div className="mt-3 flex items-end justify-between gap-3"><div className="text-xl font-bold" style={{color:t.colors.primary}}>{money(unit||pick.price)}{weighted.enabled&&<span className="ml-1 text-xs font-semibold" style={{color:t.colors.muted}}>/ {weighted.unit}</span>}</div>{editingKey&&((capabilities.supportsVariants&&pick.variants?.length>0)||(capabilities.supportsExtras&&pick.extras?.length>0))&&<button type="button" onClick={resetAsNewCombination} className="text-xs font-semibold" style={{color:t.colors.primary}}>Agregar otra combinación</button>}</div>
 
           {capabilities.supportsVariants&&pick.variants?.length>0&&<div className="mt-5"><p className="font-bold">Opciones</p><div data-testid="storefront-variant-grid" className="mt-2 grid grid-cols-2 gap-2">{pick.variants.map(v=>{const on=variant?.name===v.name;return <button key={v.name} type="button" onClick={()=>setVariant(v)} className="relative min-h-[76px] p-3 text-left transition" style={{...surfaceStyle(t),boxShadow:'none',borderColor:on?t.colors.primary:t.colors.border,background:on?t.colors.background:t.colors.surface}}><span className="block pr-7 text-sm font-semibold leading-5">{v.name}</span><strong className="mt-2 block text-sm" style={{color:on?t.colors.primary:t.colors.text}}>{money(v.price||pick.price)}</strong>{on&&<span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full" style={{background:t.colors.primary,color:t.colors.buttonText}}><Check className="h-3 w-3"/></span>}</button>})}</div></div>}
 
           {capabilities.supportsExtras&&pick.extras?.length>0&&<div className="mt-5"><p className="font-bold">Adicionales</p><div data-testid="storefront-extra-grid" className="mt-2 grid grid-cols-2 gap-2">{pick.extras.map(x=>{const on=extras.some(e=>e.name===x.name);return <button key={x.name} type="button" onClick={()=>toggleExtra(x)} className="relative min-h-[76px] p-3 text-left transition" style={{...surfaceStyle(t),boxShadow:'none',borderColor:on?t.colors.primary:t.colors.border,background:on?t.colors.background:t.colors.surface}}><span className="block pr-7 text-sm font-semibold leading-5">{x.name}</span><strong className="mt-2 block text-sm" style={{color:on?t.colors.primary:t.colors.text}}>+ {money(x.price)}</strong>{on&&<span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full" style={{background:t.colors.primary,color:t.colors.buttonText}}><Check className="h-3 w-3"/></span>}</button>})}</div></div>}
 
+          {(pick.modifier_groups||[]).map(group=><div className="mt-5" key={group.id}><div className="flex items-center justify-between gap-3"><p className="font-bold">{group.name}</p><span className="text-[11px] font-semibold" style={{color:t.colors.muted}}>{group.min_select>0?`Elige ${group.min_select}${group.max_select!==group.min_select?`–${group.max_select}`:''}`:`Hasta ${group.max_select}`}</span></div>{group.description&&<p className="mt-1 text-xs" style={{color:t.colors.muted}}>{group.description}</p>}<div className="mt-2 grid grid-cols-2 gap-2">{(group.options||[]).map(option=>{const on=modifierOptionIDs.includes(option.id);return <button key={option.id} type="button" onClick={()=>toggleModifier(group,option)} className="relative min-h-[72px] p-3 text-left transition" style={{...surfaceStyle(t),boxShadow:'none',borderColor:on?t.colors.primary:t.colors.border,background:on?t.colors.background:t.colors.surface}}><span className="block pr-7 text-sm font-semibold leading-5">{option.name}</span><strong className="mt-2 block text-sm" style={{color:on?t.colors.primary:t.colors.text}}>{Number(option.price_delta)>0?`+ ${money(option.price_delta)}`:'Incluido'}</strong>{on&&<span className="absolute right-2.5 top-2.5 grid h-5 w-5 place-items-center rounded-full" style={{background:t.colors.primary,color:t.colors.buttonText}}><Check className="h-3 w-3"/></span>}</button>})}</div>{!modifierValid&&group.min_select>0&&modifierOptionIDs.filter(id=>(group.options||[]).some(o=>o.id===id)).length<group.min_select&&<p className="mt-2 text-xs font-semibold text-rose-600">Debes completar esta opción para continuar.</p>}</div>)}
+
+          {(pick.bundle_components||[]).length>0&&<div className="mt-5 rounded-2xl p-4" style={{background:t.colors.background,border:`1px solid ${t.colors.border}`}}><p className="text-sm font-bold">Este combo incluye</p><div className="mt-2 space-y-1.5">{(pick.bundle_components||[]).map(component=><div key={component.product_id} className="flex items-center justify-between gap-3 text-sm"><span>{component.name||'Producto incluido'}</span><span className="font-semibold" style={{color:t.colors.primary}}>× {Number(component.quantity).toLocaleString('es-DO')}</span></div>)}</div></div>}
+
+          {((pick.allergens||[]).length>0||(pick.dietary_tags||[]).length>0)&&<div className="mt-5"><p className="text-sm font-bold">Información del producto</p><div className="mt-2 flex flex-wrap gap-2">{(pick.allergens||[]).map(a=><span key={a.id} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{background:'#fff7ed',color:'#9a3412'}}>{a.icon&&<span className="mr-1">{a.icon}</span>}{a.name}</span>)}{(pick.dietary_tags||[]).map(tag=><span key={tag} className="rounded-full px-3 py-1.5 text-xs font-semibold" style={{background:t.colors.background,color:t.colors.primary}}>{{vegetarian:'Vegetariano',vegan:'Vegano',spicy:'Picante',gluten_free:'Sin gluten'}[tag as 'vegetarian'|'vegan'|'spicy'|'gluten_free']||tag}</span>)}</div></div>}
+
+          {(Number(pick.review_count||0)>0||productReviews.length>0)&&<div className="mt-5 rounded-2xl p-4" style={{background:t.colors.background,border:`1px solid ${t.colors.border}`}}><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-bold">Reseñas</p><p className="mt-0.5 text-xs" style={{color:t.colors.muted}}>Opiniones de compras verificadas y aprobadas por el negocio.</p></div>{Number(pick.review_count||0)>0&&<div className="flex items-center gap-1 text-sm font-bold"><Star className="h-4 w-4 fill-amber-400 text-amber-400"/>{Number(pick.rating_average||0).toFixed(1)}</div>}</div>{productReviews.length>0&&<div className="mt-3 space-y-2">{productReviews.slice(0,3).map(review=><div key={review.id} className="rounded-xl p-3 text-xs" style={{background:t.colors.surface,border:`1px solid ${t.colors.border}`}}><div className="flex items-center justify-between gap-2"><strong>{review.customer_name||'Cliente'}</strong><span className="inline-flex items-center gap-1 font-bold text-amber-600"><Star className="h-3 w-3 fill-amber-400 text-amber-400"/>{review.rating}</span></div>{review.body&&<p className="mt-1.5 leading-5" style={{color:t.colors.muted}}>{review.body}</p>}{review.verified_purchase&&<span className="mt-1.5 inline-flex items-center gap-1 font-semibold" style={{color:t.colors.primary}}><Check className="h-3 w-3"/>Compra verificada</span>}</div>)}</div>}</div>}
+
           {weighted.enabled?<><div className="mt-5 space-y-3">
             {weighted.allowAmount&&<div className="grid grid-cols-2 gap-1 rounded-2xl p-1" style={{background:t.colors.background,border:`1px solid ${t.colors.border}`}}><button type="button" onClick={()=>setPurchaseMode('weight')} className="rounded-xl px-3 py-2.5 text-sm font-bold" style={{background:purchaseMode==='weight'?t.colors.surface:'transparent',color:purchaseMode==='weight'?t.colors.primary:t.colors.muted}}>Libra</button><button type="button" onClick={()=>{setPurchaseMode('amount');if(!amountValue)setAmountValue(Math.max(1,Math.round(unit)))}} className="rounded-xl px-3 py-2.5 text-sm font-bold" style={{background:purchaseMode==='amount'?t.colors.surface:'transparent',color:purchaseMode==='amount'?t.colors.primary:t.colors.muted}}>Monto</button></div>}
             <div className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}><div className="flex items-center justify-between gap-3"><div><p className="font-bold">Introduce la cantidad</p><p className="mt-1 text-xs" style={{color:t.colors.muted}}>{purchaseMode==='amount'?`WAMERCIO calcula el peso aproximado según ${money(unit)} / ${weighted.unit}.`:`Compra desde ${formatCartQuantity(weighted.minimum,weighted.unit)}.`}</p></div>{purchaseMode==='amount'?<div className="flex h-11 min-w-36 items-center gap-2 rounded-xl px-3" style={{border:`1px solid ${t.colors.border}`}}><span className="text-sm font-bold" style={{color:t.colors.primary}}>RD$</span><input aria-label="Monto que quieres comprar" inputMode="numeric" type="number" min="1" step="1" value={amountValue||''} onChange={e=>setAmountValue(Math.max(0,Number(e.target.value)))} className="w-24 bg-transparent text-center font-bold outline-none"/></div>:<div className="flex h-11 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" onClick={()=>setQty(roundQuantity(Math.max(weighted.minimum,qty-weighted.increment)))} className="p-3"><Minus className="h-4 w-4"/></button><input aria-label="Cantidad de libras" inputMode="decimal" type="number" min={weighted.minimum} step={weighted.increment} value={qty} onChange={e=>setQty(roundQuantity(Math.max(weighted.minimum,Number(e.target.value)||weighted.minimum)))} className="w-16 bg-transparent text-center font-bold outline-none"/><span className="pr-2 text-xs font-bold" style={{color:t.colors.primary}}>{weighted.unit}</span><button type="button" onClick={()=>setQty(roundQuantity(qty+weighted.increment))} className="p-3"><Plus className="h-4 w-4"/></button></div>}</div><div className="mt-3 flex items-center justify-between rounded-xl px-3 py-2" style={{background:t.colors.background}}><span className="text-[10px] font-bold uppercase tracking-wide" style={{color:t.colors.muted}}>{purchaseMode==='amount'?'Peso aproximado':'Total'}</span><strong style={{color:t.colors.primary}}>{purchaseMode==='amount'?formatCartQuantity(selectedQuantity,weighted.unit):money(selectionTotal)}</strong></div></div>
-          </div><button disabled={!canOrder||selectedQuantity<=0} onClick={saveProductSelection} className="mt-5 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi compra':capabilities.primaryAction} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button></>:<div data-testid="storefront-product-actions" className="mt-5 flex items-center gap-3"><div className="flex shrink-0 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" onClick={()=>setQty(Math.max(1,qty-1))} className="p-3"><Minus className="h-4 w-4"/></button><span className="w-10 text-center font-bold">{formatCartQuantity(qty)}</span><button type="button" onClick={()=>setQty(qty+1)} className="p-3"><Plus className="h-4 w-4"/></button></div><button disabled={!canOrder||selectedQuantity<=0} onClick={saveProductSelection} className="min-w-0 flex-1 px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi compra':capabilities.primaryAction} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button></div>}
+          </div><button disabled={!canOrder||selectedQuantity<=0||!modifierValid} onClick={saveProductSelection} className="mt-5 w-full px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi compra':capabilities.primaryAction} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button></>:<div data-testid="storefront-product-actions" className="mt-5 flex items-center gap-3"><div className="flex shrink-0 items-center" style={{border:`1px solid ${t.colors.border}`,borderRadius:t.shape.buttonRadius}}><button type="button" onClick={()=>setQty(Math.max(1,qty-1))} className="p-3"><Minus className="h-4 w-4"/></button><span className="w-10 text-center font-bold">{formatCartQuantity(qty)}</span><button type="button" onClick={()=>setQty(qty+1)} className="p-3"><Plus className="h-4 w-4"/></button></div><button disabled={!canOrder||selectedQuantity<=0||!modifierValid} onClick={saveProductSelection} className="min-w-0 flex-1 px-4 py-3 font-semibold disabled:opacity-50" style={buttonStyle(t)}>{canOrder?`${editingKey?'Actualizar mi compra':capabilities.primaryAction} · ${money(selectionTotal)}`:'Pedidos no disponibles'}</button></div>}
           </div>
         </div>
       </div>
