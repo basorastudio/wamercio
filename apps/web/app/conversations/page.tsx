@@ -66,6 +66,7 @@ export default function Conversations(){
   const[orderMessage,setOrderMessage]=useState('')
   const[orderForm,setOrderForm]=useState({delivery_type:'delivery',shipping_zone_id:'',payment_method:'cash',delivery_address:'',notes:'',custom_fields:{} as Record<string,string|number>})
   const bottom=useRef<HTMLDivElement>(null)
+  const deepLink=useRef<{conversationID:string;phone:string}|null>(null)
   const capabilities=useMemo(()=>resolveBusinessCapabilities(storeConfig),[storeConfig])
   const deliveryAvailable=!!storeConfig?.delivery_enabled&&capabilities.supportsDelivery
   const pickupAvailable=!!storeConfig?.pickup_enabled&&capabilities.supportsPickup
@@ -80,6 +81,11 @@ export default function Conversations(){
     try{
       const data=await api<Conv[]>(`/conversations?store_id=${store}`)
       setConvs(data)
+      const requested=deepLink.current
+      if(requested&&!selected){
+        const target=data.find(c=>(requested.conversationID&&c.id===requested.conversationID)||(requested.phone&&String(c.phone||'').replace(/\D/g,'')===requested.phone))
+        if(target){deepLink.current=null;setSelected(target);setPanel(null);setDetail(null);setNotes([]);void loadMsgs(target);void loadDetails(target)}
+      }
       if(selected){
         const fresh=data.find(c=>c.id===selected.id)
         if(fresh)setSelected(fresh)
@@ -121,6 +127,7 @@ export default function Conversations(){
     }catch{}
   }
 
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);const sid=params.get('store_id')||'';const conversationID=params.get('conversation_id')||'';const phone=String(params.get('phone')||'').replace(/\D/g,'');if(conversationID||phone)deepLink.current={conversationID,phone};if(sid)setStore(sid)},[])
   useEffect(()=>{setSelected(null);setMessages([]);setPanel(null);setDetail(null);setCart([]);loadConvs();loadCatalog()},[store])
   useEffect(()=>{
     if(!store)return

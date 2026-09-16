@@ -1,3 +1,21 @@
+# Despliegue WAMERCIO 2.8.7 en Dokploy
+
+## Ficha comercial y detalle global de clientes
+
+Esta versión sustituye 2.8.6 y no agrega migraciones ni variables de entorno.
+
+1. Reemplaza el código anterior por **WAMERCIO 2.8.7** conservando PostgreSQL, Redis, uploads y variables actuales. **No uses Fresh Volumes.**
+2. Ejecuta `sh scripts/verify-2.8.7.sh`.
+3. Sube el código y deja que CI ejecute `npm run build`, `go test ./...`, `go build ./...` y validación de Compose.
+4. En Dokploy ejecuta **Rebuild + Redeploy** para API y Web.
+5. En **Clientes**, abre un comprador y verifica la tarjeta **Puntos**, luego pulsa **Abrir WhatsApp** y confirma que WAMERCIO abre la conversación interna del negocio.
+6. Pulsa **Detalles del cliente** y confirma identidad y direcciones sin información comercial de otras tiendas.
+7. En **Superadmin → Clientes globales**, pulsa una fila y comprueba el modal con mapa, avatar-marcador, identidad, direcciones, negocios y fidelización.
+
+No hay migración `000036`; la última migración continúa siendo `000035_global_identity_contact_semantics`.
+
+---
+
 # Despliegue WAMERCIO 2.8.6 en Dokploy
 
 ## Gestión de mesas · creación automática

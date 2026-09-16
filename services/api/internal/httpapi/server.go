@@ -274,6 +274,7 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("owners")).Put("/admin/owners/{id}", s.adminUpdateOwner)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners/{id}/stores", s.adminCreateOwnerStore)
 			a.With(s.requireAdminArea("customers")).Get("/admin/global-customers", s.adminGlobalCustomers)
+			a.With(s.requireAdminArea("customers")).Get("/admin/global-customers/{id}", s.adminGlobalCustomerDetail)
 			a.With(s.requireAdminArea("users")).Get("/admin/platform-users", s.adminPlatformUsers)
 			a.With(s.requireAdminArea("users")).Post("/admin/platform-users", s.adminCreatePlatformUser)
 			a.With(s.requireAdminArea("users")).Patch("/admin/platform-users/{id}/status", s.adminPlatformUserStatus)
@@ -5038,18 +5039,31 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	var sid, name, phone, address, notes, status string
-	var count int
+	var sid, name, phone, address, notes, status, globalCustomerID, conversationID string
+	var count, loyaltyPoints int
 	var spent float64
 	var last *time.Time
 	var created time.Time
-	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.address,''),coalesce(c.notes,''),c.status,c.order_count,c.total_spent,c.last_order_at,c.created_at FROM customers c JOIN stores s ON s.id=c.store_id WHERE c.id=$1`
+	q := `SELECT c.store_id,c.name,c.phone,coalesce(c.address,''),coalesce(c.notes,''),c.status,c.order_count,c.total_spent,c.last_order_at,c.created_at,
+	             coalesce(c.global_customer_id::text,''),coalesce(la.points_balance,0),coalesce(conv.id::text,'')
+	      FROM customers c
+	      JOIN stores s ON s.id=c.store_id
+	      LEFT JOIN loyalty_accounts la ON la.store_id=c.store_id AND la.global_customer_id=c.global_customer_id
+	      LEFT JOIN LATERAL (
+	        SELECT cv.id
+	        FROM conversations cv
+	        WHERE cv.store_id=c.store_id
+	          AND (cv.customer_id=c.id OR regexp_replace(coalesce(cv.whatsapp_phone,''),'[^0-9]','','g')=regexp_replace(coalesce(c.phone,''),'[^0-9]','','g'))
+	        ORDER BY cv.last_message_at DESC NULLS LAST,cv.updated_at DESC
+	        LIMIT 1
+	      ) conv ON true
+	      WHERE c.id=$1`
 	args := []any{id}
 	if c.Role != "superadmin" {
 		q += ` AND s.user_id=$2`
 		args = append(args, c.UserID)
 	}
-	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created) != nil {
+	if s.db.QueryRow(r.Context(), q, args...).Scan(&sid, &name, &phone, &address, &notes, &status, &count, &spent, &last, &created, &globalCustomerID, &loyaltyPoints, &conversationID) != nil {
 		jsonErr(w, 404, "Cliente no encontrado")
 		return
 	}
@@ -5066,7 +5080,21 @@ func (s *Server) getCustomer(w http.ResponseWriter, r *http.Request) {
 			orders = append(orders, map[string]any{"id": oid, "number": num, "total": total, "status": st, "payment_status": ps, "created_at": at})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders})
+	out := map[string]any{"id": id, "store_id": sid, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "orders": orders, "loyalty_points": loyaltyPoints, "conversation_id": conversationID}
+	if globalCustomerID != "" {
+		if profile, err := s.globalCustomerDetailData(r.Context(), globalCustomerID); err == nil {
+			// Tenant views receive the reusable identity/profile only. Cross-business
+			// purchase and loyalty relationships remain exclusive to SuperAdmin.
+			delete(profile, "businesses")
+			delete(profile, "loyalty_accounts")
+			delete(profile, "business_count")
+			delete(profile, "order_count")
+			delete(profile, "total_spent")
+			delete(profile, "last_order_at")
+			out["global_profile"] = profile
+		}
+	}
+	jsonOut(w, 200, out)
 }
 
 func (s *Server) updateCustomer(w http.ResponseWriter, r *http.Request) {

@@ -1,4 +1,4 @@
-# WAMERCIO 2.8.6
+# WAMERCIO 2.8.7
 
 ## Creación automática de mesas
 

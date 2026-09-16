@@ -1,3 +1,17 @@
+# WAMERCIO 2.8.7 — Ficha comercial, fidelización y detalle global de clientes
+
+- Añade la tarjeta **Puntos de fidelización** a la ficha comercial del cliente usando el saldo real de `loyalty_accounts` para la tienda seleccionada.
+- Elimina el texto redundante “Ficha comercial consolidada automáticamente.” del modal.
+- Cambia **Abrir WhatsApp** para navegar al chat interno del negocio en `/conversations` mediante `store_id` + `conversation_id`/teléfono, sin abrir WhatsApp Web externo.
+- Reemplaza dentro de la ficha comercial **Editar cliente** por **Detalles del cliente**; la edición rápida continúa disponible desde la acción de la tabla.
+- Añade una vista detallada compartida con identidad global, WhatsApp, Cédula, nacimiento, género, verificaciones y direcciones del cliente.
+- Añade `GET /admin/global-customers/{id}` y convierte cada fila de **Clientes globales** en una entrada interactiva que abre un modal de dos columnas.
+- La columna izquierda muestra Google Maps centrado en la dirección principal y superpone la foto de WhatsApp como marcador visual; la derecha muestra identidad, métricas, direcciones, actividad comercial y fidelización por negocio.
+- Mantiene aislamiento multi-tenant: el negocio recibe identidad/direcciones y sus propias métricas, pero las relaciones y puntos de otras tiendas solo se exponen a Superadmin.
+- No añade migraciones ni variables de entorno.
+
+---
+
 # WAMERCIO 2.8.6 — Creación automática de mesas
 
 - Añade selector **Individual / Creación automática** en Gestión de mesas.
