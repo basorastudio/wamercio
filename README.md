@@ -1,3 +1,11 @@
+# WAMERCIO 4.1.1
+
+Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher flotante, Picture-in-Picture con fallback modal, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.
+
+Ver `IMPLEMENTACION_V4.1.1.md` y `DEPLOY_DOKPLOY.md`.
+
+---
+
 # WAMERCIO 4.1.0
 
 WAMERCIO 4.1.0 integra **WAMERCIO Calls** directamente dentro del stack de la plataforma. Ya no requiere un servicio WACalls/WebRTC externo ni las variables `CALLS_ADAPTER_URL` / `CALLS_ADAPTER_SECRET`.

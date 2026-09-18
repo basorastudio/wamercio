@@ -1,8 +1,9 @@
 'use client'
 import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
-import {useEffect,useLayoutEffect,useMemo,useState} from 'react'
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react'
 import {api} from '@/lib/api'
+import CallsSoftphone,{type CallsSoftphoneHandle,type SoftphoneTarget} from '@/components/calls-softphone'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,Settings,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
@@ -72,16 +73,42 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const[stores,setStores]=useState<any[]|null>(null)
  const[collapsed,setCollapsed]=useState(false)
  const[dineInNav,setDineInNav]=useState(false)
+ const[activeStoreId,setActiveStoreId]=useState('')
+ const[softphoneOpen,setSoftphoneOpen]=useState(false)
+ const[softphoneTarget,setSoftphoneTarget]=useState<SoftphoneTarget|null>(null)
+ const softphoneRef=useRef<CallsSoftphoneHandle|null>(null)
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
- useLayoutEffect(()=>{if(typeof window==='undefined')return;const remembered=localStorage.getItem('wamercio_store_id')||'';if(remembered){const cached=localStorage.getItem(`wamercio_store_dine_in_${remembered}`);if(cached!==null)setDineInNav(cached==='1')}},[])
- useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(rows=>{setStores(rows);if(typeof window!=='undefined'){const remembered=localStorage.getItem('wamercio_store_id')||rows.find((x:any)=>x.is_active!==false)?.id||rows[0]?.id||'';const selected=rows.find((x:any)=>x.id===remembered)??rows.find((x:any)=>x.is_active!==false)??rows[0];const enabled=!!selected?.dine_in_enabled;setDineInNav(enabled);if(remembered)localStorage.setItem(`wamercio_store_dine_in_${remembered}`,enabled?'1':'0')}}).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;const onActive=(event:any)=>{const id=String(event?.detail?.store_id||localStorage.getItem('wamercio_store_id')||'');const cached=id?localStorage.getItem(`wamercio_store_dine_in_${id}`):null;if(cached!==null)setDineInNav(cached==='1');void refresh()};const onSettings=()=>void refresh();window.addEventListener('wamercio:stores-changed',refresh);window.addEventListener('wamercio:active-store-changed',onActive);window.addEventListener('wamercio:store-settings-changed',onSettings);return()=>{window.removeEventListener('wamercio:stores-changed',refresh);window.removeEventListener('wamercio:active-store-changed',onActive);window.removeEventListener('wamercio:store-settings-changed',onSettings)}},[])
+ useLayoutEffect(()=>{if(typeof window==='undefined')return;const remembered=localStorage.getItem('wamercio_store_id')||'';if(remembered){setActiveStoreId(remembered);const cached=localStorage.getItem(`wamercio_store_dine_in_${remembered}`);if(cached!==null)setDineInNav(cached==='1')}},[])
+ useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(rows=>{setStores(rows);if(typeof window!=='undefined'){const remembered=localStorage.getItem('wamercio_store_id')||rows.find((x:any)=>x.is_active!==false)?.id||rows[0]?.id||'';const selected=rows.find((x:any)=>x.id===remembered)??rows.find((x:any)=>x.is_active!==false)??rows[0];if(selected?.id)setActiveStoreId(selected.id);const enabled=!!selected?.dine_in_enabled;setDineInNav(enabled);if(remembered)localStorage.setItem(`wamercio_store_dine_in_${remembered}`,enabled?'1':'0')}}).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;const onActive=(event:any)=>{const id=String(event?.detail?.store_id||localStorage.getItem('wamercio_store_id')||'');setActiveStoreId(id);const cached=id?localStorage.getItem(`wamercio_store_dine_in_${id}`):null;if(cached!==null)setDineInNav(cached==='1');void refresh()};const onSettings=()=>void refresh();window.addEventListener('wamercio:stores-changed',refresh);window.addEventListener('wamercio:active-store-changed',onActive);window.addEventListener('wamercio:store-settings-changed',onSettings);return()=>{window.removeEventListener('wamercio:stores-changed',refresh);window.removeEventListener('wamercio:active-store-changed',onActive);window.removeEventListener('wamercio:store-settings-changed',onSettings)}},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
+ useEffect(()=>{
+  if(typeof window==='undefined')return
+  const openSoftphone=(event:Event)=>{
+    const detail=(event as CustomEvent).detail||{}
+    const nextStore=String(detail.store_id||localStorage.getItem('wamercio_store_id')||activeStoreId||stores?.find((x:any)=>x.is_active!==false)?.id||stores?.[0]?.id||'')
+    if(nextStore)setActiveStoreId(nextStore)
+    const nextTarget:SoftphoneTarget|null=(detail.phone||detail.display_name||detail.conversation_id)?{phone:String(detail.phone||'').replace(/\D/g,''),display_name:String(detail.display_name||''),conversation_id:String(detail.conversation_id||''),kind:detail.kind}:null
+    setSoftphoneTarget(nextTarget)
+    setSoftphoneOpen(true)
+    if(detail.picture_in_picture!==false)void softphoneRef.current?.openPictureInPicture()
+    if(detail.auto_call&&nextTarget)setTimeout(()=>{void softphoneRef.current?.startDirectCall(nextTarget,nextStore)},0)
+  }
+  window.addEventListener('wamercio:open-softphone',openSoftphone as EventListener)
+  return()=>window.removeEventListener('wamercio:open-softphone',openSoftphone as EventListener)
+ },[activeStoreId,stores])
+ useEffect(()=>{
+  if(typeof window==='undefined')return
+  const incoming=(event:Event)=>{const detail=(event as CustomEvent).detail||{};setSoftphoneTarget({phone:String(detail.phone||'').replace(/\D/g,''),display_name:String(detail.display_name||''),conversation_id:String(detail.conversation_id||'')});setSoftphoneOpen(true)}
+  window.addEventListener('wamercio:incoming-call',incoming as EventListener)
+  return()=>window.removeEventListener('wamercio:incoming-call',incoming as EventListener)
+ },[])
 
  useEffect(()=>{setMore(false);setDrawer(false)},[path])
  const toggleCollapsed=()=>setCollapsed(v=>{const next=!v;if(typeof window!=='undefined')localStorage.setItem(SIDEBAR_KEY,next?'1':'0');return next})
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
  const storeCount=stores?.length??null
  const primaryStore=useMemo(()=>stores?.find((store:any)=>store.is_active!==false)??stores?.[0]??null,[stores])
+ const launchSoftphone=()=>{const id=activeStoreId||((typeof window!=='undefined'&&localStorage.getItem('wamercio_store_id'))||'')||primaryStore?.id||'';if(id)setActiveStoreId(id);setSoftphoneTarget(null);setSoftphoneOpen(true);void softphoneRef.current?.openPictureInPicture()}
  const storeTools=useMemo(()=>{const tools=dineInNav?[...baseStoreTools.slice(0,2),reservationsNav,kdsNav,tablesNav,...baseStoreTools.slice(2)]:baseStoreTools;return storeCount!==null&&storeCount>1?[...tools,storesNav]:tools},[storeCount,dineInNav])
  const groups=useMemo(()=>[['Operación',commerce],['Catálogo',catalog],['Gestión',storeTools],['Cuenta',account]],[storeTools])
  const all=useMemo(()=>[...commerce,...catalog,...storeTools,...account],[storeTools])
@@ -123,6 +150,9 @@ export default function StoreShell({children,title,subtitle,actions,context,full
   <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#e9ebf1] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"><div className="grid h-[66px] grid-cols-5">{bottom.map(n=>{const I=n.icon;const active=path===n.href||path.startsWith(n.href+'/');return <Link key={n.href} href={n.href} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${active?'text-brand-600':'text-[#8d92a9]'}`}><I className="h-5 w-5"/><span>{n.label}</span></Link>})}<button onClick={()=>setMore(true)} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${more?'text-brand-600':'text-[#8d92a9]'}`}><MoreHorizontal className="h-5 w-5"/><span>Más</span></button></div></nav>
 
   {more&&<div className="fixed inset-0 z-[60] lg:hidden"><button className="absolute inset-0 bg-[#2e3154]/25" onClick={()=>setMore(false)}/><section className="absolute inset-x-0 bottom-0 max-h-[82dvh] overflow-y-auto rounded-t-2xl bg-white pb-[calc(20px+env(safe-area-inset-bottom))] shadow-2xl"><div className="mx-auto mt-2 h-1 w-10 rounded-full bg-[#dfe2eb]"/><div className="flex items-center justify-between px-5 pb-3 pt-4"><div><h2 className="text-lg font-medium text-ink-900">Más opciones</h2><p className="text-xs text-[#989db3]">Administra tu comercio</p></div><button onClick={()=>setMore(false)} className="rounded bg-[#f5f6f9] p-2"><X className="h-5 w-5"/></button></div><div className="grid grid-cols-3 gap-2 px-4">{all.filter(n=>!bottom.some(b=>b.href===n.href)).map(n=>{const I=n.icon;return <Link href={n.href} key={n.href} onClick={()=>setMore(false)} className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-2xl border border-[#eef0f4] bg-[#fafbfe] p-3 text-center text-xs font-medium text-[#6f748f]"><span className="grid h-10 w-10 place-items-center rounded-full bg-white text-brand-600 shadow-sm"><I className="h-5 w-5"/></span>{n.label}</Link>})}</div><button onClick={logout} className="mx-4 mt-4 flex w-[calc(100%-2rem)] items-center justify-center gap-2 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700"><LogOut className="h-4 w-4"/>Cerrar sesión</button></section></div>}
+
+  <button type="button" onClick={launchSoftphone} title="Abrir softphone" aria-label="Abrir softphone" className="fixed bottom-[82px] right-4 z-[45] inline-flex h-12 items-center gap-2 rounded-full border border-brand-200 bg-white px-4 text-xs font-semibold text-brand-700 shadow-[0_12px_34px_rgba(20,71,58,.18)] transition hover:-translate-y-0.5 hover:bg-brand-50 lg:bottom-5 lg:right-5"><span className="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-white"><PhoneCall className="h-4 w-4"/></span><span className="hidden sm:inline">Abrir softphone</span></button>
+  <CallsSoftphone ref={softphoneRef} open={softphoneOpen} onClose={()=>setSoftphoneOpen(false)} storeId={activeStoreId||primaryStore?.id||''} target={softphoneTarget} title={softphoneTarget?.display_name?`Llamar a ${softphoneTarget.display_name}`:'WAMERCIO Softphone'} subtitle="Directorio, teclado y llamada WhatsApp en una sola interfaz. En navegadores compatibles puede mantenerse como ventana Picture-in-Picture."/>
  </div>
 }
 

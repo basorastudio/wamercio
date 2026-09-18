@@ -1,3 +1,19 @@
+# Nota WAMERCIO 4.1.1 — Softphone global / PiP
+
+V4.1.1 no agrega migraciones ni variables de entorno. Mantiene el motor de llamadas de V4.1.0 y añade el launcher global, Picture-in-Picture y directorio interno.
+
+Después del redeploy valida:
+
+1. **Abrir softphone** desde cualquier pantalla.
+2. Directorio con filtros Contactos / Clientes / Usuarios.
+3. Llamar desde el encabezado del chat.
+4. Llamar desde Clientes y Contactos.
+5. En Chrome/Brave/Edge compatible, validar la ventana Document Picture-in-Picture.
+6. Cerrar PiP durante una llamada y confirmar que la llamada no se corta.
+7. Contestar una llamada entrante desde otra pantalla del panel.
+
+---
+
 # WAMERCIO 4.1.0 — Despliegue en Dokploy
 
 ## Qué cambia
