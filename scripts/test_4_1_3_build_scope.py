@@ -24,8 +24,8 @@ for token in [
     assert token in block, f'listCustomers missing {token}'
 
 assert 'conversation_id?:string' in types, 'Customer type must expose optional conversation_id'
-assert "openSoftphone(c.phone,c.name,c.conversation_id,'customer')" in customers, 'customer row must call as customer'
-assert "openSoftphone(c.phone,c.name,c.conversation_id,'contact')" in customers, 'contact row must call as contact'
-assert "openSoftphone(detail.phone,detail.name,detail.conversation_id,'customer')" in customers, 'customer detail must preserve conversation id'
+assert "openSoftphone(c.phone,c.name,c.conversation_id,'customer'" in customers, 'customer row must call as customer'
+assert "openSoftphone(c.phone,c.name,c.conversation_id,'contact'" in customers, 'contact row must call as contact'
+assert "openSoftphone(detail.phone,detail.name,detail.conversation_id,'customer'" in customers, 'customer detail must preserve conversation id'
 
 print('PASS: WAMERCIO 4.1.3 Go scope and customer-call regression')

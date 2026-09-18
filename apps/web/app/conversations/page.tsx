@@ -156,7 +156,7 @@ export default function Conversations(){
   useEffect(()=>{bottom.current?.scrollIntoView({behavior:'smooth'})},[messages.length])
 
   const choose=(c:Conv)=>{setSelected(c);setPanel(null);setDetail(null);setNotes([]);setShowQuick(false);setShowPoll(false);setChatMenuOpen(false);void loadMsgs(c);void loadDetails(c)}
-  const callSelected=()=>{if(!selected)return;window.dispatchEvent(new CustomEvent('wamercio:open-softphone',{detail:{store_id:store,phone:selected.phone||selected.remote_jid.split('@')[0],display_name:label(selected),conversation_id:selected.id,kind:selected.contact_type==='customer'?'customer':'contact',auto_call:true,picture_in_picture:true}}))}
+  const callSelected=()=>{if(!selected)return;window.dispatchEvent(new CustomEvent('wamercio:open-softphone',{detail:{store_id:store,phone:selected.phone||selected.remote_jid.split('@')[0],display_name:label(selected),conversation_id:selected.id,kind:selected.contact_type==='customer'?'customer':'contact',avatar_url:selected.profile_picture_url||'',auto_call:true,picture_in_picture:true}}))}
   const openPanel=(mode:Exclude<Panel,null>)=>{setPanel(mode);setOrderMessage('');void loadDetails().then(()=>{});if(mode==='records')void loadNotes();if(mode==='sale'){void loadCatalog();setOrderForm(v=>({...v,delivery_address:detail?.contact?.address||detail?.customer?.address||v.delivery_address}))}}
   const send=async(e:React.FormEvent)=>{
     e.preventDefault();if(!selected||!text.trim())return

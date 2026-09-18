@@ -1,3 +1,7 @@
+# WAMERCIO 4.1.10
+
+Esta versión modifica **Web + API + WhatsApp Bridge**. No agrega migraciones. Haz rebuild/redeploy de los tres servicios.
+
 # WAMERCIO 4.1.9 — Direct Canonical PiP
 
 ## Despliegue desde V4.1.8

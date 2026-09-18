@@ -20,26 +20,10 @@ export default function CallsSoftphoneHost(){
     return !!opened
   }
 
-  useEffect(()=>{
-    if(typeof window==='undefined')return
+  // Incoming calls are rendered immediately by the canonical softphone
+  // surface when Chromium blocks automatic Document-PiP creation. Answering
+  // then uses that real user gesture to move the SAME surface into PiP.
 
-    // Chromium requires transient user activation to create a *new* Document
-    // Picture-in-Picture window. If an incoming call arrived while no PiP was
-    // open and the browser blocked requestWindow(), use the very next genuine
-    // user interaction anywhere in WAMERCIO to open the SAME canonical PiP.
-    // We intentionally do not draw a second in-app softphone or mutate the
-    // sidebar into an alternate call UI.
-    const resumePending=()=>{
-      if(!pendingIncomingRef.current)return
-      void openCanonicalPip()
-    }
-    window.addEventListener('pointerdown',resumePending,true)
-    window.addEventListener('keydown',resumePending,true)
-    return()=>{
-      window.removeEventListener('pointerdown',resumePending,true)
-      window.removeEventListener('keydown',resumePending,true)
-    }
-  },[])
 
   useEffect(()=>{
     if(typeof window==='undefined')return
@@ -104,11 +88,10 @@ export default function CallsSoftphoneHost(){
       })
       setOpen(true)
 
-      // Reuse/open the one canonical WAMERCIO Document-PiP softphone. When a
-      // PiP already exists this succeeds immediately. Creating a new PiP may
-      // be blocked by Chromium without transient user activation; in that
-      // case pendingIncomingRef is kept and the next interaction opens this
-      // exact same PiP (never a duplicate sidebar/in-page softphone).
+      // Reuse/open the canonical Document-PiP softphone. If Chromium blocks
+      // creation because there is no transient user activation, the SAME
+      // canonical surface is rendered automatically in-app by CallsSoftphone.
+      // Pressing Contestar then moves it into PiP using that user gesture.
       void openCanonicalPip().then(opened=>{
         if(opened)return
         try{

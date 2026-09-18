@@ -1,3 +1,14 @@
+# WAMERCIO 4.1.10 — Incoming Call UX + WhatsApp Avatar
+
+- Corrige la foto del perfil de WhatsApp en llamadas salientes: Chat, Clientes y Contactos pasan `avatar_url` al softphone y el API la persiste en `whatsapp_calls.metadata`.
+- El API resuelve la identidad local antes de marcar y, si aún no existe una foto, consulta el perfil de WhatsApp mediante el Bridge y actualiza llamada/conversación en segundo plano.
+- Las consultas de perfil del Bridge usan la foto completa (`Preview: false`), siguiendo el patrón de Hierro del Norte.
+- Corrige la llamada entrante cuando Chrome bloquea crear un nuevo Document-PiP sin activación de usuario: WAMERCIO muestra automáticamente la MISMA superficie canónica del softphone dentro de la aplicación, sin esperar un clic arbitrario.
+- Al pulsar **Contestar**, ese gesto abre/mueve la superficie al Document Picture-in-Picture y continúa la misma llamada, siguiendo el patrón operativo de Hierro del Norte.
+- Se elimina el comportamiento de “cualquier clic abre el PiP” que hacía parecer que la llamada no entraba hasta tocar la pantalla.
+
+---
+
 # WAMERCIO 4.1.9 — Direct Canonical PiP
 
 - El launcher de sidebar vuelve a ser siempre `Abrir softphone`; se elimina el punto rojo/estado alternativo `Llamada entrante`.

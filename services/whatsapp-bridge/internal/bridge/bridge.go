@@ -289,7 +289,7 @@ func (m *Manager) refreshLinkedAccountProfile(s *Session) {
 		name = m.whatsappContactName(s, jid, "")
 	}
 	pictureURL, pictureID := "", ""
-	if pic, err := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: true}); err == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
+	if pic, err := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: false}); err == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
 		if localURL, saveErr := m.persistProfilePicture(s.StoreID, jid, pic.URL); saveErr == nil {
 			pictureURL = localURL
 			pictureID = pic.ID
@@ -667,7 +667,7 @@ func (m *Manager) resolveProfile(w http.ResponseWriter, r *http.Request, session
 		"profile_picture_id":  "",
 		"picture_available":   false,
 	}
-	pic, picErr := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: true})
+	pic, picErr := s.Client.GetProfilePictureInfo(ctx, jid, &whatsmeow.GetProfilePictureParams{Preview: false})
 	if picErr == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
 		if localURL, saveErr := m.persistProfilePicture(sessionKey, jid, pic.URL); saveErr == nil {
 			out["profile_picture_url"] = localURL
@@ -1348,7 +1348,7 @@ func (m *Manager) refreshContactProfile(s *Session, conversationJID types.JID, p
 	}
 	target := m.profileTargetJID(s, conversationJID)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	pic, err := s.Client.GetProfilePictureInfo(ctx, target, &whatsmeow.GetProfilePictureParams{Preview: true})
+	pic, err := s.Client.GetProfilePictureInfo(ctx, target, &whatsmeow.GetProfilePictureParams{Preview: false})
 	cancel()
 	if err == nil && pic != nil && strings.TrimSpace(pic.URL) != "" {
 		if localURL, err := m.persistProfilePicture(s.StoreID, conversationJID, pic.URL); err == nil {

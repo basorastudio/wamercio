@@ -90,6 +90,44 @@ func (s *Server) resolveCallIdentity(ctx context.Context, storeID, remoteJID, ph
 	return conversationID, displayName, avatarURL
 }
 
+func (s *Server) refreshCallWhatsAppProfile(storeID, callID, conversationID, phone string) {
+	storeID = strings.TrimSpace(storeID)
+	callID = strings.TrimSpace(callID)
+	phone = normalizePhone(phone)
+	if storeID == "" || callID == "" || phone == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 18*time.Second)
+	defer cancel()
+	out, err := s.bridgeReqWithTimeout(ctx, http.MethodPost, "/sessions/"+storeID+"/profile", map[string]any{"phone": phone}, 15*time.Second)
+	if err != nil || out == nil {
+		return
+	}
+	avatar := strings.TrimSpace(flowString(out["profile_picture_url"]))
+	pictureID := strings.TrimSpace(flowString(out["profile_picture_id"]))
+	whatsappName := strings.TrimSpace(flowString(out["whatsapp_name"]))
+	if avatar == "" && pictureID == "" && whatsappName == "" {
+		return
+	}
+	meta := map[string]any{}
+	if avatar != "" {
+		meta["avatar_url"] = avatar
+	}
+	if pictureID != "" {
+		meta["profile_picture_id"] = pictureID
+	}
+	_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET metadata=metadata||$1::jsonb,updated_at=now() WHERE id=$2 AND store_id=$3`, mustJSON(meta), callID, storeID)
+	if strings.TrimSpace(conversationID) != "" {
+		_, _ = s.db.Exec(ctx, `UPDATE conversations SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=CASE WHEN nullif($2,'') IS NOT NULL OR nullif($3,'') IS NOT NULL THEN now() ELSE profile_picture_updated_at END,updated_at=now() WHERE id=$4 AND store_id=$5`, whatsappName, avatar, pictureID, conversationID, storeID)
+	} else {
+		_, _ = s.db.Exec(ctx, `UPDATE conversations SET whatsapp_name=coalesce(nullif($1,''),whatsapp_name),profile_picture_url=coalesce(nullif($2,''),profile_picture_url),profile_picture_id=coalesce(nullif($3,''),profile_picture_id),profile_picture_updated_at=CASE WHEN nullif($2,'') IS NOT NULL OR nullif($3,'') IS NOT NULL THEN now() ELSE profile_picture_updated_at END,updated_at=now() WHERE store_id=$4 AND regexp_replace(coalesce(whatsapp_phone,''),'[^0-9]','','g')=$5`, whatsappName, avatar, pictureID, storeID, phone)
+	}
+	if avatar != "" {
+		_, _ = s.db.Exec(ctx, `UPDATE global_customers gc SET profile_picture_url=coalesce(nullif($1,''),gc.profile_picture_url),profile_picture_id=coalesce(nullif($2,''),gc.profile_picture_id),profile_picture_updated_at=now(),updated_at=now() FROM customers cu WHERE cu.global_customer_id=gc.id AND cu.store_id=$3 AND regexp_replace(coalesce(cu.phone,''),'[^0-9]','','g')=$4`, avatar, pictureID, storeID, phone)
+	}
+	s.publishStoreEvent(ctx, storeID, "call", map[string]any{"call_id": callID, "status": "profile_updated"})
+}
+
 func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
 	if strings.TrimSpace(storeID) == "" {
 		return
@@ -294,6 +332,7 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		ConversationID  string `json:"conversation_id"`
 		Phone           string `json:"phone"`
 		DisplayName     string `json:"display_name"`
+		AvatarURL       string `json:"avatar_url"`
 		AssignedStaffID string `json:"assigned_staff_id"`
 	}
 	if decode(r, &in) != nil || in.StoreID == "" {
@@ -337,13 +376,29 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 	if remoteJID == "" {
 		remoteJID = in.Phone + "@s.whatsapp.net"
 	}
+	// Resolve the same tenant/global identity used by Chat before the call is
+	// persisted. The caller avatar therefore follows the contact into Calls
+	// instead of falling back to initials during the ringing phase.
+	resolvedConversationID, resolvedName, resolvedAvatar := s.resolveCallIdentity(r.Context(), in.StoreID, remoteJID, in.Phone, in.DisplayName)
+	if in.ConversationID == "" && resolvedConversationID != "" {
+		in.ConversationID = resolvedConversationID
+	}
+	if strings.TrimSpace(resolvedName) != "" {
+		in.DisplayName = resolvedName
+	}
+	avatarURL := strings.TrimSpace(resolvedAvatar)
+	if avatarURL == "" {
+		avatarURL = strings.TrimSpace(in.AvatarURL)
+	}
+	metadata := map[string]any{"requested_by": c.UserID}
+	if avatarURL != "" {
+		metadata["avatar_url"] = avatarURL
+	}
 	var id string
-	// Keep the critical insert intentionally small and explicitly typed. The old
-	// jsonb_build_object('requested_by',$7) left $7 untyped, which pgx/PostgreSQL
-	// can reject while preparing the statement. Optional relations are attached
-	// immediately afterwards so a stale conversation/staff reference never stops
-	// a valid WhatsApp call from reaching the embedded engine.
-	err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,remote_jid,phone,display_name,direction,status,metadata) VALUES($1,$2,$3,$4,'out','connecting',jsonb_build_object('requested_by',$5::text)) RETURNING id::text`, in.StoreID, remoteJID, in.Phone, strings.TrimSpace(in.DisplayName), c.UserID).Scan(&id)
+	// Keep the critical insert intentionally small and explicitly typed. Optional
+	// relations are attached immediately afterwards so they cannot prevent a
+	// valid WhatsApp call from reaching the embedded engine.
+	err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,remote_jid,phone,display_name,direction,status,metadata) VALUES($1,$2,$3,$4,'out','connecting',$5::jsonb) RETURNING id::text`, in.StoreID, remoteJID, in.Phone, strings.TrimSpace(in.DisplayName), mustJSON(metadata)).Scan(&id)
 	if err != nil {
 		log.Printf("wamercio calls: prepare outgoing call failed store=%s phone=%s err=%v", in.StoreID, in.Phone, err)
 		jsonErr(w, 500, "No se pudo preparar la llamada")
@@ -354,6 +409,9 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(in.AssignedStaffID) != "" {
 		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET assigned_staff_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.AssignedStaffID, id, in.StoreID)
+	}
+	if avatarURL == "" {
+		go s.refreshCallWhatsAppProfile(in.StoreID, id, in.ConversationID, in.Phone)
 	}
 	payload := map[string]any{"call_id": id, "store_id": in.StoreID, "conversation_id": in.ConversationID, "remote_jid": remoteJID, "phone": in.Phone, "display_name": in.DisplayName, "assigned_staff_id": in.AssignedStaffID}
 	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls", payload, 65*time.Second)
@@ -506,6 +564,7 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 	if in.CallID == "" && in.ExternalCallID != "" {
 		_ = s.db.QueryRow(r.Context(), `SELECT id::text FROM whatsapp_calls WHERE store_id=$1 AND external_call_id=$2 ORDER BY started_at DESC LIMIT 1`, in.StoreID, in.ExternalCallID).Scan(&in.CallID)
 	}
+	createdCall := false
 	if in.CallID == "" {
 		if in.ExternalCallID == "" {
 			in.ExternalCallID = fmt.Sprintf("wamercio-call-%d", time.Now().UnixNano())
@@ -515,6 +574,7 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, 500, "No se pudo registrar la llamada")
 			return
 		}
+		createdCall = true
 	}
 	// Call lifecycle is monotonic even though persistence callbacks are sent
 	// asynchronously. Terminal states never resurrect, Active/Held never regress
@@ -527,6 +587,9 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,conversation_id=coalesce(NULLIF($10,'')::uuid,conversation_id),remote_jid=coalesce(NULLIF($11,''),remote_jid),phone=coalesce(NULLIF($12,''),phone),display_name=coalesce(NULLIF($13,''),display_name),updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), strings.TrimSpace(in.DisplayName))
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, in.CallID, in.Status, in.AssignedStaffID, mustJSON(in.Metadata))
 	s.publishStoreEvent(r.Context(), in.StoreID, "call", map[string]any{"call_id": in.CallID, "status": in.Status})
+	if createdCall && strings.TrimSpace(resolvedAvatar) == "" && normalizePhone(in.Phone) != "" {
+		go s.refreshCallWhatsAppProfile(in.StoreID, in.CallID, in.ConversationID, in.Phone)
+	}
 	if strings.TrimSpace(in.RecordingURL) != "" {
 		go s.maybeTranscribeCall(in.CallID)
 	}
