@@ -1,3 +1,44 @@
+# WAMERCIO 4.1.6 — Calls Lifecycle & Media Recovery
+
+Esta versión corrige el ciclo de vida de Calls después de comparar el comportamiento del motor con Hierro del Norte. **No agrega migraciones ni variables obligatorias nuevas.**
+
+## Servicios que deben reconstruirse
+
+Haz un **Redeploy completo** para reconstruir, como mínimo:
+
+1. **API** — reconcilia llamadas persistidas contra el motor real y libera registros fantasma antes de marcar.
+2. **WhatsApp Bridge** — finaliza llamadas localmente antes de persistir, vigila setup, recupera relay SRTP/SCTP y promueve estado a Activa al detectar media real.
+3. **Web** — detecta pérdida de WebRTC del navegador, muestra duración real y permite reconectar audio sin dejar el softphone bloqueado.
+
+## Variables existentes de WebRTC
+
+Conserva las ya configuradas:
+
+```env
+WAMERCIO_WEBRTC_EXTERNAL_IP=TU_IP_PUBLICA
+WAMERCIO_WEBRTC_UDP_PORT_MIN=55000
+WAMERCIO_WEBRTC_UDP_PORT_MAX=55100
+WAMERCIO_CALLS_MAX_PER_STORE=8
+```
+
+El firewall del VPS/proveedor debe permitir el mismo rango UDP publicado por Docker.
+
+## Prueba obligatoria después del despliegue
+
+1. Realiza una llamada **saliente**, contesta en el teléfono y confirma audio en ambos sentidos.
+2. Cuelga **desde el teléfono**. En pocos segundos el softphone debe salir de la llamada y volver a Directorio/Teclado.
+3. Sin refrescar la página, inicia una **segunda llamada saliente**. Debe permitirse inmediatamente.
+4. Realiza una llamada entrante, contesta desde WAMERCIO y vuelve a colgar desde el teléfono.
+5. Mantén una llamada activa al menos 1–2 minutos y confirma que el audio no queda silencioso. Si el relay se pierde, WAMERCIO intentará recuperarlo; si no puede, finalizará la llamada en vez de dejarla falsa como Activa/Timbrando.
+6. Prueba cerrar/reabrir la ventana flotante y **Conectar audio**. La llamada WhatsApp no debe quedar bloqueada por la pestaña del navegador.
+7. Abre `/calls` y confirma que las llamadas terminadas aparecen como Finalizada/Perdida/Rechazada/Fallida, no como Timbrando.
+
+## Diagnóstico rápido
+
+Si una llamada no tiene audio, revisa primero HTTPS, permiso de micrófono, IP pública ICE y rango UDP. Si el teléfono ya colgó pero la UI siguiera mostrando una llamada no terminal, revisa los logs del servicio `whatsapp`: V4.1.6 publica snapshots del motor y el API reconcilia automáticamente la fila persistida contra ese estado.
+
+---
+
 # Nota WAMERCIO 4.1.1 — Softphone global / PiP
 
 V4.1.1 no agrega migraciones ni variables de entorno. Mantiene el motor de llamadas de V4.1.0 y añade el launcher global, Picture-in-Picture y directorio interno.

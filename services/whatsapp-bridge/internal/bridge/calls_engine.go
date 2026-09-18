@@ -39,12 +39,15 @@ const (
 )
 
 type activeCall struct {
-	cm       *call.CallManager
-	bridge   *browserCallBridge
-	recorder *callRecorder
-	recordID string // WAMERCIO whatsapp_calls.id for outbound calls; empty for inbound until core creates it.
-	held     bool
-	mu       sync.RWMutex
+	cm           *call.CallManager
+	bridge       *browserCallBridge
+	recorder     *callRecorder
+	recordID     string // WAMERCIO whatsapp_calls.id for outbound calls; empty for inbound until core creates it.
+	held         bool
+	createdAt    time.Time
+	lastActivity time.Time
+	terminalOnce sync.Once
+	mu           sync.RWMutex
 }
 
 type callRegistry struct {
@@ -78,6 +81,46 @@ func (r *callRegistry) count() int {
 	n := len(r.calls)
 	r.mu.RUnlock()
 	return n
+}
+
+type engineCallSnapshot struct {
+	ExternalCallID string    `json:"external_call_id"`
+	RecordID       string    `json:"record_id,omitempty"`
+	Status         string    `json:"status"`
+	Direction      string    `json:"direction"`
+	CreatedAt      time.Time `json:"created_at"`
+	MediaReady     bool      `json:"media_ready"`
+}
+
+func (r *callRegistry) snapshots() []engineCallSnapshot {
+	r.mu.RLock()
+	items := make([]struct {
+		id string
+		ac *activeCall
+	}, 0, len(r.calls))
+	for id, ac := range r.calls {
+		items = append(items, struct {
+			id string
+			ac *activeCall
+		}{id: id, ac: ac})
+	}
+	r.mu.RUnlock()
+	out := make([]engineCallSnapshot, 0, len(items))
+	for _, item := range items {
+		if item.ac == nil || item.ac.cm == nil {
+			continue
+		}
+		ci := item.ac.cm.CurrentCall()
+		if ci == nil || ci.IsEnded() {
+			continue
+		}
+		item.ac.mu.RLock()
+		recordID := item.ac.recordID
+		createdAt := item.ac.createdAt
+		item.ac.mu.RUnlock()
+		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady()})
+	}
+	return out
 }
 func (r *callRegistry) setBridge(id string, b *browserCallBridge) (*browserCallBridge, bool) {
 	r.mu.Lock()
@@ -224,6 +267,18 @@ func newBrowserCallBridge(offerSDP string) (*browserCallBridge, string, error) {
 			if b.OnTerminal != nil {
 				b.OnTerminal()
 			}
+			return
+		}
+		if state == webrtc.ICEConnectionStateDisconnected {
+			// Give transient Wi-Fi/mobile-network changes a short grace period.
+			// If the browser leg does not recover, release only that leg; the
+			// WhatsApp call itself remains alive and the UI can reconnect audio.
+			go func() {
+				time.Sleep(5 * time.Second)
+				if b.pc != nil && b.pc.ICEConnectionState() == webrtc.ICEConnectionStateDisconnected && b.OnTerminal != nil {
+					b.OnTerminal()
+				}
+			}()
 		}
 	})
 	if err := pc.SetRemoteDescription(webrtc.SessionDescription{Type: webrtc.SDPTypeOffer, SDP: offerSDP}); err != nil {
@@ -414,9 +469,50 @@ func (m *Manager) emitCallRecording(s *Session, c *call.CallInfo, recordID, reco
 	})
 }
 
+func (m *Manager) finalizeEmbeddedCall(s *Session, callID string, ac *activeCall, c *call.CallInfo, recordID, event string) {
+	if s == nil || ac == nil || c == nil {
+		return
+	}
+	snapshot := *c
+	ac.terminalOnce.Do(func() {
+		// Local teardown always wins over persistence. This mirrors Hierro del
+		// Norte: a terminated call is removed from the live registry immediately,
+		// so a slow webhook can never keep the dialer blocked or the browser audio
+		// attached to a call that WhatsApp already ended.
+		if s.callReg != nil {
+			_, _ = s.callReg.remove(callID)
+		}
+		ac.mu.Lock()
+		bridge := ac.bridge
+		ac.bridge = nil
+		recorder := ac.recorder
+		ac.recorder = nil
+		ac.mu.Unlock()
+		if bridge != nil {
+			bridge.Close()
+		}
+		// Persist terminal state asynchronously. The API has monotonic call-state
+		// protection, so a delayed earlier callback cannot resurrect this call.
+		go m.emitCallState(s, &snapshot, recordID, event)
+		if recorder != nil {
+			go func(rec *callRecorder, info *call.CallInfo) {
+				url, err := rec.finalize()
+				if err != nil {
+					slog.Error("wamercio calls: no se pudo finalizar grabación", "store_id", s.StoreID, "call_id", callID, "err", err)
+					return
+				}
+				if url != "" {
+					m.emitCallRecording(s, info, recordID, url)
+				}
+			}(recorder, &snapshot)
+		}
+	})
+}
+
 func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.CallManager {
 	cm := call.NewCallManager(wacall.NewSocket(s.Client), slog.Default().With("service", "wamercio-calls", "store_id", s.StoreID, "call_id", callID))
-	ac := &activeCall{cm: cm, recordID: recordID}
+	now := time.Now()
+	ac := &activeCall{cm: cm, recordID: recordID, createdAt: now, lastActivity: now}
 	settings := m.callSettingsForEngine(s.StoreID)
 	if settings.Record {
 		if recorder, err := newCallRecorder(m.uploadDir, s.StoreID, callID); err != nil {
@@ -426,31 +522,30 @@ func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.C
 		}
 	}
 	s.callReg.add(callID, ac)
+	touch := func() {
+		ac.mu.Lock()
+		ac.lastActivity = time.Now()
+		ac.mu.Unlock()
+	}
 	cm.OnIncoming = func(c *call.CallInfo) {
-		m.emitCallState(s, c, recordID, "incoming")
+		touch()
+		snapshot := *c
+		go m.emitCallState(s, &snapshot, recordID, "incoming")
 	}
 	cm.OnStateChange = func(c *call.CallInfo) {
-		m.emitCallState(s, c, recordID, "state")
+		touch()
+		if c.IsEnded() {
+			m.finalizeEmbeddedCall(s, callID, ac, c, recordID, "ended")
+			return
+		}
+		// Never block whatsmeow's event path on the SaaS API. HDN keeps its
+		// call registry lifecycle local for the same reason.
+		snapshot := *c
+		go m.emitCallState(s, &snapshot, recordID, "state")
 	}
 	cm.OnEnded = func(c *call.CallInfo) {
-		m.emitCallState(s, c, recordID, "ended")
-		if old, ok := s.callReg.remove(callID); ok {
-			if old.bridge != nil {
-				old.bridge.Close()
-			}
-			if old.recorder != nil {
-				go func(rec *callRecorder, info *call.CallInfo) {
-					url, err := rec.finalize()
-					if err != nil {
-						slog.Error("wamercio calls: no se pudo finalizar grabación", "store_id", s.StoreID, "call_id", callID, "err", err)
-						return
-					}
-					if url != "" {
-						m.emitCallRecording(s, info, recordID, url)
-					}
-				}(old.recorder, c)
-			}
-		}
+		touch()
+		m.finalizeEmbeddedCall(s, callID, ac, c, recordID, "ended")
 	}
 	cm.OnPeerAudio = func(pcm []float32) {
 		if s.callReg.isHeld(callID) {
@@ -460,10 +555,11 @@ func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.C
 		if !ok {
 			return
 		}
-		cur.mu.RLock()
+		cur.mu.Lock()
+		cur.lastActivity = time.Now()
 		b := cur.bridge
 		rec := cur.recorder
-		cur.mu.RUnlock()
+		cur.mu.Unlock()
 		if rec != nil {
 			rec.writePeer(pcm)
 		}
@@ -472,6 +568,29 @@ func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.C
 		}
 	}
 	return cm
+}
+
+func (m *Manager) watchEmbeddedCallSetup(s *Session, callID string, timeout time.Duration) {
+	go func() {
+		timer := time.NewTimer(timeout)
+		defer timer.Stop()
+		<-timer.C
+		if s == nil || s.callReg == nil {
+			return
+		}
+		ac, ok := s.callReg.get(callID)
+		if !ok || ac == nil || ac.cm == nil {
+			return
+		}
+		ci := ac.cm.CurrentCall()
+		if ci == nil || ci.IsEnded() || ci.IsActive() || ci.StateData.State == core.CallStateOnHold {
+			return
+		}
+		slog.Warn("wamercio calls: setup timeout; liberando llamada estancada", "store_id", s.StoreID, "call_id", callID, "state", string(ci.StateData.State))
+		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+		defer cancel()
+		_ = ac.cm.EndCall(ctx, core.EndCallReasonTimeout)
+	}()
 }
 
 func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
@@ -589,8 +708,10 @@ func (m *Manager) callsEngineStatus(w http.ResponseWriter, r *http.Request) {
 	m.mu.RUnlock()
 	connected := sessionLinked(s) && s.Client.IsConnected() && s.Client.IsLoggedIn()
 	active := 0
+	activeSnapshots := []engineCallSnapshot{}
 	if s != nil && s.callReg != nil {
-		active = s.callReg.count()
+		activeSnapshots = s.callReg.snapshots()
+		active = len(activeSnapshots)
 	}
 	minUDP, maxUDP, ranged := webrtcUDPRangeFromEnv()
 	if !ranged {
@@ -604,6 +725,7 @@ func (m *Manager) callsEngineStatus(w http.ResponseWriter, r *http.Request) {
 		"record_calls":                  cfg.Record,
 		"transcribe_calls":              cfg.Transcribe,
 		"active_calls":                  active,
+		"active_call_snapshots":         activeSnapshots,
 		"max_calls":                     m.maxCallsPerSession(),
 		"webrtc_external_ip_configured": len(webrtcExternalIPsFromEnv()) > 0,
 		"webrtc_udp_range_configured":   ranged,
@@ -670,6 +792,14 @@ func (m *Manager) startEmbeddedCall(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadGateway, map[string]string{"error": "WhatsApp no pudo iniciar la llamada: " + err.Error()})
 		return
 	}
+	// HDN uses a setup watchdog so a lost accept/terminate callback can never
+	// leave an outgoing call occupying the dialer forever.
+	_, ringSeconds := m.callsEnabled(in.StoreID)
+	setupTimeout := time.Duration(ringSeconds+10) * time.Second
+	if setupTimeout < 35*time.Second {
+		setupTimeout = 35 * time.Second
+	}
+	m.watchEmbeddedCallSetup(s, externalCallID, setupTimeout)
 	m.touchSession(s)
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true, "external_call_id": externalCallID, "status": "ringing", "engine": "wamercio_embedded"})
 }

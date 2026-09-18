@@ -15,6 +15,120 @@ import (
 
 var callStatuses = map[string]bool{"ringing": true, "connecting": true, "active": true, "held": true, "transferred": true, "completed": true, "missed": true, "rejected": true, "failed": true}
 
+func callStatusTerminal(status string) bool {
+	return status == "completed" || status == "missed" || status == "rejected" || status == "failed"
+}
+
+func preserveCallProgress(persisted, incoming string) string {
+	if callStatusTerminal(persisted) {
+		return persisted
+	}
+	if callStatusTerminal(incoming) {
+		return incoming
+	}
+	// Do not regress lifecycle events that arrive out-of-order from the embedded
+	// bridge. active/held may legitimately alternate, but neither may fall back
+	// to connecting/ringing. connecting may not fall back to ringing.
+	switch persisted {
+	case "active":
+		if incoming == "ringing" || incoming == "connecting" {
+			return persisted
+		}
+	case "held":
+		if incoming == "ringing" || incoming == "connecting" {
+			return persisted
+		}
+	case "transferred":
+		if incoming == "ringing" || incoming == "connecting" {
+			return persisted
+		}
+	case "connecting":
+		if incoming == "ringing" {
+			return persisted
+		}
+	}
+	return incoming
+}
+
+func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
+	if strings.TrimSpace(storeID) == "" {
+		return
+	}
+	engine, err := s.bridgeReqWithTimeout(ctx, http.MethodGet, "/calls/status?store_id="+storeID, nil, 1500*time.Millisecond)
+	if err != nil {
+		return
+	}
+	activeByExternal := map[string]string{}
+	activeByRecord := map[string]string{}
+	if raw, ok := engine["active_call_snapshots"].([]any); ok {
+		for _, item := range raw {
+			m, _ := item.(map[string]any)
+			if m == nil {
+				continue
+			}
+			externalID := strings.TrimSpace(flowString(m["external_call_id"]))
+			recordID := strings.TrimSpace(flowString(m["record_id"]))
+			status := strings.TrimSpace(flowString(m["status"]))
+			if !callStatuses[status] || callStatusTerminal(status) {
+				continue
+			}
+			if externalID != "" {
+				activeByExternal[externalID] = status
+			}
+			if recordID != "" {
+				activeByRecord[recordID] = status
+			}
+		}
+	}
+
+	rows, qerr := s.db.Query(ctx, `SELECT id::text,coalesce(external_call_id,''),direction,status,started_at FROM whatsapp_calls WHERE store_id=$1 AND status IN ('ringing','connecting','active','held','transferred') ORDER BY started_at`, storeID)
+	if qerr != nil {
+		return
+	}
+	type pendingCall struct {
+		id, externalID, direction, status string
+		started                           time.Time
+	}
+	pending := []pendingCall{}
+	for rows.Next() {
+		var c pendingCall
+		if rows.Scan(&c.id, &c.externalID, &c.direction, &c.status, &c.started) == nil {
+			pending = append(pending, c)
+		}
+	}
+	rows.Close()
+	now := time.Now()
+	for _, c := range pending {
+		engineStatus := ""
+		if c.externalID != "" {
+			engineStatus = activeByExternal[c.externalID]
+		}
+		if engineStatus == "" {
+			engineStatus = activeByRecord[c.id]
+		}
+		if engineStatus != "" {
+			next := preserveCallProgress(c.status, engineStatus)
+			if next != c.status {
+				_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET status=$1,answered_at=CASE WHEN $1='active' THEN coalesce(answered_at,now()) ELSE answered_at END,updated_at=now(),metadata=metadata||jsonb_build_object('reconciled','engine_snapshot') WHERE id=$2 AND store_id=$3`, next, c.id, storeID)
+			}
+			continue
+		}
+		// The embedded engine is authoritative for live calls. A record may be
+		// briefly absent while POST /calls is still returning its external id, so
+		// keep a short grace period before self-healing the database.
+		if now.Sub(c.started) < 12*time.Second {
+			continue
+		}
+		terminal := "failed"
+		if c.status == "active" || c.status == "held" || c.status == "transferred" {
+			terminal = "completed"
+		} else if c.direction == "in" {
+			terminal = "missed"
+		}
+		_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET status=$1,ended_at=coalesce(ended_at,now()),duration_seconds=CASE WHEN answered_at IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-answered_at))::int) ELSE duration_seconds END,updated_at=now(),metadata=metadata||jsonb_build_object('reconciled','engine_absent') WHERE id=$2 AND store_id=$3 AND status IN ('ringing','connecting','active','held','transferred')`, terminal, c.id, storeID)
+	}
+}
+
 func (s *Server) callSettings(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		storeID, ok := s.assertStore(w, r)
@@ -81,6 +195,9 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Hierro del Norte self-heals its broker against the live call registry. Do
+	// the same here: the embedded bridge is authoritative for live calls.
+	s.reconcileCallsWithEngine(r.Context(), storeID)
 	// Defensive reconciliation: if the bridge-to-core terminal event was lost,
 	// do not leave an old incoming call permanently marked as ringing. The
 	// embedded engine itself times unanswered calls out using ring_seconds; this
@@ -134,6 +251,10 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 409, "WAMERCIO Calls no está activado para este negocio")
 		return
 	}
+	// Clear any persisted ghost from a previous call before preparing a new
+	// outbound dial. This is the same self-healing principle HDN applies before
+	// allowing an operator to dial again.
+	s.reconcileCallsWithEngine(r.Context(), in.StoreID)
 	in.Phone = normalizePhone(in.Phone)
 	var remoteJID string
 	if in.ConversationID != "" {
@@ -322,18 +443,14 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Terminal states are monotonic. A delayed bridge callback from an older
-	// ringing/connecting transition must never resurrect a call after the agent
-	// already hung up, rejected it or the peer ended it.
+	// Call lifecycle is monotonic even though persistence callbacks are sent
+	// asynchronously. Terminal states never resurrect, Active/Held never regress
+	// to Ringing/Connecting, and Connecting never regresses to Ringing.
 	var persistedStatus string
 	_ = s.db.QueryRow(r.Context(), `SELECT status FROM whatsapp_calls WHERE id=$1 AND store_id=$2`, in.CallID, in.StoreID).Scan(&persistedStatus)
-	persistedTerminal := persistedStatus == "completed" || persistedStatus == "missed" || persistedStatus == "rejected" || persistedStatus == "failed"
-	incomingTerminal := in.Status == "completed" || in.Status == "missed" || in.Status == "rejected" || in.Status == "failed"
-	if persistedTerminal && !incomingTerminal {
-		in.Status = persistedStatus
-	}
+	in.Status = preserveCallProgress(persistedStatus, in.Status)
 	answeredSQL := "answered_at"
-	ended := in.Status == "completed" || in.Status == "missed" || in.Status == "rejected" || in.Status == "failed"
+	ended := callStatusTerminal(in.Status)
 	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID)
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, in.CallID, in.Status, in.AssignedStaffID, mustJSON(in.Metadata))
 	s.publishStoreEvent(r.Context(), in.StoreID, "call", map[string]any{"call_id": in.CallID, "status": in.Status})

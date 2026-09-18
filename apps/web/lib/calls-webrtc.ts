@@ -47,7 +47,7 @@ const waitForIceGathering = (pc: RTCPeerConnection, timeoutMs = 1800) =>
     timer = setTimeout(finish, timeoutMs)
   })
 
-export async function openWamercioCallAudio(callId: string): Promise<WamercioBrowserCall> {
+export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: () => void): Promise<WamercioBrowserCall> {
   if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('Este navegador no permite usar el micrófono para llamadas.')
   }
@@ -62,6 +62,28 @@ export async function openWamercioCallAudio(callId: string): Promise<WamercioBro
   const pc = new RTCPeerConnection({ iceServers: [] })
   const dc = pc.createDataChannel(PCM_CHANNEL_LABEL, { ordered: true })
   dc.binaryType = 'arraybuffer'
+  let manualClose = false
+  let closeNotified = false
+  let disconnectTimer: ReturnType<typeof setTimeout> | undefined
+  const notifyUnexpectedClose = () => {
+    if (manualClose || closeNotified) return
+    closeNotified = true
+    onUnexpectedClose?.()
+  }
+  pc.addEventListener('connectionstatechange', () => {
+    const state = pc.connectionState
+    if (state === 'failed' || state === 'closed') notifyUnexpectedClose()
+    if (state === 'disconnected') {
+      if (disconnectTimer) clearTimeout(disconnectTimer)
+      disconnectTimer = setTimeout(() => {
+        if (pc.connectionState === 'disconnected') notifyUnexpectedClose()
+      }, 5000)
+    } else if (disconnectTimer) {
+      clearTimeout(disconnectTimer)
+      disconnectTimer = undefined
+    }
+  })
+  dc.addEventListener('close', notifyUnexpectedClose)
 
   const AudioCtx = window.AudioContext || (window as any).webkitAudioContext
   const ctx: AudioContext = new AudioCtx({ sampleRate: SAMPLE_RATE })
@@ -102,6 +124,8 @@ export async function openWamercioCallAudio(callId: string): Promise<WamercioBro
   }
 
   const close = () => {
+    manualClose = true
+    if (disconnectTimer) clearTimeout(disconnectTimer)
     try { stream.getTracks().forEach((track) => track.stop()) } catch {}
     try { speaker.pause(); speaker.srcObject = null } catch {}
     try { void ctx.close() } catch {}

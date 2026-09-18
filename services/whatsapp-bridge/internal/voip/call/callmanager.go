@@ -44,6 +44,7 @@ type CallManager struct {
 	acceptedByJid         string
 	remotePreaccepted     bool
 	debeEnabled           bool
+	relayRecoveryPending  bool
 
 	// captureRing is a fixed-capacity ring buffer that replaces the old
 	// `captureBuf []float32` slice. The previous design churned the heap
@@ -77,6 +78,7 @@ func NewCallManager(sock core.VoipSocket, log *slog.Logger) *CallManager {
 	}
 	relay := transport.NewSctpRelayManager(log)
 	relay.SetOnConnected(func(ip string, port int) { m.onRelayConnected() })
+	relay.SetOnDisconnected(func() { m.onRelayDisconnected() })
 	relay.SetOnReceive(func(data []byte) { m.onRelayData(data) })
 	m.relay = relay
 	return m

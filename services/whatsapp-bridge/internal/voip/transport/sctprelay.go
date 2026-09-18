@@ -59,7 +59,8 @@ type SctpRelayManager struct {
 	streamSelfSsrcs  []uint32
 	streamPeerSsrcs  []uint32
 
-	onConnected func(ip string, port int)
+	onConnected    func(ip string, port int)
+	onDisconnected func()
 
 	onReceive func(data []byte)
 }
@@ -84,6 +85,8 @@ func (m *SctpRelayManager) SetStreamSsrcs(selfSsrcs, peerSsrcs []uint32) {
 }
 
 func (m *SctpRelayManager) SetOnConnected(fn func(ip string, port int)) { m.onConnected = fn }
+
+func (m *SctpRelayManager) SetOnDisconnected(fn func()) { m.onDisconnected = fn }
 
 func (m *SctpRelayManager) SetOnReceive(fn func(data []byte)) { m.onReceive = fn }
 
@@ -408,6 +411,16 @@ func (m *SctpRelayManager) ConnectedCount() int {
 	return n
 }
 
+func (m *SctpRelayManager) notifyDisconnectedIfEmpty() {
+	m.mu.Lock()
+	empty := len(m.connections) == 0
+	cb := m.onDisconnected
+	m.mu.Unlock()
+	if empty && cb != nil {
+		go cb()
+	}
+}
+
 func (m *SctpRelayManager) failConnection(conn *relayConnection) {
 	m.mu.Lock()
 	if conn.state == relayStateFailed {
@@ -418,6 +431,7 @@ func (m *SctpRelayManager) failConnection(conn *relayConnection) {
 	delete(m.connections, conn.id)
 	m.mu.Unlock()
 	m.teardown(conn)
+	m.notifyDisconnectedIfEmpty()
 }
 
 func (m *SctpRelayManager) closeConnection(id string) {
@@ -431,6 +445,7 @@ func (m *SctpRelayManager) closeConnection(id string) {
 	delete(m.connections, id)
 	m.mu.Unlock()
 	m.teardown(conn)
+	m.notifyDisconnectedIfEmpty()
 }
 
 func (m *SctpRelayManager) teardown(conn *relayConnection) {

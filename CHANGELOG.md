@@ -1,3 +1,18 @@
+# WAMERCIO 4.1.6 — Call Lifecycle & Media Recovery
+
+- Replica el patrón de lifecycle de Hierro del Norte: una llamada que entra a `Ended` se libera localmente de inmediato, sin esperar persistencia HTTP.
+- Hace asíncronos los callbacks de estado hacia el API para no bloquear los eventos de WhatsMeow ni el teardown de audio.
+- Añade watchdog de setup para llamadas salientes estancadas.
+- Expone snapshots de llamadas vivas desde el motor y reconcilia la base de datos contra el registry real del Bridge.
+- Evita regresiones Ringing/Connecting después de Active/Held y conserva terminales como estados monotónicos.
+- Si llega audio SRTP válido en una salida todavía marcada Ringing, recupera automáticamente el estado a Connecting/Active.
+- Añade recuperación del relay WhatsApp/SRTP y finalización segura si el medio no vuelve.
+- Detecta pérdida del WebRTC del navegador para permitir reconectar audio sin dejar una interfaz falsa.
+- Reduce el polling duplicado del estado del motor.
+- Mantiene una sola interfaz Softphone para entrantes y salientes.
+
+---
+
 # WAMERCIO 4.1.5 — Softphone unificado + llamadas salientes
 
 - Unifica llamada entrante, llamada activa y marcador en el mismo softphone visual; elimina el modal blanco alternativo del runtime de Calls.

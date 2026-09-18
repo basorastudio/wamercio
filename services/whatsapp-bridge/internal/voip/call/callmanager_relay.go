@@ -1,6 +1,9 @@
 package call
 
 import (
+	"context"
+	"time"
+
 	"wamercio/services/whatsapp-bridge/internal/voip/core"
 	"wamercio/services/whatsapp-bridge/internal/voip/transport"
 )
@@ -10,6 +13,7 @@ type RelayTransport interface {
 	SetSubscriptionSsrc(ssrc uint32)
 	SetStreamSsrcs(selfSsrcs, peerSsrcs []uint32)
 	SetOnConnected(fn func(ip string, port int))
+	SetOnDisconnected(fn func())
 	SetOnReceive(fn func(data []byte))
 	ResendSubscriptions()
 	ConfigureRelays(relays []transport.RelayConfig)
@@ -33,6 +37,56 @@ func (m *CallManager) onRelayConnected() {
 		}
 	}
 	m.mu.Unlock()
+}
+
+func (m *CallManager) onRelayDisconnected() {
+	m.mu.Lock()
+	call := m.currentCall
+	if call == nil || call.IsEnded() || (call.StateData.State != core.CallStateActive && call.StateData.State != core.CallStateConnecting) || m.relayRecoveryPending {
+		m.mu.Unlock()
+		return
+	}
+	m.relayRecoveryPending = true
+	callID := call.CallID
+	var endpoints []core.RelayEndpoint
+	if call.RelayData != nil {
+		endpoints = append(endpoints, call.RelayData.Endpoints...)
+	}
+	m.mu.Unlock()
+
+	go func() {
+		defer func() {
+			m.mu.Lock()
+			m.relayRecoveryPending = false
+			m.mu.Unlock()
+		}()
+		// Most relay disconnects are transient. Recreate the SCTP path from the
+		// relay data already negotiated for this WhatsApp call.
+		time.Sleep(700 * time.Millisecond)
+		if m.relay.HasConnection() {
+			return
+		}
+		if len(endpoints) > 0 {
+			m.log.Warn("relay disconnected; attempting media recovery", "call_id", callID, "relays", len(endpoints))
+			m.connectRelays(endpoints)
+		}
+		deadline := time.NewTimer(8 * time.Second)
+		defer deadline.Stop()
+		<-deadline.C
+		if m.relay.HasConnection() {
+			return
+		}
+		m.mu.Lock()
+		cur := m.currentCall
+		stillLive := cur != nil && cur.CallID == callID && !cur.IsEnded() && (cur.StateData.State == core.CallStateActive || cur.StateData.State == core.CallStateConnecting)
+		m.mu.Unlock()
+		if stillLive {
+			m.log.Warn("relay recovery failed; terminating stale call", "call_id", callID)
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = m.EndCall(ctx, core.EndCallReasonFailed)
+		}
+	}()
 }
 
 // MediaReady reports whether the WhatsApp relay is connected and the SRTP

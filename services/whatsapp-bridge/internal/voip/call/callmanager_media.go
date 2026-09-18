@@ -195,6 +195,28 @@ func (m *CallManager) handleAudioRelayData(data []byte) {
 	if err != nil || len(pcm) == 0 {
 		return
 	}
+
+	// A successfully decrypted RTP frame is stronger evidence than a possibly
+	// delayed/missed signaling callback. If an outgoing call is still marked
+	// Ringing but peer media is already flowing, recover the lifecycle to Active
+	// so the UI, persistence layer and capture/send loop match the real call.
+	m.mu.Lock()
+	if m.currentCall != nil && !m.currentCall.IsEnded() {
+		if m.currentCall.Direction == core.CallDirectionOutgoing && m.currentCall.StateData.State == core.CallStateRinging {
+			if err := m.currentCall.ApplyTransition(Transition{Type: TransitionRemoteAccepted}); err == nil {
+				m.emitState()
+			}
+		}
+		if m.currentCall.StateData.State == core.CallStateConnecting {
+			if err := m.currentCall.ApplyTransition(Transition{Type: TransitionMediaConnected}); err == nil {
+				m.emitState()
+				m.startMediaSendLoopLocked()
+				m.log.Info("peer media confirmed active call", "call_id", m.currentCall.CallID)
+			}
+		}
+	}
+	m.mu.Unlock()
+
 	if m.OnPeerAudio != nil {
 		m.OnPeerAudio(m.alignPeerAudio(pkt.Header.Timestamp, pcm))
 	}
