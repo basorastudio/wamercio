@@ -13,18 +13,18 @@ import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
 import {applyStoreBrowserBrand,type StorefrontBrand} from '@/lib/store-browser-brand'
 
 type CartItem=StorefrontCartLine
-const payLabel:any={cash_on_delivery:'Tarjeta en terminal',cash:'Efectivo',bank_transfer:'Transferencia electrónica',pending_quote:'Pago por definir'}
+const payLabel:any={cash_on_delivery:'Tarjeta en terminal',cash:'Efectivo',bank_transfer:'Transferencia bancaria',cheque:'Cheque',pending_quote:'Pago por definir'}
 const ratioClass:Record<string,string>={'1:1':'aspect-square','4:3':'aspect-[4/3]','3:4':'aspect-[3/4]','16:9':'aspect-video'}
 const gridClass:Record<number,string>={1:'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',2:'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'}
-type PaymentMethod='cash'|'cash_on_delivery'|'bank_transfer'
+type PaymentMethod='cash'|'cash_on_delivery'|'bank_transfer'|'cheque'
 type Fulfillment='delivery'|'pickup'|'dine_in'
 type LoyaltyState={is_active:boolean;points_per_currency:number;redemption_value:number;min_redeem:number;points_balance:number;total_earned:number;total_redeemed:number}
-const paymentMethodOrder:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer']
-function paymentMethodsForFulfillment(store:any,fulfillment:string):PaymentMethod[]{
+const paymentMethodOrder:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer','cheque']
+function paymentMethodsForFulfillment(store:any,fulfillment:string,chequeAuthorized=false):PaymentMethod[]{
   const globals=store?.payment_methods||{}
   const rules=store?.payment_methods_by_fulfillment||{}
   const mode=rules?.[fulfillment]||{}
-  return paymentMethodOrder.filter(method=>!!globals[method]&&mode?.[method]!==false)
+  return paymentMethodOrder.filter(method=>!!globals[method]&&mode?.[method]!==false&&(method!=='cheque'||chequeAuthorized))
 }
 function buttonStyle(t:StoreThemeConfig,secondary=false):React.CSSProperties{return secondary||t.buttons.variant==='outline'?{background:'transparent',color:t.colors.primary,border:`1px solid ${t.colors.primary}`,borderRadius:t.shape.buttonRadius}:{background:t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary,color:t.buttons.variant==='soft'?t.colors.text:t.colors.buttonText,border:`1px solid ${t.buttons.variant==='soft'?t.colors.secondary:t.colors.primary}`,borderRadius:t.shape.buttonRadius}}
 function surfaceStyle(t:StoreThemeConfig):React.CSSProperties{return{background:t.colors.surface,border:`1px solid ${t.colors.border}`,borderRadius:t.shape.radius,boxShadow:'var(--store-shadow)'}}
@@ -63,7 +63,7 @@ export default function Storefront(){
   const[done,setDone]=useState<any>(null)
   const[customer,setCustomer]=useState<any>(null)
   const[customerAuthOpen,setCustomerAuthOpen]=useState(false)
-  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',notes:'',needs_change:null as boolean|null,cash_tendered:0,table_id:'',reservation_at:reservationInputDefault(),party_size:2,loyalty_points:0,custom_fields:{} as Record<string,string|number>})
+  const[form,setForm]=useState({address_id:'',delivery_type:'delivery',shipping_zone_id:'',coupon_code:'',payment_method:'cash_on_delivery',payment_account_id:'',notes:'',needs_change:null as boolean|null,cash_tendered:0,table_id:'',reservation_at:reservationInputDefault(),party_size:2,loyalty_points:0,custom_fields:{} as Record<string,string|number>})
   const[addressPickerOpen,setAddressPickerOpen]=useState(false)
   const[cashOtherOpen,setCashOtherOpen]=useState(false)
   const[perkIndex,setPerkIndex]=useState(0)
@@ -75,7 +75,7 @@ export default function Storefront(){
       const caps=resolveBusinessCapabilities(store)
       const payment=caps.requiresPayment?(paymentMethodsForFulfillment(store,(caps.supportsDelivery&&store.delivery_enabled?'delivery':caps.supportsPickup&&store.pickup_enabled?'pickup':'dine_in'))[0]||''):'pending_quote'
       const delivery=caps.supportsDelivery&&store.delivery_enabled?'delivery':caps.supportsPickup&&store.pickup_enabled?'pickup':caps.supportsDineIn&&store.dine_in_enabled?'dine_in':'pickup'
-      setForm(v=>({...v,payment_method:payment,delivery_type:delivery}))
+      setForm(v=>({...v,payment_method:payment,delivery_type:delivery,payment_account_id:payment==='bank_transfer'?(store.bank_accounts?.[0]?.id||''):''}))
     }).catch(e=>setError(e.message))
   },[])
   useEffect(()=>{if(data?.store?.name)applyStoreBrowserBrand(data.store)},[data?.store?.name,data?.store?.logo_url,data?.store?.primary_color,data?.store?.theme_config?.colors?.primary])
@@ -93,12 +93,12 @@ export default function Storefront(){
     if(!data?.store)return
     const caps=resolveBusinessCapabilities(data.store)
     if(!caps.requiresPayment)return
-    const allowed=paymentMethodsForFulfillment(data.store,form.delivery_type)
+    const allowed=paymentMethodsForFulfillment(data.store,form.delivery_type,!!customer?.cheque_authorized)
     if(!allowed.includes(form.payment_method as PaymentMethod)){
-      setForm(v=>({...v,payment_method:allowed[0]||''}))
+      setForm(v=>({...v,payment_method:allowed[0]||'',payment_account_id:''}))
       setCashOtherOpen(false)
     }
-  },[data?.store,form.delivery_type,form.payment_method])
+  },[data?.store,form.delivery_type,form.payment_method,customer?.cheque_authorized])
   const applyCustomer=(c:any)=>{setCustomer(c);const primary=Array.isArray(c?.addresses)?(c.addresses.find((a:any)=>a.is_primary)||c.addresses[0]):null;if(primary)setForm(v=>({...v,address_id:primary.id}))}
   const loadCustomer=()=>api<any>('/customer/me').then(applyCustomer).catch(()=>setCustomer(null))
   useEffect(()=>{void loadCustomer()},[])
@@ -236,6 +236,7 @@ export default function Storefront(){
     if(!customer){setCustomerAuthOpen(true);return}
     const missingField=capabilities.checkoutFields.find(field=>field.required&&String(form.custom_fields[field.key]??'').trim()==='')
     if(missingField){setError(`Completa ${missingField.label} para continuar`);return}
+    if(form.payment_method==='bank_transfer'&&Array.isArray(data?.store?.bank_accounts)&&data.store.bank_accounts.length&&!form.payment_account_id){setError('Selecciona la cuenta bancaria donde realizarás la transferencia');return}
     setSending(true);setError('')
     try{
       const payload={...form,address_id:form.delivery_type==='delivery'?form.address_id:'',shipping_zone_id:form.delivery_type==='delivery'?form.shipping_zone_id:'',table_id:form.delivery_type==='dine_in'?form.table_id:'',reservation_at:form.delivery_type==='dine_in'&&form.reservation_at?new Date(form.reservation_at).toISOString():'',party_size:form.delivery_type==='dine_in'?form.party_size:0,needs_change:needsCashChangeDecision?form.needs_change:false,cash_tendered:needsCashChangeDecision&&form.needs_change?cashTendered:null,items:cart.map(x=>({product_id:x.product_id,quantity:x.quantity,variant_name:x.variant_name,extras:x.extras,modifier_option_ids:x.modifier_option_ids||[]}))}
@@ -257,7 +258,7 @@ export default function Storefront(){
   const minimum=Number(s.minimum_order||0)
   const minimumMissing=Math.max(0,minimum-subtotal)
   const methods=s.payment_methods||{}
-  const paymentOptions=capabilities.requiresPayment?paymentMethodsForFulfillment(s,form.delivery_type):[]
+  const paymentOptions=capabilities.requiresPayment?paymentMethodsForFulfillment(s,form.delivery_type,!!customer?.cheque_authorized):[]
   const canOrder=s.accepting_orders!==false&&s.open_now!==false
   const{preset,config:t}=resolvedTheme(s.visual_theme,s.theme_config,s.primary_color)
   const vars=themeCSSVars(t) as React.CSSProperties
@@ -355,8 +356,8 @@ export default function Storefront(){
       {capabilities.requiresPayment?<>
       <section data-testid="storefront-cart-step-payment" className="p-4" style={{...surfaceStyle(t),boxShadow:'none'}}>
         <div className="mb-3"><div className="text-[10px] font-bold uppercase tracking-[.14em]" style={{color:t.colors.primary}}>2 · Método de pago</div><div className="mt-1 text-sm font-semibold">Selecciona cómo pagarás</div></div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{paymentOptions.map(k=><button data-testid="storefront-payment-option" type="button" key={k} onClick={()=>{setForm({...form,payment_method:k,needs_change:k==='cash'?form.needs_change:null,cash_tendered:k==='cash'?form.cash_tendered:0});if(k!=='cash')setCashOtherOpen(false)}} className="relative flex items-center gap-2.5 p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.payment_method===k?t.colors.primary:t.colors.border,background:form.payment_method===k?t.colors.background:t.colors.surface}}><WalletCards className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-sm font-bold">{payLabel[k]}</span>{form.payment_method===k&&<Check className="ml-auto h-4 w-4" style={{color:t.colors.primary}}/>}</button>)}</div>
-        {form.payment_method==='bank_transfer'&&<div className="mt-3 rounded-xl p-3" style={{background:t.colors.background}}><div className="flex items-center gap-2 text-sm font-bold"><WalletCards className="h-4 w-4" style={{color:t.colors.primary}}/>Datos para transferencia</div><div className="mt-2 grid gap-1.5 text-xs"><div><span style={{color:t.colors.muted}}>Banco:</span> {s.bank_transfer?.bank_name||'Consultar al comercio'}</div><div><span style={{color:t.colors.muted}}>Cuenta:</span> {s.bank_transfer?.account_number||'—'}</div><div><span style={{color:t.colors.muted}}>Titular:</span> {s.bank_transfer?.account_name||'—'}</div><div><span style={{color:t.colors.muted}}>Tipo:</span> {s.bank_transfer?.account_type||'—'}</div></div></div>}
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">{paymentOptions.map(k=><button data-testid="storefront-payment-option" type="button" key={k} onClick={()=>{setForm({...form,payment_method:k,payment_account_id:k==='bank_transfer'?form.payment_account_id:'',needs_change:k==='cash'?form.needs_change:null,cash_tendered:k==='cash'?form.cash_tendered:0});if(k!=='cash')setCashOtherOpen(false)}} className="relative flex items-center gap-2.5 p-3 text-left" style={{...surfaceStyle(t),boxShadow:'none',borderColor:form.payment_method===k?t.colors.primary:t.colors.border,background:form.payment_method===k?t.colors.background:t.colors.surface}}><WalletCards className="h-4 w-4 shrink-0" style={{color:t.colors.primary}}/><span className="text-sm font-bold">{payLabel[k]}</span>{form.payment_method===k&&<Check className="ml-auto h-4 w-4" style={{color:t.colors.primary}}/>}</button>)}</div>
+        {form.payment_method==='bank_transfer'&&<div className="mt-3 rounded-xl p-3" style={{background:t.colors.background}}><div className="flex items-center gap-2 text-sm font-bold"><WalletCards className="h-4 w-4" style={{color:t.colors.primary}}/>Cuenta para transferencia</div>{Array.isArray(s.bank_accounts)&&s.bank_accounts.length?<div className="mt-3 space-y-2">{s.bank_accounts.map((a:any)=><button key={a.id} type="button" onClick={()=>setForm({...form,payment_account_id:a.id})} className="flex w-full items-start gap-3 rounded-xl p-3 text-left" style={{background:t.colors.surface,border:`1px solid ${form.payment_account_id===a.id?t.colors.primary:t.colors.border}`}}><span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${form.payment_account_id===a.id?'text-white':''}`} style={{borderColor:form.payment_account_id===a.id?t.colors.primary:t.colors.border,background:form.payment_account_id===a.id?t.colors.primary:'transparent'}}>{form.payment_account_id===a.id&&<Check className="h-3 w-3"/>}</span><span className="min-w-0 flex-1"><span className="block text-xs font-bold">{a.bank_short_name||a.bank_name}</span><span className="mt-1 block text-[11px]" style={{color:t.colors.muted}}>{a.account_number} · {a.account_type}</span><span className="block text-[11px]" style={{color:t.colors.muted}}>{a.account_holder}</span></span></button>)}</div>:<div className="mt-2 grid gap-1.5 text-xs"><div><span style={{color:t.colors.muted}}>Banco:</span> {s.bank_transfer?.bank_name||'Consultar al comercio'}</div><div><span style={{color:t.colors.muted}}>Cuenta:</span> {s.bank_transfer?.account_number||'—'}</div><div><span style={{color:t.colors.muted}}>Titular:</span> {s.bank_transfer?.account_name||'—'}</div><div><span style={{color:t.colors.muted}}>Tipo:</span> {s.bank_transfer?.account_type||'—'}</div></div>}</div>}
         {needsCashChangeDecision&&<div data-testid="storefront-cash-change" className="mt-3 rounded-2xl p-3" style={{background:`color-mix(in srgb, ${t.colors.primary} 7%, ${t.colors.surface})`,border:`1px solid color-mix(in srgb, ${t.colors.primary} 30%, ${t.colors.border})`}}>
           <div className="flex items-start gap-2.5"><span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl" style={{background:t.colors.surface,color:t.colors.primary}}><RefreshCw className="h-4 w-4"/></span><div><div className="text-sm font-bold">¿Necesita cambio?</div><div className="mt-0.5 text-[11px] leading-4" style={{color:t.colors.muted}}>Ayuda al repartidor a llevar el vuelto correcto antes de salir.</div></div></div>
           <div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={()=>{setForm({...form,needs_change:true});if(!cashTendered)setCashOtherOpen(false)}} className="rounded-xl px-3 py-2 text-xs font-bold" style={{background:form.needs_change===true?t.colors.primary:t.colors.surface,color:form.needs_change===true?t.colors.buttonText:t.colors.text,border:`1px solid ${form.needs_change===true?t.colors.primary:t.colors.border}`}}>Sí</button><button type="button" onClick={()=>{setForm({...form,needs_change:false,cash_tendered:0});setCashOtherOpen(false)}} className="rounded-xl px-3 py-2 text-xs font-bold" style={{background:form.needs_change===false?t.colors.primary:t.colors.surface,color:form.needs_change===false?t.colors.buttonText:t.colors.text,border:`1px solid ${form.needs_change===false?t.colors.primary:t.colors.border}`}}>No</button></div>

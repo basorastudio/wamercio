@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS store_evaluation_pending;
+DROP TABLE IF EXISTS store_customer_evaluations;
+DROP TABLE IF EXISTS store_evaluation_settings;
+DROP TABLE IF EXISTS store_google_business_settings;
+DROP TABLE IF EXISTS store_social_post_deliveries;
+DROP TABLE IF EXISTS store_social_posts;
+DROP TABLE IF EXISTS store_media_assets;
+DROP TABLE IF EXISTS social_oauth_transactions;
+DROP TABLE IF EXISTS store_social_connections;

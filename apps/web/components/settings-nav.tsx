@@ -1,6 +1,6 @@
 'use client'
 import Link from 'next/link'
-import {Clock3,Globe2,Link2,Palette,ShoppingBag,Store} from 'lucide-react'
+import {Clock3,Globe2,Link2,Palette,ShoppingBag,Store,Share2} from 'lucide-react'
 
 const items=[
   {id:'general',label:'Mi negocio',href:'/settings/store?tab=general',icon:Store},
@@ -8,7 +8,8 @@ const items=[
   {id:'sales',label:'Ventas y entrega',href:'/settings/store?tab=sales',icon:ShoppingBag},
   {id:'hours',label:'Horarios',href:'/settings/store?tab=hours',icon:Clock3},
   {id:'domains',label:'Dominios',href:'/settings/store?tab=domains',icon:Globe2},
-  {id:'connection',label:'Conexión',href:'/settings/whatsapp',icon:Link2},
+  {id:'connection',label:'WhatsApp',href:'/settings/whatsapp',icon:Link2},
+  {id:'social',label:'Redes sociales',href:'/settings/social',icon:Share2},
 ] as const
 
 type SettingsTab=(typeof items)[number]['id']

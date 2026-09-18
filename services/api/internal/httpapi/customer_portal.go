@@ -31,6 +31,11 @@ func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, http.StatusNotFound, "Cliente no encontrado")
 		return
 	}
+	chequeAuthorized := false
+	if resolved, resolveErr := s.resolveStoreHost(r.Context(), s.requestHostname(r)); resolveErr == nil && strings.TrimSpace(resolved.StoreID) != "" {
+		chequeAuthorized = s.customerChequeAuthorized(r.Context(), resolved.StoreID, c.UserID, phone, "")
+	}
+
 	addresses := []map[string]any{}
 	rows, _ := s.db.Query(r.Context(), `SELECT id::text,label,coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),street,coalesce(street_number,''),coalesce(reference,''),latitude,longitude,is_primary,created_at FROM customer_addresses WHERE global_customer_id=$1 ORDER BY is_primary DESC,created_at DESC`, c.UserID)
 	if rows != nil {
@@ -49,7 +54,7 @@ func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {
 		"id": id, "phone": phone, "name": name, "last_name": lastName, "national_id": nationalID,
 		"birth_date": birthDate, "gender": gender, "status": status, "whatsapp_verified": whatsappVerified,
 		"identity_verified": identityVerified, "whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL,
-		"profile_picture_id": profilePictureID, "created_at": created, "addresses": addresses,
+		"profile_picture_id": profilePictureID, "created_at": created, "addresses": addresses, "cheque_authorized": chequeAuthorized,
 	})
 }
 

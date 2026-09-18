@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -249,6 +250,8 @@ func (m *Manager) handleSession(w http.ResponseWriter, r *http.Request) {
 		m.resolveProfile(w, r, sessionKey)
 	case r.Method == "POST" && action == "messages":
 		m.send(w, r, sessionKey)
+	case r.Method == "POST" && action == "polls":
+		m.sendPoll(w, r, sessionKey)
 	case r.Method == "POST" && action == "media":
 		m.sendMedia(w, r, sessionKey)
 	case r.Method == "POST" && action == "read":
@@ -705,6 +708,60 @@ func (m *Manager) send(w http.ResponseWriter, r *http.Request, sessionKey string
 	}
 	m.touchSession(s)
 	writeJSON(w, 200, map[string]any{"ok": true, "id": resp.ID})
+}
+
+func (m *Manager) sendPoll(w http.ResponseWriter, r *http.Request, sessionKey string) {
+	var in struct {
+		To            string   `json:"to"`
+		Question      string   `json:"question"`
+		Options       []string `json:"options"`
+		MaxSelections int      `json:"max_selections"`
+	}
+	if json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in) != nil {
+		writeJSON(w, 400, map[string]string{"error": "solicitud inválida"})
+		return
+	}
+	in.To = strings.TrimSpace(in.To)
+	in.Question = strings.TrimSpace(in.Question)
+	if in.To == "" || in.Question == "" {
+		writeJSON(w, 400, map[string]string{"error": "to y question son obligatorios"})
+		return
+	}
+	seen := map[string]bool{}
+	options := make([]string, 0, len(in.Options))
+	for _, raw := range in.Options {
+		option := strings.TrimSpace(raw)
+		key := strings.ToLower(option)
+		if option == "" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		options = append(options, option)
+	}
+	if len(options) < 2 || len(options) > 12 {
+		writeJSON(w, 400, map[string]string{"error": "la encuesta requiere entre 2 y 12 opciones"})
+		return
+	}
+	maxSelections := in.MaxSelections
+	if maxSelections <= 0 {
+		maxSelections = 1
+	}
+	if maxSelections > len(options) {
+		maxSelections = len(options)
+	}
+	s, err := m.sessionForSend(sessionKey)
+	if err != nil {
+		writeJSON(w, 409, map[string]string{"error": err.Error()})
+		return
+	}
+	msg := s.Client.BuildPollCreation(in.Question, options, maxSelections)
+	resp, err := s.Client.SendMessage(r.Context(), parseTarget(in.To), msg)
+	if err != nil {
+		writeJSON(w, 502, map[string]string{"error": err.Error()})
+		return
+	}
+	m.touchSession(s)
+	writeJSON(w, 200, map[string]any{"ok": true, "id": resp.ID, "type": "poll"})
 }
 
 func (m *Manager) markRead(w http.ResponseWriter, r *http.Request, sessionKey string) {
@@ -1323,11 +1380,26 @@ func (m *Manager) forwardMessage(s *Session, v *events.Message) {
 	}
 	phone := directPhone(s, v)
 	whatsappName := m.whatsappContactName(s, v.Info.Chat, v.Info.PushName)
+	pollMessageID := ""
+	pollSelectedOptions := []string{}
+	if update := v.Message.GetPollUpdateMessage(); update != nil && !v.Info.IsFromMe {
+		if key := update.GetPollCreationMessageKey(); key != nil {
+			pollMessageID = strings.TrimSpace(key.GetID())
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if vote, err := s.Client.DecryptPollVote(ctx, v); err == nil && vote != nil {
+			for _, selected := range vote.GetSelectedOptions() {
+				pollSelectedOptions = append(pollSelectedOptions, hex.EncodeToString(selected))
+			}
+		}
+		cancel()
+	}
 	payload := map[string]any{
 		"store_id": s.StoreID, "session_key": s.StoreID, "remote_jid": v.Info.Chat.String(), "message_id": v.Info.ID,
 		"body": meta.Body, "direction": direction, "type": meta.Type, "display_name": whatsappName,
 		"phone": phone, "occurred_at": v.Info.Timestamp, "media_url": meta.URL, "mime_type": meta.MimeType,
 		"file_name": meta.FileName, "file_size": meta.FileSize, "caption": meta.Caption,
+		"poll_message_id": pollMessageID, "poll_selected_options": pollSelectedOptions,
 	}
 	m.postCore("/api/v1/internal/whatsapp/events", payload)
 	m.queueContactProfile(s, v.Info.Chat, phone, whatsappName)

@@ -1,3 +1,16 @@
+# WAMERCIO 2.9.0
+
+- Proxy Auth administrado para Facebook, Instagram, LinkedIn y Google Business, sin credenciales OAuth visibles para las tiendas.
+- Conexiones sociales multi-tenant con tokens cifrados y PKCE para Google.
+- Biblioteca multimedia por tienda y compositor de publicaciones con borradores, aprobadas, programadas, publicadas, parciales y fallidas.
+- Publicación/reintento por destino y prellenado desde Promociones.
+- Workspace de Perfil de Empresa en Google: perfil, sincronización, reseñas/respuestas, rendimiento y multimedia.
+- Evaluaciones mediante encuesta nativa de WhatsApp posterior al cierre de conversaciones: cinco respuestas 1–5, correlación por ID de encuesta, descifrado del voto, feedback, agradecimiento e invitación neutral a reseña.
+- Filtros por agente/canal/fecha, impresión y exportación compatible con Excel en Evaluaciones.
+- Varias cuentas bancarias por negocio, selección de cuenta para transferencia, cuenta de terminal y comisiones.
+- Método Cheque con habilitación del negocio y autorización explícita por cliente/negocio.
+- Migraciones nuevas `000038`, `000039` y `000040`.
+
 # WAMERCIO 2.8.12
 
 - Reemplaza la edición rápida del cliente por Bloquear/Desbloquear por negocio.
