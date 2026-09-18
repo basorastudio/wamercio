@@ -1,3 +1,14 @@
+# WAMERCIO 4.1.1 — Softphone en Chat y Clientes
+
+- Añade botón **Llamar** en el encabezado del chat de WhatsApp.
+- Añade botón **Llamar** en la tabla de Clientes y en la tabla de Contactos.
+- Añade botón **Llamar** en la ficha comercial del cliente.
+- Incorpora el componente reutilizable `calls-softphone.tsx` con marcador integrado, teclado numérico, precarga del contacto activo y acceso rápido al centro de llamadas.
+- Permite iniciar la llamada y administrar audio/estado desde la propia interfaz contextual, sin obligar al usuario a salir del chat o del directorio comercial.
+- Mantiene el mismo patrón visual y operativo del módulo de llamadas ya integrado en WAMERCIO.
+
+---
+
 # WAMERCIO 4.1.0 — Motor de llamadas integrado
 
 - Integra WACalls/WebRTC directamente en `whatsapp-bridge`; elimina la dependencia de `CALLS_ADAPTER_URL` y `CALLS_ADAPTER_SECRET`.
