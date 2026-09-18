@@ -1,3 +1,13 @@
+# WAMERCIO 4.1.2 — Hotfix build Clientes/Softphone
+
+- Corrige el error de `next build` en `app/customers/page.tsx` por uso de `c.conversation_id` no declarado en el tipo `Customer`.
+- Añade `conversation_id?: string` al tipo `Customer`.
+- El endpoint `GET /customers` ahora devuelve la conversación WhatsApp más reciente asociada al cliente.
+- Corrige el botón Llamar de Clientes para identificar el destino como `customer`, no como `contact`.
+- Mantiene el softphone global, PiP, directorio y motor Calls integrado sin nuevas migraciones.
+
+---
+
 # WAMERCIO 4.1.1 — Softphone en Chat y Clientes
 
 - Añade botón **Llamar** en el encabezado del chat de WhatsApp.

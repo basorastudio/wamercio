@@ -2621,7 +2621,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 			"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread,
 			"last_message": last, "last_message_at": lastAt, "created_at": created,
 			"customer_id": customerID, "status": status, "phone": phone,
-			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "contact_type": contactType,
+			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "conversation_id": conversationID, "contact_type": contactType,
 			"queue_id": queueID, "queue_name": queueName, "assigned_staff_id": staffID, "assigned_staff_name": staffName,
 			"priority": priority, "sla_minutes": slaMinutes, "waiting_minutes": waitingMinutes, "sla_breached": lastInboundAt != nil && status != "closed" && (lastOutboundAt == nil || lastInboundAt.After(*lastOutboundAt)) && waitingMinutes > slaMinutes,
 		})
@@ -5233,10 +5233,10 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.db.Query(r.Context(), `
 		SELECT cu.id,cu.name,cu.phone,coalesce(cu.address,''),coalesce(cu.notes,''),cu.status,coalesce(cu.blocked_reason,''),cu.blocked_at,
 		       cu.order_count,cu.total_spent,cu.last_order_at,cu.created_at,cu.cheque_enabled,
-		       coalesce(latest.whatsapp_name,''),coalesce(latest.profile_picture_url,'')
+		       coalesce(latest.whatsapp_name,''),coalesce(latest.profile_picture_url,''),coalesce(latest.conversation_id,'')
 		FROM customers cu
 		LEFT JOIN LATERAL (
-			SELECT c.whatsapp_name,c.profile_picture_url
+			SELECT c.whatsapp_name,c.profile_picture_url,c.id::text AS conversation_id
 			FROM conversations c
 			WHERE c.customer_id=cu.id
 			ORDER BY c.last_message_at DESC NULLS LAST,c.created_at DESC
@@ -5255,19 +5255,19 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, address, notes, status, blockedReason, whatsappName, profilePictureURL string
+		var id, name, phone, address, notes, status, blockedReason, whatsappName, profilePictureURL, conversationID string
 		var blockedAt *time.Time
 		var count int
 		var spent float64
 		var last *time.Time
 		var created time.Time
 		var chequeEnabled bool
-		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &blockedReason, &blockedAt, &count, &spent, &last, &created, &chequeEnabled, &whatsappName, &profilePictureURL)
+		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &blockedReason, &blockedAt, &count, &spent, &last, &created, &chequeEnabled, &whatsappName, &profilePictureURL, &conversationID)
 		out = append(out, map[string]any{
 			"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "blocked_reason": blockedReason, "blocked_at": blockedAt,
 			"order_count": count, "total_spent": spent, "last_order_at": last, "created_at": created, "cheque_enabled": chequeEnabled,
 			"store_id": sid, "owner": c.UserID, "contact_type": "customer",
-			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL,
+			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "conversation_id": conversationID,
 		})
 	}
 	jsonOut(w, 200, out)
