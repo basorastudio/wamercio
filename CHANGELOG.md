@@ -1,3 +1,15 @@
+# WAMERCIO 4.1.12 — WhatsApp interno, bloqueo de contactos y PIN progresivo
+
+- Añade **Abrir chat de WhatsApp** directamente en la tabla **Clientes**.
+- Cambia el botón WhatsApp de **Contactos** para abrir `/conversations` dentro de WAMERCIO en vez de `wa.me`/WhatsApp Web externo.
+- Añade **Bloquear/Desbloquear contacto** en la tabla Contactos, con motivo de bloqueo, estado visual y auditoría en `conversation_events`.
+- Conserva compatibilidad con el bloqueo desde el menú del chat usando un motivo automático cuando el flujo antiguo no envía uno.
+- Sustituye el PIN monolítico de **Agregar usuario** por el mismo `PinInput` progresivo de WAMERCIO: un dígito por casilla, autoavance, retroceso inteligente y pegado completo.
+- El número de casillas sigue la longitud de PIN configurada por la plataforma (4 por defecto).
+- No agrega migraciones nuevas.
+
+---
+
 # WAMERCIO 4.1.11 — Perfil desde sidebar + International Telephone Input global
 
 - Elimina el enlace independiente **Mi cuenta** del grupo Cuenta de la sidebar.

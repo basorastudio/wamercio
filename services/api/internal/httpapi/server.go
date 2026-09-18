@@ -2585,6 +2585,12 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 			  )
 			ORDER BY g.updated_at DESC LIMIT 1
 		) identity ON true
+		LEFT JOIN LATERAL (
+			SELECT coalesce(e.metadata->>'reason','') AS reason,e.created_at AS blocked_at
+			FROM conversation_events e
+			WHERE e.conversation_id=c.id AND e.event_type='contact_blocked'
+			ORDER BY e.created_at DESC LIMIT 1
+		) block_event ON true
 		WHERE c.store_id=$1
 		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
 		  AND NOT EXISTS (
@@ -2953,16 +2959,25 @@ func (s *Server) clearConversationMessages(w http.ResponseWriter, r *http.Reques
 func (s *Server) blockConversation(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
-	_, _, ok := s.conversationOwned(r.Context(), c, id)
+	storeID, _, ok := s.conversationOwned(r.Context(), c, id)
 	if !ok {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
 	}
 	var in struct {
-		Blocked bool `json:"blocked"`
+		Blocked bool   `json:"blocked"`
+		Reason  string `json:"reason"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Estado inválido")
+		return
+	}
+	reason := strings.TrimSpace(in.Reason)
+	if in.Blocked && reason == "" {
+		reason = "Bloqueado desde la conversación"
+	}
+	if len([]rune(reason)) > 500 {
+		jsonErr(w, 400, "El motivo del bloqueo no puede superar 500 caracteres")
 		return
 	}
 	status := "active"
@@ -2981,6 +2996,17 @@ func (s *Server) blockConversation(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo actualizar la conversación")
 		return
 	}
+	eventType := "contact_unblocked"
+	metadata := map[string]any{"actor_id": c.UserID}
+	if in.Blocked {
+		eventType = "contact_blocked"
+		metadata["reason"] = reason
+	}
+	metadataJSON, _ := json.Marshal(metadata)
+	if _, err = tx.Exec(r.Context(), `INSERT INTO conversation_events(conversation_id,store_id,actor_user_id,event_type,metadata) VALUES($1,$2,(SELECT id FROM users WHERE id=nullif($3,'')::uuid),$4,$5::jsonb)`, id, storeID, c.UserID, eventType, string(metadataJSON)); err != nil {
+		jsonErr(w, 500, "No se pudo registrar el bloqueo del contacto")
+		return
+	}
 	if customerID != "" {
 		_, _ = tx.Exec(r.Context(), `UPDATE customers SET status=$1,updated_at=now() WHERE id=$2`, status, customerID)
 	}
@@ -2988,7 +3014,7 @@ func (s *Server) blockConversation(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 500, "No se pudo actualizar el contacto")
 		return
 	}
-	jsonOut(w, 200, map[string]any{"ok": true, "blocked": in.Blocked})
+	jsonOut(w, 200, map[string]any{"ok": true, "blocked": in.Blocked, "contact_status": status, "reason": reason})
 }
 
 func (s *Server) conversationIsBlocked(ctx context.Context, id string) bool {
@@ -5303,7 +5329,8 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
 		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),c.unread_count,
 		       coalesce(c.last_message,''),c.last_message_at,coalesce(c.status,'open'),c.created_at,
-		       coalesce(c.contact_address,''),coalesce(c.contact_notes,''),coalesce(c.contact_status,'active')
+		       coalesce(c.contact_address,''),coalesce(c.contact_notes,''),coalesce(c.contact_status,'active'),
+		       coalesce(block_event.reason,''),block_event.blocked_at
 		FROM conversations c
 		LEFT JOIN customers cu ON cu.id=c.customer_id
 		LEFT JOIN LATERAL (
@@ -5317,6 +5344,12 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 			  )
 			ORDER BY g.updated_at DESC LIMIT 1
 		) identity ON true
+		LEFT JOIN LATERAL (
+			SELECT coalesce(e.metadata->>'reason','') AS reason,e.created_at AS blocked_at
+			FROM conversation_events e
+			WHERE e.conversation_id=c.id AND e.event_type='contact_blocked'
+			ORDER BY e.created_at DESC LIMIT 1
+		) block_event ON true
 		WHERE c.store_id=$1
 		  AND split_part(lower(c.remote_jid),'@',2) IN ('s.whatsapp.net','lid')
 		  AND NOT EXISTS (
@@ -5332,16 +5365,17 @@ func (s *Server) listContacts(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, whatsappName, profilePictureURL, lastMessage, status, address, notes, contactStatus string
+		var id, name, phone, whatsappName, profilePictureURL, lastMessage, status, address, notes, contactStatus, blockedReason string
 		var unread int
-		var lastAt *time.Time
+		var lastAt, blockedAt *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &name, &phone, &whatsappName, &profilePictureURL, &unread, &lastMessage, &lastAt, &status, &created, &address, &notes, &contactStatus)
+		_ = rows.Scan(&id, &name, &phone, &whatsappName, &profilePictureURL, &unread, &lastMessage, &lastAt, &status, &created, &address, &notes, &contactStatus, &blockedReason, &blockedAt)
 		out = append(out, map[string]any{
 			"id": id, "conversation_id": id, "name": name, "phone": phone, "whatsapp_name": whatsappName,
 			"profile_picture_url": profilePictureURL, "unread_count": unread, "last_message": lastMessage,
 			"last_message_at": lastAt, "status": status, "created_at": created, "address": address,
 			"notes": notes, "contact_status": contactStatus, "contact_type": "contact",
+			"blocked_reason": blockedReason, "blocked_at": blockedAt,
 		})
 	}
 	jsonOut(w, 200, out)

@@ -1,3 +1,24 @@
+# WAMERCIO 4.1.12 — despliegue en Dokploy
+
+Si ya estás en **V4.1.11**, esta actualización no agrega migraciones ni variables nuevas.
+
+Reconstruye:
+
+1. **API** — bloqueo/auditoría de Contactos y datos de bloqueo en `/contacts`.
+2. **Web** — botones de chat interno, bloqueo de Contactos y PIN progresivo de Usuarios.
+
+No es necesario reconstruir WhatsApp Bridge por los cambios de V4.1.12.
+
+## Pruebas rápidas
+
+1. En **Clientes**, pulsa el icono de chat: debe abrir `/conversations` dentro de WAMERCIO y seleccionar ese cliente.
+2. En **Contactos**, pulsa chat: no debe abrir `wa.me` ni una pestaña de WhatsApp Web.
+3. Bloquea un Contacto indicando motivo. La fila debe mostrar **Bloqueado** y el icono debe convertirse en **Desbloquear**.
+4. Desbloquea el Contacto y confirma que vuelve a estado **Contacto**.
+5. En **Usuarios → Agregar usuario**, el PIN debe mostrarse en casillas individuales y avanzar automáticamente al escribir.
+
+---
+
 # WAMERCIO 4.1.10
 
 Esta versión modifica **Web + API + WhatsApp Bridge**. No agrega migraciones. Haz rebuild/redeploy de los tres servicios.
