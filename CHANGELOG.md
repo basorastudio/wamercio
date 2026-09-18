@@ -1,3 +1,12 @@
+# WAMERCIO 4.1.14 — Hotfix TypeScript de Video
+
+- Corrige dos accesos a `WamercioBrowserCall | null` en `calls-softphone.tsx` que Next.js rechazaba durante `Linting and checking validity of types`.
+- Sustituye el narrowing inseguro `bc?.id === x.id` por una comprobación explícita `bc && bc.id === x.id` antes de ejecutar `stopVideo()`.
+- Mantiene íntegra la funcionalidad de voz → video de V4.1.13.
+- Añade una regresión específica para impedir que vuelva a empaquetarse este patrón.
+
+---
+
 # WAMERCIO 4.1.13 — Voz → Video desde el Softphone
 
 - Las llamadas entrantes y salientes continúan iniciando siempre en voz.

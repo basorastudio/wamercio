@@ -292,7 +292,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       window.setTimeout(()=>{void load(true)},300)
     }catch(e:any){
       const bc=browserCall.current
-      if(bc?.id===x.id)await bc.stopVideo().catch(()=>{})
+      if(bc && bc.id===x.id)await bc.stopVideo().catch(()=>{})
       setRows(v=>v.map(row=>row.id===x.id?{...row,metadata:{...(row.metadata||{}),video_pending:false,video_active:false,video_local:false,video_remote:false}}:row))
       setError(e.message||'No se pudo solicitar el cambio a video.')
     }finally{setVideoBusy('')}
@@ -306,7 +306,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       const result=await api<any>(`/calls/${x.id}`,{method:'PATCH',body:JSON.stringify({action:'video_stop'})})
       mergeVideoResult(x.id,result)
       const bc=browserCall.current
-      if(bc?.id===x.id)await bc.stopVideo()
+      if(bc && bc.id===x.id)await bc.stopVideo()
       setRows(v=>v.map(row=>row.id===x.id?{...row,metadata:{...(row.metadata||{}),video_pending:false,video_active:false,video_local:false,video_remote:false}}:row))
       window.setTimeout(()=>{void load(true)},250)
     }catch(e:any){setError(e.message||'No se pudo volver al modo voz.')}

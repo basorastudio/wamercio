@@ -272,3 +272,9 @@ Prueba recomendada después del deploy:
 6. Pulsa **Volver a voz** y confirma que la llamada de audio continúa.
 7. Desde el teléfono intenta activar video por iniciativa del contacto y confirma que WAMERCIO conserva voz sin aceptar ese upgrade.
 
+
+## V4.1.14 — Hotfix de compilación del softphone de video
+
+V4.1.14 no añade migraciones ni cambia el protocolo de Calls. Corrige el chequeo estricto de TypeScript en `apps/web/components/calls-softphone.tsx` detectado por `next build` de Dokploy.
+
+Si vienes de V4.1.13, basta con reconstruir **Web**. API y WhatsApp Bridge no requieren cambios funcionales para este hotfix.

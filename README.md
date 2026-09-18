@@ -1,5 +1,7 @@
-# WAMERCIO 4.1.13
+# WAMERCIO 4.1.14
 
+> **V4.1.14:** Hotfix de compilación para el módulo voz→video. Corrige el estrechamiento nulo de `WamercioBrowserCall` detectado por `next build` sin alterar la funcionalidad de video de V4.1.13.
+>
 > **V4.1.13:** WAMERCIO Calls incorpora upgrade de voz → video exclusivamente desde el softphone durante una llamada activa. Las llamadas siguen iniciando/entrando en voz, el agente puede solicitar video, volver a voz sin colgar y las solicitudes de upgrade iniciadas por el contacto se rechazan automáticamente. Consulta `HOTFIX_V4.1.13.md`.
 > **V4.1.12:** Clientes y Contactos abren el chat interno de WAMERCIO; Contactos incorpora bloqueo/desbloqueo con motivo y auditoría; Usuarios utiliza PIN progresivo por dígitos. Consulta `HOTFIX_V4.1.12.md`.
 
