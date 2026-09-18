@@ -1,3 +1,13 @@
+# WAMERCIO 4.1.9 — Direct Canonical PiP
+
+- El launcher de sidebar vuelve a ser siempre `Abrir softphone`; se elimina el punto rojo/estado alternativo `Llamada entrante`.
+- Las llamadas entrantes intentan abrir o focalizar directamente el único Document-PiP oficial.
+- Se reutiliza `documentPictureInPicture.window` cuando el PiP ya existe.
+- Si Chromium bloquea crear PiP sin activación transitoria, la próxima interacción real abre el mismo PiP; no se renderiza ningún clon.
+- Se conserva la identidad entrante Cliente/Contacto de WAMERCIO de V4.1.8.
+
+---
+
 # WAMERCIO 4.1.8 — Single PiP Softphone + Caller Identity
 
 - Elimina el softphone embebido/fallback duplicado.

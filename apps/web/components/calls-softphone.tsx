@@ -143,16 +143,17 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   useEffect(()=>{
     if(currentCall){previousCallId.current=currentCall.id;return}
     if(previousCallId.current){
+      const endedId=previousCallId.current
       previousCallId.current=''
       setMediaActiveCallId('')
       setError('')
       setPipTransfer(false)
       setTransferStaff('')
       setTab('directory')
-      if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('wamercio:call-attention-clear'))
+      if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('wamercio:softphone-call-ended',{detail:{id:endedId}}))
     }
   },[currentCall?.id])
-  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;window.dispatchEvent(new CustomEvent('wamercio:incoming-call',{detail:{id:currentCall.id,store_id:storeId,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id}}))},[currentCall,storeId])
+  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;window.dispatchEvent(new CustomEvent('wamercio:incoming-call',{detail:{id:currentCall.id,store_id:storeId,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id,avatar_url:currentCall.avatar_url||currentCall.profile_picture_url||''}}))},[currentCall,storeId])
 
   const directory=useMemo<DirectoryItem[]>(()=>{
     const customerItems=customers.map((x:any)=>({id:`customer:${x.id}`,kind:'customer' as const,name:x.name||x.whatsapp_name||x.phone||'Cliente',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.whatsapp_name&&x.whatsapp_name!==x.name?`WhatsApp: ${x.whatsapp_name}`:'Cliente WAMERCIO',avatar_url:x.profile_picture_url,conversation_id:x.conversation_id||''}))
@@ -260,6 +261,12 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     const manager=(window as any).documentPictureInPicture
     if(!manager?.requestWindow)return false
     if(pipWindow&&!pipWindow.closed){pipWindow.focus();return true}
+    const existing=manager.window as Window|undefined
+    if(existing&&!existing.closed){
+      setPipWindow(existing)
+      existing.focus()
+      return true
+    }
     setPipOpening(true)
     try{
       const win=await manager.requestWindow({width:380,height:640}) as Window
@@ -355,9 +362,10 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const pipContent=pipWindow&&!pipWindow.closed?createPortal(<div className="wam-pip">{softphoneSurface()}</div>,pipWindow.document.body):null
 
   // There is exactly one softphone surface in WAMERCIO: the Document PiP
-  // window above. We intentionally do not render an in-app clone when the
-  // browser blocks automatic PiP opening; the sidebar incoming-call attention
-  // state asks the agent to open this same PiP instead.
+  // window above. We intentionally do not render an in-app clone or an
+  // alternate sidebar incoming-call interface. If Chromium blocks creation of
+  // a new PiP without user activation, the host keeps the incoming call
+  // pending and opens this same canonical PiP on the next user interaction.
   return <>{pipContent}</>
 })
 CallsSoftphone.displayName='CallsSoftphone'

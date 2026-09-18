@@ -1,3 +1,18 @@
+# WAMERCIO 4.1.9 — Direct Canonical PiP
+
+## Despliegue desde V4.1.8
+
+No hay migraciones nuevas ni cambios de API/Bridge. Reconstruye **Web**. Después limpia/actualiza el Service Worker de la PWA si el navegador conserva assets anteriores.
+
+## Prueba visual V4.1.9
+
+1. La sidebar debe mostrar siempre **Abrir softphone / Llamadas WhatsApp**, incluso mientras timbra una entrante.
+2. Con el PiP ya abierto, una entrante debe aparecer inmediatamente dentro de esa misma ventana.
+3. Con el PiP cerrado, WAMERCIO intenta abrirlo automáticamente. Si Chromium bloquea `requestWindow()` por política de activación, la siguiente interacción del usuario debe abrir el mismo PiP; no debe aparecer punto rojo, modal ni softphone alternativo.
+4. El PiP debe conservar Directorio, Teclado, búsqueda, filtros y controles de llamada del softphone original.
+
+---
+
 # WAMERCIO 4.1.8 — Single PiP Softphone + Caller Identity
 
 Esta versión mantiene el ciclo de llamadas de V4.1.6/V4.1.7, elimina el softphone embebido duplicado y hace que las llamadas entrantes utilicen la identidad Cliente/Contacto de WAMERCIO. **No agrega migraciones ni variables obligatorias nuevas.**

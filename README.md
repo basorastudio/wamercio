@@ -1,6 +1,6 @@
-# WAMERCIO 4.1.8
+# WAMERCIO 4.1.9
 
-> **V4.1.8:** elimina el softphone embebido duplicado y conserva una sola superficie canónica Document-PiP. Las llamadas entrantes resuelven primero la identidad Cliente/Contacto de WAMERCIO y usan su nombre/avatar. Si el navegador bloquea PiP automático, la sidebar muestra una alerta compacta para abrir el mismo softphone, sin crear un clon. Consulta `HOTFIX_V4.1.8.md`.
+> **V4.1.9:** conserva una sola superficie canónica Document-PiP y elimina también el estado alternativo de llamada entrante de la sidebar. Las entrantes intentan abrir/focalizar directamente el PiP oficial; si Chromium bloquea crear una nueva ventana sin activación del usuario, WAMERCIO mantiene la llamada pendiente y usa la siguiente interacción para abrir ese mismo PiP, sin clones. Consulta `HOTFIX_V4.1.9.md`.
 > **V4.1.7:** Unificación de controles por estado y cronómetro desde `answered_at`, siguiendo el patrón operativo del softphone de Hierro del Norte. Consulta `HOTFIX_V4.1.7.md`.
 > **V4.1.6:** Ciclo de llamadas endurecido según el patrón de Hierro del Norte: liberación inmediata al terminar, reconciliación con el motor vivo, watchdog de salida, recuperación de relay/audio y promoción a Activa por media real. Consulta `HOTFIX_V4.1.6.md`.
 >
