@@ -1,11 +1,11 @@
 package httpapi
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -25,7 +25,17 @@ func (s *Server) callSettings(w http.ResponseWriter, r *http.Request) {
 		var ring int
 		var strategy string
 		_ = s.db.QueryRow(r.Context(), `SELECT is_active,record_calls,transcribe_calls,ring_seconds,routing_strategy FROM store_call_settings WHERE store_id=$1`, storeID).Scan(&active, &record, &transcribe, &ring, &strategy)
-		jsonOut(w, 200, map[string]any{"store_id": storeID, "is_active": active, "record_calls": record, "transcribe_calls": transcribe, "ring_seconds": ring, "routing_strategy": strategy, "adapter_configured": strings.TrimSpace(s.cfg.CallsAdapterURL) != ""})
+		engine, engineErr := s.bridgeReq(r.Context(), http.MethodGet, "/calls/status?store_id="+storeID, nil)
+		embedded, _ := engine["engine_embedded"].(bool)
+		connected, _ := engine["session_connected"].(bool)
+		engineReady := engineErr == nil && embedded && connected
+		out := map[string]any{"store_id": storeID, "is_active": active, "record_calls": record, "transcribe_calls": transcribe, "ring_seconds": ring, "routing_strategy": strategy, "engine_embedded": true, "engine_ready": engineReady}
+		if engineErr == nil {
+			for k, v := range engine {
+				out[k] = v
+			}
+		}
+		jsonOut(w, 200, out)
 		return
 	}
 	var in struct {
@@ -53,6 +63,9 @@ func (s *Server) callSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if !map[string]bool{"manual": true, "round_robin": true, "least_load": true, "random": true}[in.RoutingStrategy] {
 		in.RoutingStrategy = "least_load"
+	}
+	if in.TranscribeCalls {
+		in.RecordCalls = true
 	}
 	_, err := s.db.Exec(r.Context(), `INSERT INTO store_call_settings(store_id,is_active,record_calls,transcribe_calls,ring_seconds,routing_strategy,updated_at) VALUES($1,$2,$3,$4,$5,$6,now()) ON CONFLICT(store_id) DO UPDATE SET is_active=excluded.is_active,record_calls=excluded.record_calls,transcribe_calls=excluded.transcribe_calls,ring_seconds=excluded.ring_seconds,routing_strategy=excluded.routing_strategy,updated_at=now()`, in.StoreID, in.IsActive, in.RecordCalls, in.TranscribeCalls, in.RingSeconds, in.RoutingStrategy)
 	if err != nil {
@@ -112,10 +125,6 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 409, "WAMERCIO Calls no está activado para este negocio")
 		return
 	}
-	if strings.TrimSpace(s.cfg.CallsAdapterURL) == "" {
-		jsonErr(w, 503, "El transporte de llamadas no está configurado. Define CALLS_ADAPTER_URL para conectar WACalls/WebRTC")
-		return
-	}
 	in.Phone = normalizePhone(in.Phone)
 	var remoteJID string
 	if in.ConversationID != "" {
@@ -145,10 +154,10 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{"call_id": id, "store_id": in.StoreID, "conversation_id": in.ConversationID, "remote_jid": remoteJID, "phone": in.Phone, "display_name": in.DisplayName, "assigned_staff_id": in.AssignedStaffID}
-	response, err := s.callsAdapterRequest(r.Context(), http.MethodPost, "/calls", payload)
+	response, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls", payload)
 	if err != nil {
-		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=now(),metadata=metadata||jsonb_build_object('adapter_error',$1),updated_at=now() WHERE id=$2`, err.Error(), id)
-		jsonErr(w, 502, "El motor de llamadas no pudo iniciar la llamada")
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=now(),metadata=metadata||jsonb_build_object('engine_error',$1),updated_at=now() WHERE id=$2`, err.Error(), id)
+		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo iniciar la llamada")
 		return
 	}
 	externalID := flowString(response["external_call_id"])
@@ -159,16 +168,16 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 	if !callStatuses[status] {
 		status = "connecting"
 	}
-	_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET external_call_id=$1,status=$2,metadata=metadata||$3::jsonb,updated_at=now() WHERE id=$4`, externalID, status, mustJSON(map[string]any{"adapter": response}), id)
+	_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET external_call_id=$1,status=$2,metadata=metadata||$3::jsonb,updated_at=now() WHERE id=$4`, externalID, status, mustJSON(map[string]any{"engine": response}), id)
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,metadata) VALUES($1,'started',$2::jsonb)`, id, mustJSON(response))
-	jsonOut(w, 201, map[string]any{"id": id, "external_call_id": externalID, "status": status, "adapter": response})
+	jsonOut(w, 201, map[string]any{"id": id, "external_call_id": externalID, "status": status, "engine": response})
 }
 
 func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	c := claims(r)
-	var storeID string
-	if s.db.QueryRow(r.Context(), `SELECT store_id::text FROM whatsapp_calls WHERE id=$1`, id).Scan(&storeID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+	var storeID, externalCallID string
+	if s.db.QueryRow(r.Context(), `SELECT store_id::text,coalesce(external_call_id,'') FROM whatsapp_calls WHERE id=$1`, id).Scan(&storeID, &externalCallID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
 		jsonErr(w, 404, "Llamada no encontrada")
 		return
 	}
@@ -181,60 +190,55 @@ func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := strings.ToLower(strings.TrimSpace(in.Action))
-	if strings.TrimSpace(s.cfg.CallsAdapterURL) == "" {
-		jsonErr(w, 503, "El transporte de llamadas no está configurado")
-		return
-	}
 	allowed := map[string]bool{"answer": true, "reject": true, "hangup": true, "hold": true, "resume": true, "transfer": true}
 	if !allowed[action] {
 		jsonErr(w, 400, "Acción de llamada no soportada")
 		return
 	}
-	response, err := s.callsAdapterRequest(r.Context(), http.MethodPost, "/calls/"+id+"/"+action, map[string]any{"store_id": storeID, "assigned_staff_id": in.AssignedStaffID})
+	if externalCallID == "" {
+		externalCallID = id
+	}
+	response, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/"+action, map[string]any{"store_id": storeID, "assigned_staff_id": in.AssignedStaffID})
 	if err != nil {
-		jsonErr(w, 502, "El motor de llamadas no pudo ejecutar la acción")
+		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo ejecutar la acción")
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, id, action, in.AssignedStaffID, mustJSON(response))
-	jsonOut(w, 200, map[string]any{"ok": true, "adapter": response})
+	if action == "transfer" && strings.TrimSpace(in.AssignedStaffID) != "" {
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET assigned_staff_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.AssignedStaffID, id, storeID)
+	}
+	jsonOut(w, 200, map[string]any{"ok": true, "engine": response})
 }
 
-func (s *Server) callsAdapterRequest(ctx context.Context, method, path string, body any) (map[string]any, error) {
-	raw, _ := json.Marshal(body)
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(s.cfg.CallsAdapterURL, "/")+path, bytes.NewReader(raw))
+func (s *Server) callWebRTC(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	c := claims(r)
+	var storeID, externalCallID string
+	if s.db.QueryRow(r.Context(), `SELECT store_id::text,coalesce(external_call_id,'') FROM whatsapp_calls WHERE id=$1`, id).Scan(&storeID, &externalCallID) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, storeID) {
+		jsonErr(w, 404, "Llamada no encontrada")
+		return
+	}
+	var in struct {
+		SDPOffer string `json:"sdp_offer"`
+	}
+	if decode(r, &in) != nil || strings.TrimSpace(in.SDPOffer) == "" {
+		jsonErr(w, 400, "Se requiere sdp_offer")
+		return
+	}
+	if externalCallID == "" {
+		externalCallID = id
+	}
+	out, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/webrtc", map[string]any{"store_id": storeID, "sdp_offer": in.SDPOffer})
 	if err != nil {
-		return nil, err
+		jsonErr(w, 502, "No se pudo conectar el audio WebRTC con el motor integrado")
+		return
 	}
-	req.Header.Set("Content-Type", "application/json")
-	secret := strings.TrimSpace(s.cfg.CallsAdapterSecret)
-	if secret == "" {
-		secret = s.cfg.InternalWebhookSecret
-	}
-	if secret != "" {
-		req.Header.Set("X-Calls-Secret", secret)
-	}
-	resp, err := s.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	var out map[string]any
-	_ = json.NewDecoder(resp.Body).Decode(&out)
-	if out == nil {
-		out = map[string]any{}
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return out, fmt.Errorf("calls adapter status %d", resp.StatusCode)
-	}
-	return out, nil
+	jsonOut(w, 200, out)
 }
 
-func (s *Server) callAdapterEvent(w http.ResponseWriter, r *http.Request) {
-	secret := strings.TrimSpace(s.cfg.CallsAdapterSecret)
-	if secret == "" {
-		secret = s.cfg.InternalWebhookSecret
-	}
-	if secret == "" || r.Header.Get("X-Calls-Secret") != secret {
+func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
+	secret := strings.TrimSpace(s.cfg.InternalWebhookSecret)
+	if secret == "" || r.Header.Get("X-Internal-Secret") != secret {
 		jsonErr(w, 403, "No autorizado")
 		return
 	}
@@ -268,7 +272,7 @@ func (s *Server) callAdapterEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.CallID == "" {
 		if in.ExternalCallID == "" {
-			in.ExternalCallID = fmt.Sprintf("adapter-%d", time.Now().UnixNano())
+			in.ExternalCallID = fmt.Sprintf("wamercio-call-%d", time.Now().UnixNano())
 		}
 		err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,conversation_id,remote_jid,phone,display_name,direction,status,assigned_staff_id,external_call_id,metadata) VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid,$9,$10::jsonb) RETURNING id::text`, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), in.DisplayName, in.Direction, in.Status, in.AssignedStaffID, in.ExternalCallID, mustJSON(in.Metadata)).Scan(&in.CallID)
 		if err != nil {
@@ -281,7 +285,50 @@ func (s *Server) callAdapterEvent(w http.ResponseWriter, r *http.Request) {
 	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID)
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, in.CallID, in.Status, in.AssignedStaffID, mustJSON(in.Metadata))
 	s.publishStoreEvent(r.Context(), in.StoreID, "call", map[string]any{"call_id": in.CallID, "status": in.Status})
+	if strings.TrimSpace(in.RecordingURL) != "" {
+		go s.maybeTranscribeCall(in.CallID)
+	}
 	jsonOut(w, 200, map[string]any{"ok": true, "call_id": in.CallID})
+}
+
+func (s *Server) maybeTranscribeCall(callID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+	if strings.TrimSpace(callID) == "" || strings.TrimSpace(os.Getenv("STT_API_URL")) == "" {
+		return
+	}
+	var storeID, recordingURL string
+	var enabled bool
+	if err := s.db.QueryRow(ctx, `SELECT c.store_id::text,c.recording_url,coalesce(cs.transcribe_calls,false) FROM whatsapp_calls c LEFT JOIN store_call_settings cs ON cs.store_id=c.store_id WHERE c.id=$1`, callID).Scan(&storeID, &recordingURL, &enabled); err != nil || !enabled || strings.TrimSpace(recordingURL) == "" {
+		return
+	}
+	var existing string
+	_ = s.db.QueryRow(ctx, `SELECT coalesce(transcript,'') FROM whatsapp_calls WHERE id=$1`, callID).Scan(&existing)
+	if strings.TrimSpace(existing) != "" {
+		return
+	}
+	localPath, err := s.mediaLocalPath(recordingURL)
+	if err != nil {
+		_, _ = s.db.Exec(ctx, `INSERT INTO call_events(call_id,event_type,metadata) VALUES($1,'transcription_failed',$2::jsonb)`, callID, mustJSON(map[string]any{"error": err.Error()}))
+		return
+	}
+	language := "es"
+	_ = s.db.QueryRow(ctx, `SELECT language FROM store_transcription_settings WHERE store_id=$1`, storeID).Scan(&language)
+	textValue, detected, engine, err := callTranscriptionAPI(ctx, strings.TrimSpace(os.Getenv("STT_API_URL")), os.Getenv("STT_API_KEY"), envSTTModel(), language, localPath)
+	if err != nil {
+		_, _ = s.db.Exec(ctx, `INSERT INTO call_events(call_id,event_type,metadata) VALUES($1,'transcription_failed',$2::jsonb)`, callID, mustJSON(map[string]any{"error": err.Error()}))
+		return
+	}
+	if strings.TrimSpace(detected) == "" {
+		detected = language
+	}
+	textValue = strings.TrimSpace(textValue)
+	if textValue == "" {
+		return
+	}
+	_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET transcript=$1,metadata=metadata||$2::jsonb,updated_at=now() WHERE id=$3`, textValue, mustJSON(map[string]any{"transcription_engine": engine, "transcription_language": detected}), callID)
+	_, _ = s.db.Exec(ctx, `INSERT INTO call_events(call_id,event_type,metadata) VALUES($1,'transcribed',$2::jsonb)`, callID, mustJSON(map[string]any{"engine": engine, "language": detected}))
+	s.publishStoreEvent(ctx, storeID, "call", map[string]any{"call_id": callID, "status": "transcribed"})
 }
 
 func mustJSON(v any) string { raw, _ := json.Marshal(v); return string(raw) }

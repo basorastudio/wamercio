@@ -51,8 +51,6 @@ services:
       STT_API_URL: ${STT_API_URL:-}
       STT_API_KEY: ${STT_API_KEY:-}
       STT_MODEL: ${STT_MODEL:-whisper-1}
-      CALLS_ADAPTER_URL: ${CALLS_ADAPTER_URL:-}
-      CALLS_ADAPTER_SECRET: ${CALLS_ADAPTER_SECRET:-}
       WAMERCIO_SOCIAL_AUTH_PROXY_ENABLED: ${WAMERCIO_SOCIAL_AUTH_PROXY_ENABLED:-true}
       WAMERCIO_SOCIAL_AUTH_PROXY_BASE_URL: ${WAMERCIO_SOCIAL_AUTH_PROXY_BASE_URL:-https://auth-apps.bitapps.pro/apps}
       WAMERCIO_SOCIAL_AUTH_PROXY_REDIRECT_URI: ${WAMERCIO_SOCIAL_AUTH_PROXY_REDIRECT_URI:-https://auth-apps.bitapps.pro/redirect/v2}
@@ -97,6 +95,10 @@ services:
       CORE_WEBHOOK_URL: ${CORE_WEBHOOK_URL}
       INTERNAL_WEBHOOK_SECRET: ${INTERNAL_WEBHOOK_SECRET}
       UPLOAD_DIR: /app/data/uploads
+      WAMERCIO_WEBRTC_EXTERNAL_IP: ${WAMERCIO_WEBRTC_EXTERNAL_IP:-}
+      WAMERCIO_WEBRTC_UDP_PORT_MIN: ${WAMERCIO_WEBRTC_UDP_PORT_MIN:-55000}
+      WAMERCIO_WEBRTC_UDP_PORT_MAX: ${WAMERCIO_WEBRTC_UDP_PORT_MAX:-55100}
+      WAMERCIO_CALLS_MAX_PER_STORE: ${WAMERCIO_CALLS_MAX_PER_STORE:-8}
       TZ: ${TZ:-America/Santo_Domingo}
     volumes:
       - uploads_data:/app/data/uploads
@@ -107,6 +109,8 @@ services:
         condition: service_healthy
     expose:
       - "8090"
+    ports:
+      - "${WAMERCIO_WEBRTC_UDP_PORT_MIN:-55000}-${WAMERCIO_WEBRTC_UDP_PORT_MAX:-55100}:${WAMERCIO_WEBRTC_UDP_PORT_MIN:-55000}-${WAMERCIO_WEBRTC_UDP_PORT_MAX:-55100}/udp"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8090/health"]
       interval: 15s

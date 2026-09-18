@@ -39,6 +39,7 @@ type Session struct {
 	Updated  time.Time
 	stop     chan struct{}
 	qrCancel context.CancelFunc
+	callReg  *callRegistry
 }
 
 type historySyncJob struct {
@@ -192,7 +193,7 @@ func (m *Manager) Restore(ctx context.Context) error {
 		}
 		client := whatsmeow.NewClient(dev, nil)
 		configureClient(client)
-		s := &Session{StoreID: sessionKey, Client: client, Status: "connecting", Updated: time.Now(), stop: make(chan struct{})}
+		s := &Session{StoreID: sessionKey, Client: client, Status: "connecting", Updated: time.Now(), stop: make(chan struct{}), callReg: newCallRegistry()}
 		m.installHandler(s)
 		m.mu.Lock()
 		m.sessions[sessionKey] = s
@@ -212,6 +213,8 @@ func (m *Manager) Router() http.Handler {
 		writeJSON(w, 200, map[string]any{"ok": true, "service": "wamercio-whatsapp"})
 	})
 	mux.HandleFunc("/sessions/", m.handleSession)
+	mux.HandleFunc("/calls", m.handleCallsEngine)
+	mux.HandleFunc("/calls/", m.handleCallsEngine)
 	return m.auth(mux)
 }
 func (m *Manager) auth(next http.Handler) http.Handler {
@@ -359,7 +362,7 @@ func (m *Manager) connect(w http.ResponseWriter, r *http.Request, sessionKey str
 	client := whatsmeow.NewClient(dev, nil)
 	configureClient(client)
 	qrCtx, qrCancel := context.WithCancel(context.Background())
-	s := &Session{StoreID: sessionKey, Client: client, Status: "starting", Updated: time.Now(), stop: make(chan struct{}), qrCancel: qrCancel}
+	s := &Session{StoreID: sessionKey, Client: client, Status: "starting", Updated: time.Now(), stop: make(chan struct{}), qrCancel: qrCancel, callReg: newCallRegistry()}
 	m.installHandler(s)
 	m.mu.Lock()
 	m.sessions[sessionKey] = s
@@ -418,6 +421,18 @@ func (m *Manager) installHandler(s *Session) {
 			if m.isCurrentSession(s) {
 				m.touchSession(s)
 			}
+		case *events.CallOffer:
+			m.handleIncomingCallOffer(s, v)
+		case *events.CallAccept:
+			m.handleCallAccept(s, v)
+		case *events.CallPreAccept:
+			m.handleCallPreAccept(s, v)
+		case *events.CallTransport:
+			m.handleCallTransport(s, v)
+		case *events.CallTerminate:
+			m.handleCallTerminate(s, v.From, v.Data)
+		case *events.CallReject:
+			m.handleCallTerminate(s, v.From, v.Data)
 		case *events.Message:
 			m.forwardMessage(s, v)
 		case *events.Receipt:

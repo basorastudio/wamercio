@@ -1,19 +1,39 @@
-# WAMERCIO 4.0.0 — Despliegue en Dokploy
+# WAMERCIO 4.1.0 — Despliegue en Dokploy
 
-## Antes de desplegar
+## Qué cambia
 
-1. Realiza backup de PostgreSQL.
-2. Conserva los volúmenes `postgres_data`, `redis_data` y `uploads_data`.
-3. Sustituye el código por WAMERCIO 4.0.0.
-4. Ejecuta:
+WAMERCIO Calls deja de depender de un adaptador externo. WACalls/WebRTC, señalización WhatsApp, SRTP, MLow y el puente de audio del navegador se compilan dentro de `services/whatsapp-bridge`.
 
-```bash
-sh scripts/verify-4.0.0.sh
+No uses ni configures:
+
+```text
+CALLS_ADAPTER_URL
+CALLS_ADAPTER_SECRET
 ```
 
-## Variables nuevas
+## Variables de Calls
 
-### Transcripción de voz
+```env
+# IP pública del VPS donde corre Dokploy/WAMERCIO.
+WAMERCIO_WEBRTC_EXTERNAL_IP=TU_IP_PUBLICA
+
+# Rango UDP reservado al ICE/WebRTC del motor integrado.
+WAMERCIO_WEBRTC_UDP_PORT_MIN=55000
+WAMERCIO_WEBRTC_UDP_PORT_MAX=55100
+
+# Límite simultáneo por sesión/negocio.
+WAMERCIO_CALLS_MAX_PER_STORE=8
+```
+
+### Firewall
+
+Permite UDP `55000-55100` —o el rango que elijas— en el firewall del VPS/proveedor. `docker-compose.yml` publica el mismo rango hacia el contenedor `whatsapp`.
+
+No necesitas instalar Asterisk, FreeSWITCH, coturn ni un segundo backend para el flujo base. El navegador se comunica por WebRTC directamente con el bridge integrado y el bridge mantiene la llamada WhatsApp.
+
+> Si tu infraestructura está detrás de NAT adicional, `WAMERCIO_WEBRTC_EXTERNAL_IP` debe ser la IP realmente alcanzable desde Internet y el router/firewall debe reenviar el rango UDP al servidor Dokploy.
+
+## Voz y transcripción
 
 ```env
 STT_API_URL=
@@ -21,88 +41,67 @@ STT_API_KEY=
 STT_MODEL=whisper-1
 ```
 
-Son opcionales. Si quedan vacías, WAMERCIO funciona normalmente y el panel indica que el proveedor de transcripción no está conectado.
+El STT sigue siendo opcional. No forma parte del transporte de la llamada; solo procesa grabaciones cuando se activa la transcripción.
 
-### Calls Premium
+## Antes de desplegar
 
-```env
-CALLS_ADAPTER_URL=
-CALLS_ADAPTER_SECRET=
+1. Realiza backup de PostgreSQL.
+2. Conserva `postgres_data`, `redis_data` y `uploads_data`.
+3. Sustituye el código por WAMERCIO 4.1.0.
+4. Configura la IP pública y rango UDP.
+5. Ejecuta:
+
+```bash
+sh scripts/verify-4.1.0.sh
 ```
 
-`CALLS_ADAPTER_URL` debe apuntar al servicio que mantiene WACalls/WebRTC. Si `CALLS_ADAPTER_SECRET` queda vacío, el API usa `INTERNAL_WEBHOOK_SECRET` como fallback.
+## Orden recomendado
 
-## Orden de despliegue
+1. **API** — conserva migraciones 000042–000047 y expone el control plane de Calls.
+2. **WhatsApp Bridge** — contiene ahora el motor WACalls/WebRTC real.
+3. **Web** — contiene la captura/reproducción PCM y el panel Calls.
 
-### 1. API
+En un Compose administrado como una sola aplicación, un `Redeploy` completo es suficiente.
 
-Debe arrancar primero porque aplica:
+## Prueba de llamada saliente
 
-```text
-000042_quotes_pro
-000043_delivery_pro
-000044_crm_operations
-000045_flow_builder
-000046_voice_transcription
-000047_calls_premium
-```
+1. Conecta la sesión WhatsApp del negocio.
+2. Abre **WAMERCIO Calls**.
+3. Activa Calls y guarda.
+4. Pulsa **Llamar**, introduce un WhatsApp válido y acepta permiso de micrófono.
+5. Confirma que el teléfono destino timbre.
+6. Contesta desde el teléfono.
+7. Verifica audio en ambos sentidos.
+8. Prueba Espera → Reanudar → Colgar.
 
-Comprueba `/health` antes de continuar.
+## Prueba de llamada entrante
 
-### 2. WhatsApp Bridge
+1. Llama desde un teléfono al WhatsApp conectado del negocio.
+2. La llamada debe aparecer como **Entrante / ringing**.
+3. Pulsa **Contestar**.
+4. WAMERCIO abrirá el micrófono y enlazará el navegador por WebRTC.
+5. Verifica audio en ambos sentidos y finalización.
 
-El bridge nuevo envía ubicaciones como payload estructurado y coordenadas explícitas. Debe conectarse al mismo API 4.0.0.
+## Grabación y transcripción
 
-### 3. Web
+- **Grabar llamadas** crea WAV estéreo persistente bajo `uploads_data/calls/<store>/`.
+- La API lo expone por `/media/calls/...`.
+- **Transcribir llamadas** fuerza grabación y, al finalizar, envía el WAV al endpoint STT configurado.
+- La grabación y la transcripción aparecen en el historial de Calls.
 
-Despliega el frontend después de API + Bridge saludables. El Service Worker usa cache `wamercio-store-v4.0.0-*`.
+## Diagnóstico
 
-## Pruebas posteriores
+Si la llamada timbra pero no hay audio:
 
-### Cotización
-1. Crea una cotización.
-2. Descarga PDF.
-3. Envía por WhatsApp.
-4. Abre el enlace público.
-5. Acepta/rechaza.
-6. Revisa el movimiento en CRM.
-7. Convierte una aprobada a pedido.
+1. confirma HTTPS en el navegador;
+2. confirma permiso de micrófono;
+3. confirma `WAMERCIO_WEBRTC_EXTERNAL_IP`;
+4. confirma que UDP 55000-55100 está permitido en firewall/proveedor;
+5. confirma que el mismo rango está publicado por Docker;
+6. revisa logs del servicio `whatsapp`.
 
-### Delivery
-1. Recibe una ubicación WhatsApp.
-2. Abre Registros de atención.
-3. Pulsa **Asociar a dirección**.
-4. Prepara una entrega.
-5. Asigna repartidor.
-6. Crea y optimiza ruta.
-7. Abre `/courier` y prueba geolocalización/estados desde un móvil con HTTPS.
-
-### Flow Builder
-1. Crea un flujo `message_received` o `keyword`.
-2. Añade condición y acción.
-3. Actívalo.
-4. Envía un mensaje de prueba.
-5. Confirma el run y sus steps.
-
-### Voz
-1. Configura el endpoint STT.
-2. Activa transcripción automática en la tienda.
-3. Envía una nota de voz entrante.
-4. Confirma transcripción en el chat y `/voice`.
-
-### Calls
-1. Despliega/conecta el adaptador WACalls/WebRTC.
-2. Configura `CALLS_ADAPTER_URL` y secreto.
-3. Activa Calls para la tienda.
-4. Prueba saliente, entrante, hold/resume, transferencia y hangup.
-5. Confirma callbacks en `/internal/calls/events`.
+Si ni siquiera timbra, revisa primero la sesión WhatsApp y los logs de señalización WAMERCIO Calls.
 
 ## Rollback
 
-Las migraciones 42–47 tienen `down.sql`. Un rollback debe realizarse en orden inverso:
-
-```text
-47 → 46 → 45 → 44 → 43 → 42
-```
-
-No reviertas la base mientras Web/API 4.0.0 sigan atendiendo tráfico.
+4.1.0 no agrega tablas. Para volver a 4.0.1 basta restaurar el código/imagen anterior. No reviertas `000047` mientras uses cualquier versión 4.x que exponga Calls.

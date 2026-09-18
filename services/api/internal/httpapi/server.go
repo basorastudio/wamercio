@@ -116,7 +116,7 @@ func (s *Server) Router() http.Handler {
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
 		api.Post("/internal/whatsapp/profile", s.whatsappProfile)
 		api.Post("/internal/whatsapp/receipts", s.whatsappReceipt)
-		api.Post("/internal/calls/events", s.callAdapterEvent)
+		api.Post("/internal/calls/events", s.callEngineEvent)
 
 		api.Group(func(p chi.Router) {
 			p.Use(s.requireStoreAuth)
@@ -279,6 +279,7 @@ func (s *Server) Router() http.Handler {
 			p.Get("/calls", s.listCalls)
 			p.Post("/calls", s.startCallRecord)
 			p.Patch("/calls/{id}", s.updateCallRecord)
+			p.Post("/calls/{id}/webrtc", s.callWebRTC)
 			p.Get("/orders", s.listOrders)
 			p.Get("/orders/{id}", s.getOrder)
 			p.Patch("/orders/{id}/status", s.updateOrderStatus)

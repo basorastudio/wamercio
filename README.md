@@ -1,92 +1,59 @@
-# WAMERCIO 4.0.1
+# WAMERCIO 4.1.0
 
-WAMERCIO 4.0.1 conserva la expansión de 4.0.0 e integra simultáneamente las fases posteriores al **Centro Conversacional PRO 3.0.0**, conservando el mismo patrón visual, arquitectura multi-tenant y modelo WhatsApp-first.
+WAMERCIO 4.1.0 integra **WAMERCIO Calls** directamente dentro del stack de la plataforma. Ya no requiere un servicio WACalls/WebRTC externo ni las variables `CALLS_ADAPTER_URL` / `CALLS_ADAPTER_SECRET`.
 
-## Módulos incluidos
+Conserva todos los módulos de 4.0.1: Centro Conversacional PRO, Cotizaciones, Delivery, CRM, Tareas, Flow Builder, Voz/Transcripción, POS, identidad global, WhatsApp y publicación social.
 
-### Cotizaciones Conversacionales PRO
-- Cotizaciones independientes de pedidos.
-- Artículos, revisiones, eventos y seguimiento.
-- Enlace público seguro con aceptar/rechazar.
-- Envío por WhatsApp.
-- PDF descargable desde panel y portal público.
-- Seguimientos automáticos cancelables cuando la cotización cambia de estado.
-- Conversión cotización → pedido.
-- Sincronización automática con CRM.
+## WAMERCIO Calls integrado
 
-### Delivery PRO
-- Ubicación WhatsApp estructurada con latitud/longitud reales.
-- Acción **Asociar a dirección** desde Registros de atención.
-- Dirección global del cliente y actualización del contacto local.
-- Creación opcional de zona territorial a partir de la ubicación.
-- Entregas y asignación de repartidores.
-- Rutas con secuencia de paradas.
-- Optimización local por proximidad + distancia/ETA aproximados.
-- Modo Repartidor con estados y geolocalización del dispositivo.
-- Modelo preparado para reemplazar la heurística por GEO RD MAP/routing sin cambiar contratos.
+El motor reside dentro de `services/whatsapp-bridge`, el mismo proceso que posee la sesión WhatsMeow de cada negocio. Incluye:
 
-### CRM Operativo
-- Embudo configurable por tienda.
-- Oportunidades relacionadas con cliente, conversación y cotización.
-- Kanban comercial.
-- Tareas, responsables, prioridad y vencimiento.
-- Actividad operativa.
-- Sincronización de cotización: Cotizado → Negociación → Ganado/Perdido.
+- Señalización de llamadas 1:1 de WhatsApp: offer, preaccept, accept, transport, reject y terminate.
+- Resolución PN → LID y cifrado de call keys por dispositivo.
+- Transporte relay/SRTP y códec MLow de 16 kHz.
+- Puente WebRTC del navegador mediante DataChannel PCM.
+- Llamadas entrantes y salientes desde la interfaz de WAMERCIO.
+- Contestar, rechazar, colgar, poner en espera, reanudar y transferir entre agentes.
+- Registro e historial multi-tenant por `store_id`.
+- Grabación estéreo WAV: agente a la izquierda y cliente a la derecha.
+- Transcripción de llamadas usando el mismo proveedor STT configurable de Voz.
+- Límite de llamadas simultáneas por negocio configurable.
 
-### Flow Builder
-- Constructor visual basado en nodos y conexiones.
-- Triggers: manual, mensaje recibido, keyword, cotización enviada/aprobada, pedido creado/cambio de estado y tarea vencida.
-- Acciones: enviar WhatsApp, etiqueta, cola, tarea, seguimiento programado, prioridad y condiciones.
-- Historial de ejecuciones y pasos para auditoría.
+La fila SQL de la llamada y el Call ID de WhatsApp son entidades separadas: WAMERCIO conserva su UUID interno y el bridge genera un `external_call_id` criptográficamente aleatorio compatible con la señalización de WhatsApp.
 
-### Voz y transcripción
-- Transcripción automática de notas de voz.
-- Proveedor STT desacoplado mediante endpoint multipart compatible.
-- Procesamiento persistente y estados pending/processing/done/failed/skipped.
-- Búsqueda de transcripciones.
-- Transcripción visible dentro de la burbuja de audio.
+## Red WebRTC
 
-### WAMERCIO Calls Premium
-- Configuración por negocio.
-- Registro de llamadas entrantes/salientes.
-- Contestar, rechazar, colgar, espera, reanudar y transferir.
-- Routing configurable.
-- Campos para grabación y transcripción.
-- Webhook de eventos y control plane multi-tenant.
-- Transporte de audio desacoplado mediante `CALLS_ADAPTER_URL` para WACalls/WebRTC.
+No hay un servicio externo de llamadas, pero el navegador necesita alcanzar el servidor WAMERCIO por UDP. Configura la IP pública del VPS y abre/mapea el rango elegido:
 
-## Migraciones nuevas
+```env
+WAMERCIO_WEBRTC_EXTERNAL_IP=203.0.113.10
+WAMERCIO_WEBRTC_UDP_PORT_MIN=55000
+WAMERCIO_WEBRTC_UDP_PORT_MAX=55100
+WAMERCIO_CALLS_MAX_PER_STORE=8
+```
 
-- `000042_quotes_pro`
-- `000043_delivery_pro`
-- `000044_crm_operations`
-- `000045_flow_builder`
-- `000046_voice_transcription`
-- `000047_calls_premium`
+`docker-compose.yml` publica ese mismo rango UDP desde el contenedor `whatsapp`. El micrófono del navegador requiere HTTPS.
 
-Todas tienen archivo `up` y `down`.
-
-## Variables opcionales nuevas
+## Transcripción
 
 ```env
 STT_API_URL=
 STT_API_KEY=
 STT_MODEL=whisper-1
-
-CALLS_ADAPTER_URL=
-CALLS_ADAPTER_SECRET=
 ```
 
-Sin `STT_API_URL`, WAMERCIO sigue funcionando y las transcripciones quedan marcadas como proveedor no configurado. Sin `CALLS_ADAPTER_URL`, el módulo Calls conserva configuración e historial pero no intenta establecer audio real.
+La transcripción es opcional. Si se activa **Transcribir llamadas**, WAMERCIO activa también la grabación porque el archivo de audio es la fuente del STT.
+
+## Migraciones
+
+No hay una migración nueva en 4.1.0. Se conservan `000042`–`000047`; la integración del motor ocurre en Bridge/API/Web y reutiliza `store_call_settings`, `whatsapp_calls` y `call_events`.
 
 ## Verificación
 
 ```bash
-sh scripts/verify-4.0.0.sh
+sh scripts/verify-4.1.0.sh
 ```
-
-La verificación comprueba versión, migraciones, rutas HTTP, sintaxis TypeScript/Go, `gofmt`, scripts shell y el contrato funcional de las seis fases.
 
 ## Despliegue
 
-Consulta `DEPLOY_DOKPLOY.md`. El orden recomendado es **API → WhatsApp Bridge → Web** para que las migraciones estén aplicadas antes de que la interfaz consulte las nuevas entidades.
+Consulta `DEPLOY_DOKPLOY.md`. Para esta versión recompila al menos **WhatsApp Bridge, API y Web**.

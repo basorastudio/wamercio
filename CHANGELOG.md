@@ -1,3 +1,19 @@
+# WAMERCIO 4.1.0 — Motor de llamadas integrado
+
+- Integra WACalls/WebRTC directamente en `whatsapp-bridge`; elimina la dependencia de `CALLS_ADAPTER_URL` y `CALLS_ADAPTER_SECRET`.
+- Porta y adapta el motor de llamadas probado de Hierro del Norte: señalización WhatsApp, LID, cifrado de call keys, relays, SRTP y MLow.
+- Añade WebRTC PCM de navegador con rango UDP e IP pública configurables dentro del mismo despliegue WAMERCIO.
+- Separa correctamente el UUID interno de `whatsapp_calls` del Call ID externo de WhatsApp generado por `signaling.GenerateCallID()`.
+- Implementa llamada saliente/entrante, contestar, rechazar, hangup, hold/resume y transferencia de agente.
+- Implementa grabación estéreo WAV persistente y enlazada al historial de llamada.
+- Conecta transcripción de llamadas al motor STT existente; activar transcripción implica grabación.
+- Añade controles de audio del navegador, acceso a grabación y vista resumida de transcripción en el panel Calls.
+- Añade variables `WAMERCIO_WEBRTC_EXTERNAL_IP`, `WAMERCIO_WEBRTC_UDP_PORT_MIN`, `WAMERCIO_WEBRTC_UDP_PORT_MAX` y `WAMERCIO_CALLS_MAX_PER_STORE`.
+- Publica el rango UDP en Docker Compose.
+- No agrega migraciones; reutiliza `000047_calls_premium`.
+
+---
+
 # WAMERCIO 4.0.1 — Hotfix de build del portal de cotizaciones
 
 - Corrige el error de TypeScript/React en `app/quote/[token]/page.tsx`: `useEffect` ya no recibe una función que retorna `Promise<void>`.
