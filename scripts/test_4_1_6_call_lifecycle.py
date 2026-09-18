@@ -3,7 +3,7 @@ root=Path(__file__).resolve().parents[1]
 def text(rel): return (root/rel).read_text(encoding='utf-8')
 
 version=text('VERSION').strip()
-assert version in {'4.1.6','4.1.7','4.1.8','4.1.9','4.1.10','4.1.11','4.1.12'}
+assert version in {'4.1.6','4.1.7','4.1.8','4.1.9','4.1.10','4.1.11','4.1.12','4.1.13'}
 assert f'"version": "{version}"' in text('apps/web/package.json')
 assert f'wamercio-store-v{version}' in text('apps/web/public/sw.js')
 

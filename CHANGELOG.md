@@ -1,3 +1,17 @@
+# WAMERCIO 4.1.13 — Voz → Video desde el Softphone
+
+- Las llamadas entrantes y salientes continúan iniciando siempre en voz.
+- Añade botón **Video** únicamente en el softphone y solo durante una llamada activa.
+- Añade **Cancelar video** durante negociación y **Volver a voz** cuando el video está activo.
+- Integra cámara del navegador y H.264 WebCodecs sobre un DataChannel `h264` del mismo WebRTC usado por Calls.
+- Integra H.264/SRTP con el relay WACalls existente y reanuncia los SSRC al activar video a mitad de llamada.
+- Implementa señalización WhatsApp de upgrade/accept/reject/enabled/stopped/cancel y ACK tipado `type=video`.
+- Rechaza automáticamente upgrades iniciados por el contacto; solamente WAMERCIO puede solicitar el cambio de voz a video.
+- Persiste `video_active`, `video_pending`, `video_local` y `video_remote` en metadata sin migraciones nuevas.
+- Mantiene el mismo PiP/softphone canónico de WAMERCIO para voz y video.
+
+---
+
 # WAMERCIO 4.1.12 — WhatsApp interno, bloqueo de contactos y PIN progresivo
 
 - Añade **Abrir chat de WhatsApp** directamente en la tabla **Clientes**.

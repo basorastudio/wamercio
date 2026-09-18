@@ -433,6 +433,8 @@ func (m *Manager) installHandler(s *Session) {
 			m.handleCallTerminate(s, v.From, v.Data)
 		case *events.CallReject:
 			m.handleCallTerminate(s, v.From, v.Data)
+		case *events.UnknownCallEvent:
+			m.handleUnknownCallEvent(s, v)
 		case *events.Message:
 			m.forwardMessage(s, v)
 		case *events.Receipt:

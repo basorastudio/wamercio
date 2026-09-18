@@ -3,7 +3,7 @@ root=Path(__file__).resolve().parents[1]
 def text(rel): return (root/rel).read_text(encoding='utf-8')
 
 version=text('VERSION').strip()
-assert version in {'4.1.7','4.1.8','4.1.9','4.1.10','4.1.11','4.1.12'}
+assert version in {'4.1.7','4.1.8','4.1.9','4.1.10','4.1.11','4.1.12','4.1.13'}
 assert f'"version": "{version}"' in text('apps/web/package.json')
 assert f'wamercio-store-v{version}' in text('apps/web/public/sw.js')
 
@@ -15,7 +15,7 @@ host=text('apps/web/components/calls-softphone-host.tsx')
 assert 'const softphoneSurface' in soft
 assert 'softphoneSurface()' in soft or 'softphoneSurface(true)' in soft
 assert 'openPictureInPicture' in host and ('void softphoneRef.current?.openPictureInPicture()' in host or 'openCanonicalPip()' in host)
-if version in {'4.1.8','4.1.9','4.1.10','4.1.11','4.1.12'}:
+if version in {'4.1.8','4.1.9','4.1.10','4.1.11','4.1.12','4.1.13'}:
     assert 'embeddedContent' not in soft
     assert 'softphoneSurface(false)' not in soft
 else:

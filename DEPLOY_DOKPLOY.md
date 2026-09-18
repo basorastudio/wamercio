@@ -250,3 +250,25 @@ Después del despliegue verifica:
 3. El icono de cerrar sesión sigue cerrando la sesión sin abrir el perfil.
 4. Los campos de teléfono/WhatsApp muestran bandera, código internacional y selector de país en Calls, Cotizaciones, POS, Reservaciones y Configuración global.
 5. El teclado del softphone muestra también el selector internacional dentro de Document PiP.
+## V4.1.13 — Video en WAMERCIO Calls
+
+V4.1.13 no agrega servicios ni puertos. El video utiliza el mismo `whatsapp-bridge` y el mismo rango UDP de WebRTC configurado para Calls.
+
+Requisitos adicionales del navegador:
+
+- HTTPS válido.
+- Permiso de cámara.
+- Navegador Chromium moderno con WebCodecs H.264.
+
+Si vienes de V4.1.12, reconstruye **API + WhatsApp Bridge + Web**. No hay migraciones PostgreSQL nuevas. Mantén `WAMERCIO_WEBRTC_EXTERNAL_IP`, `WAMERCIO_WEBRTC_UDP_PORT_MIN` y `WAMERCIO_WEBRTC_UDP_PORT_MAX` como estaban.
+
+Prueba recomendada después del deploy:
+
+1. Inicia una llamada de voz desde el softphone.
+2. Espera que quede **Activa** y confirma audio bidireccional.
+3. Pulsa **Video**.
+4. Acepta el cambio desde el teléfono WhatsApp.
+5. Confirma cámara local + video remoto.
+6. Pulsa **Volver a voz** y confirma que la llamada de audio continúa.
+7. Desde el teléfono intenta activar video por iniciativa del contacto y confirma que WAMERCIO conserva voz sin aceptar ese upgrade.
+

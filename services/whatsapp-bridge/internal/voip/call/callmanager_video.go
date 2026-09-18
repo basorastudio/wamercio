@@ -20,7 +20,7 @@ var (
 
 func (m *CallManager) setupVideoMediaLocked(sendKM, recvKM core.SrtpKeyingMaterial, ourDeviceJid, peerDeviceJid string) {
 	call := m.currentCall
-	if call == nil || call.MediaType != core.CallMediaTypeVideo {
+	if call == nil || call.StateData.VideoOff {
 		return
 	}
 	vsess, err := media.NewSrtpSession(sendKM, recvKM, core.SRTPSendAuthTagLen, core.SRTPRecvAuthTagLen)
@@ -42,6 +42,9 @@ func (m *CallManager) setupVideoMediaLocked(sendKM, recvKM core.SrtpKeyingMateri
 		peerSsrcs[i] = media.GenerateSecureSsrc(call.CallID, peerDeviceJid, slot)
 	}
 	m.relay.SetStreamSsrcs(selfSsrcs, peerSsrcs)
+	// Mid-call video is enabled after the relay was already registered for audio.
+	// Re-advertise the SSRC set so the relay starts forwarding the H.264 streams.
+	go m.relay.ResendSubscriptions()
 	m.log.Debug("video media set up", "self_video_ssrc", m.videoSelfSsrc,
 		"stream_ssrcs", len(selfSsrcs)+len(peerSsrcs))
 }

@@ -1,5 +1,6 @@
-# WAMERCIO 4.1.12
+# WAMERCIO 4.1.13
 
+> **V4.1.13:** WAMERCIO Calls incorpora upgrade de voz → video exclusivamente desde el softphone durante una llamada activa. Las llamadas siguen iniciando/entrando en voz, el agente puede solicitar video, volver a voz sin colgar y las solicitudes de upgrade iniciadas por el contacto se rechazan automáticamente. Consulta `HOTFIX_V4.1.13.md`.
 > **V4.1.12:** Clientes y Contactos abren el chat interno de WAMERCIO; Contactos incorpora bloqueo/desbloqueo con motivo y auditoría; Usuarios utiliza PIN progresivo por dígitos. Consulta `HOTFIX_V4.1.12.md`.
 
 > **V4.1.9:** conserva una sola superficie canónica Document-PiP y elimina también el estado alternativo de llamada entrante de la sidebar. Las entrantes intentan abrir/focalizar directamente el PiP oficial; si Chromium bloquea crear una nueva ventana sin activación del usuario, WAMERCIO mantiene la llamada pendiente y usa la siguiente interacción para abrir ese mismo PiP, sin clones. Consulta `HOTFIX_V4.1.9.md`.
