@@ -1,6 +1,9 @@
-# WAMERCIO 4.1.1
+# WAMERCIO 4.1.4
 
-Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher flotante, Picture-in-Picture con fallback modal, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.
+> **V4.1.4:** el softphone es global y persistente entre rutas. El launcher vive en la sidebar, las llamadas usan timeouts dedicados y el estado de una llamada entrante ya no debe reaparecer indefinidamente después de cerrar la interfaz. Consulta `HOTFIX_V4.1.4.md`.
+
+
+Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher integrado en la sidebar, Picture-in-Picture con fallback modal, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.
 
 Ver `IMPLEMENTACION_V4.1.1.md` y `DEPLOY_DOKPLOY.md`.
 

@@ -699,7 +699,7 @@ func (m *Manager) controlEmbeddedCall(w http.ResponseWriter, r *http.Request, ca
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Llamada activa no encontrada"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), 12*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
 	defer cancel()
 	var err error
 	switch action {

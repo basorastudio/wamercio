@@ -2,6 +2,7 @@ package call
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -176,10 +177,8 @@ func (m *CallManager) AcceptCall(ctx context.Context, callID string) error {
 		return &CallError{"no incoming call with id " + callID}
 	}
 	if !call.CanAccept() {
-		// Idempotent: if the call is already accepted/connecting/active or
-		// on hold, treat AcceptCall as a no-op so the UI doesn't surface a
-		// confusing "call cannot be accepted in state active" error when
-		// the operator clicks Accept twice or a duplicate SSE event fires.
+		// Idempotent: duplicate accept requests are harmless after the first
+		// successful transition.
 		st := call.StateData.State
 		if st == core.CallStateConnecting || st == core.CallStateActive || st == core.CallStateOnHold {
 			m.mu.Unlock()
@@ -188,23 +187,40 @@ func (m *CallManager) AcceptCall(ctx context.Context, callID string) error {
 		m.mu.Unlock()
 		return &CallError{"call cannot be accepted in state " + string(call.StateData.State)}
 	}
-	_ = call.ApplyTransition(Transition{Type: TransitionLocalAccepted})
-	m.emitState()
-	key := call.EncryptionKey
+	key := append([]byte(nil), call.EncryptionKey...)
 	peer := wanode.MustJID(call.PeerJid)
 	creator := wanode.MustJID(call.CallCreator)
 	isVideo := call.MediaType == core.CallMediaTypeVideo
-	relayData := call.RelayData
 	m.mu.Unlock()
 
-	if key != nil {
-		acceptNode, err := signaling.BuildAcceptStanza(ctx, m.sock, callID, key, peer, creator, isVideo)
-		if err != nil {
-			m.log.Error("build accept failed", "err", err)
-		} else if err := m.sock.SendNode(ctx, acceptNode); err != nil {
-			m.log.Error("accept send error", "err", err)
-		}
+	if len(key) == 0 {
+		return &CallError{"incoming call encryption key is unavailable"}
 	}
+	acceptNode, err := signaling.BuildAcceptStanza(ctx, m.sock, callID, key, peer, creator, isVideo)
+	if err != nil {
+		m.log.Error("build accept failed", "call_id", callID, "err", err)
+		return fmt.Errorf("build accept: %w", err)
+	}
+	if err := m.sock.SendNode(ctx, acceptNode); err != nil {
+		m.log.Error("accept send error", "call_id", callID, "err", err)
+		return fmt.Errorf("send accept: %w", err)
+	}
+
+	m.mu.Lock()
+	call = m.currentCall
+	if call == nil || call.CallID != callID {
+		m.mu.Unlock()
+		return &CallError{"incoming call ended while accepting"}
+	}
+	if call.CanAccept() {
+		if err := call.ApplyTransition(Transition{Type: TransitionLocalAccepted}); err != nil {
+			m.mu.Unlock()
+			return err
+		}
+		m.emitState()
+	}
+	relayData := call.RelayData
+	m.mu.Unlock()
 
 	if relayData != nil {
 		m.setupIncomingMedia(call, relayData)

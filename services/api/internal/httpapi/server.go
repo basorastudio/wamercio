@@ -4362,25 +4362,42 @@ func (s *Server) upload(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) bridgeReq(ctx context.Context, method, path string, body any) (map[string]any, error) {
+	return s.bridgeReqWithTimeout(ctx, method, path, body, 12*time.Second)
+}
+
+func (s *Server) bridgeReqWithTimeout(ctx context.Context, method, path string, body any, timeout time.Duration) (map[string]any, error) {
+	if timeout <= 0 {
+		timeout = 12 * time.Second
+	}
 	var rd io.Reader
 	if body != nil {
 		b, _ := json.Marshal(body)
-		rd = strings.NewReader(string(b))
+		rd = bytes.NewReader(b)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(s.cfg.WhatsAppBridgeURL, "/")+path, rd)
+	requestCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(requestCtx, method, strings.TrimRight(s.cfg.WhatsAppBridgeURL, "/")+path, rd)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Internal-Secret", s.cfg.InternalWebhookSecret)
-	resp, err := s.http.Do(req)
+	client := &http.Client{Timeout: timeout}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
 	var out map[string]any
-	_ = json.NewDecoder(resp.Body).Decode(&out)
+	_ = json.NewDecoder(io.LimitReader(resp.Body, 2<<20)).Decode(&out)
 	if resp.StatusCode >= 300 {
+		message := strings.TrimSpace(flowString(out["error"]))
+		if message == "" {
+			message = strings.TrimSpace(flowString(out["message"]))
+		}
+		if message != "" {
+			return out, fmt.Errorf("bridge status %d: %s", resp.StatusCode, message)
+		}
 		return out, fmt.Errorf("bridge status %d", resp.StatusCode)
 	}
 	return out, nil

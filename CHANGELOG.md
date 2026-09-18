@@ -1,3 +1,21 @@
+# WAMERCIO 4.1.4 — Calls runtime + UX estable
+
+- Reubica **Abrir softphone** desde el botón flotante inferior derecho a la sidebar, inmediatamente encima de la tarjeta del usuario.
+- Mueve el softphone a un único `CallsSoftphoneHost` montado en el layout raíz, evitando que se destruya/recree al navegar entre páginas.
+- Evita que una llamada entrante cerrada vuelva a abrir el modal de forma repetitiva; el descarte se comparte también entre pestañas del navegador mediante `localStorage`.
+- Mantiene el PiP y la llamada activos al navegar por WAMERCIO, sin overlays duplicados por pantalla.
+- Separa los timeouts de Calls del timeout HTTP genérico de 12 segundos: 40 s para iniciar llamada, 30 s para acciones y 15 s para WebRTC.
+- Propaga al frontend el error real del motor integrado en vez de un `502` genérico.
+- Persiste inmediatamente el estado devuelto por el motor (`ringing`, `connecting`, `active`, etc.) para que la UI no quede congelada en **Timbrando** si un webhook se retrasa.
+- Reconcilia automáticamente llamadas `ringing` o `connecting` obsoletas para que no bloqueen el softphone indefinidamente.
+- `AcceptCall` solo cambia localmente a **Conectando** después de construir y enviar correctamente el stanza `accept` a WhatsApp; los errores de cifrado/señalización ahora vuelven a la UI.
+- Amplía a 25 s el timeout interno para contestar/rechazar/colgar dentro del WhatsApp Bridge.
+- Agrega guardas contra doble marcado y mejora la transición Modal ↔ Picture-in-Picture.
+- Traduce estados visibles de PiP al español y muestra **Preparando llamada…** durante el establecimiento saliente.
+- No agrega migraciones ni dependencias externas de Calls.
+
+---
+
 # WAMERCIO 4.1.3 — Hotfix de compilación Calls/Clientes
 
 - Corrige `undefined: conversationID` en `listConversations`, error detectado por el build real de Go en Dokploy.

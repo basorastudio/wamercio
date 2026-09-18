@@ -3,6 +3,7 @@ import 'intl-tel-input/styles'
 import 'leaflet/dist/leaflet.css'
 import type {Metadata,Viewport} from 'next'
 import PWARegister from '@/components/pwa-register'
+import CallsSoftphoneHost from '@/components/calls-softphone-host'
 import {currentRequestHost,currentTenantStore,isPlatformRequestHost} from '@/lib/server-store-brand'
 
 const platformMetadata:Metadata={
@@ -31,4 +32,4 @@ export async function generateViewport():Promise<Viewport>{
   const store=await currentTenantStore()
   return{width:'device-width',initialScale:1,maximumScale:1,viewportFit:'cover',themeColor:store?.theme_config?.colors?.primary||store?.primary_color||'#36b385'}
 }
-export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="es"><body>{children}<PWARegister/></body></html>}
+export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="es"><body>{children}<CallsSoftphoneHost/><PWARegister/></body></html>}

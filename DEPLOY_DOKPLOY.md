@@ -121,3 +121,8 @@ Si ni siquiera timbra, revisa primero la sesión WhatsApp y los logs de señaliz
 ## Rollback
 
 4.1.0 no agrega tablas. Para volver a 4.0.1 basta restaurar el código/imagen anterior. No reviertas `000047` mientras uses cualquier versión 4.x que exponga Calls.
+
+## V4.1.4 — actualización de Calls
+
+No agrega migraciones. Reconstruye **api**, **whatsapp** y **web** porque la corrección toca las tres capas. El launcher del softphone ahora vive en la sidebar; no debe existir un botón flotante inferior derecho. Conserva `WAMERCIO_WEBRTC_EXTERNAL_IP`, el rango UDP y `WAMERCIO_CALLS_MAX_PER_STORE` de V4.1.0.
+

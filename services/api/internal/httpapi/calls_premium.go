@@ -25,7 +25,7 @@ func (s *Server) callSettings(w http.ResponseWriter, r *http.Request) {
 		var ring int
 		var strategy string
 		_ = s.db.QueryRow(r.Context(), `SELECT is_active,record_calls,transcribe_calls,ring_seconds,routing_strategy FROM store_call_settings WHERE store_id=$1`, storeID).Scan(&active, &record, &transcribe, &ring, &strategy)
-		engine, engineErr := s.bridgeReq(r.Context(), http.MethodGet, "/calls/status?store_id="+storeID, nil)
+		engine, engineErr := s.bridgeReqWithTimeout(r.Context(), http.MethodGet, "/calls/status?store_id="+storeID, nil, 5*time.Second)
 		embedded, _ := engine["engine_embedded"].(bool)
 		connected, _ := engine["session_connected"].(bool)
 		engineReady := engineErr == nil && embedded && connected
@@ -80,6 +80,14 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// Defensive reconciliation: if the bridge-to-core terminal event was lost,
+	// do not leave an old incoming call permanently marked as ringing. The
+	// embedded engine itself times unanswered calls out using ring_seconds; this
+	// mirrors that lifecycle in the persisted control plane with a small grace.
+	_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls c SET status='missed',ended_at=coalesce(ended_at,now()),updated_at=now() FROM store_call_settings cs WHERE c.store_id=$1 AND cs.store_id=c.store_id AND c.direction='in' AND c.status='ringing' AND c.started_at < now() - make_interval(secs => greatest(cs.ring_seconds,5)+15)`, storeID)
+	// A connecting call that never reaches active/ended must not block the dialer
+	// forever after a network interruption or a lost state callback.
+	_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=coalesce(ended_at,now()),updated_at=now(),metadata=metadata||jsonb_build_object('reconciled','stale_connecting') WHERE store_id=$1 AND status='connecting' AND started_at < now() - interval '3 minutes'`, storeID)
 	rows, err := s.db.Query(r.Context(), `SELECT c.id::text,coalesce(c.conversation_id::text,''),c.remote_jid,c.phone,c.display_name,c.direction,c.status,coalesce(c.assigned_staff_id::text,''),coalesce(sf.name,''),c.external_call_id,c.started_at,c.answered_at,c.ended_at,c.duration_seconds,c.recording_url,c.transcript,c.metadata FROM whatsapp_calls c LEFT JOIN store_staff sf ON sf.id=c.assigned_staff_id WHERE c.store_id=$1 ORDER BY c.started_at DESC LIMIT 250`, storeID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las llamadas")
@@ -154,10 +162,10 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{"call_id": id, "store_id": in.StoreID, "conversation_id": in.ConversationID, "remote_jid": remoteJID, "phone": in.Phone, "display_name": in.DisplayName, "assigned_staff_id": in.AssignedStaffID}
-	response, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls", payload)
+	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls", payload, 40*time.Second)
 	if err != nil {
 		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=now(),metadata=metadata||jsonb_build_object('engine_error',$1),updated_at=now() WHERE id=$2`, err.Error(), id)
-		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo iniciar la llamada")
+		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo iniciar la llamada: "+err.Error())
 		return
 	}
 	externalID := flowString(response["external_call_id"])
@@ -198,16 +206,22 @@ func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 	if externalCallID == "" {
 		externalCallID = id
 	}
-	response, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/"+action, map[string]any{"store_id": storeID, "assigned_staff_id": in.AssignedStaffID})
+	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/"+action, map[string]any{"store_id": storeID, "assigned_staff_id": in.AssignedStaffID}, 30*time.Second)
 	if err != nil {
-		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo ejecutar la acción")
+		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo ejecutar la acción: "+err.Error())
 		return
 	}
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, id, action, in.AssignedStaffID, mustJSON(response))
+	status := strings.TrimSpace(flowString(response["status"]))
+	if callStatuses[status] {
+		terminal := status == "completed" || status == "missed" || status == "rejected" || status == "failed"
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status=$1,answered_at=CASE WHEN $1='active' THEN coalesce(answered_at,now()) ELSE answered_at END,ended_at=CASE WHEN $2 THEN coalesce(ended_at,now()) ELSE ended_at END,updated_at=now() WHERE id=$3 AND store_id=$4`, status, terminal, id, storeID)
+	}
 	if action == "transfer" && strings.TrimSpace(in.AssignedStaffID) != "" {
 		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET assigned_staff_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.AssignedStaffID, id, storeID)
 	}
-	jsonOut(w, 200, map[string]any{"ok": true, "engine": response})
+	s.publishStoreEvent(r.Context(), storeID, "call", map[string]any{"call_id": id, "status": status, "action": action})
+	jsonOut(w, 200, map[string]any{"ok": true, "status": status, "engine": response})
 }
 
 func (s *Server) callWebRTC(w http.ResponseWriter, r *http.Request) {
@@ -228,9 +242,9 @@ func (s *Server) callWebRTC(w http.ResponseWriter, r *http.Request) {
 	if externalCallID == "" {
 		externalCallID = id
 	}
-	out, err := s.bridgeReq(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/webrtc", map[string]any{"store_id": storeID, "sdp_offer": in.SDPOffer})
+	out, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/webrtc", map[string]any{"store_id": storeID, "sdp_offer": in.SDPOffer}, 15*time.Second)
 	if err != nil {
-		jsonErr(w, 502, "No se pudo conectar el audio WebRTC con el motor integrado")
+		jsonErr(w, 502, "No se pudo conectar el audio WebRTC con el motor integrado: "+err.Error())
 		return
 	}
 	jsonOut(w, 200, out)

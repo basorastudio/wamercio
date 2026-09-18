@@ -29,6 +29,7 @@ const pipCss=`
 `
 
 const kindLabel=(kind:Exclude<DirectoryKind,'all'>)=>kind==='customer'?'Cliente':kind==='user'?'Usuario':'Contacto'
+const callStatusText=(status:string)=>({ringing:'Timbrando',connecting:'Conectando',active:'Activa',held:'En espera',transferred:'Transferida',completed:'Finalizada',missed:'Perdida',rejected:'Rechazada',failed:'Fallida'} as Record<string,string>)[status]||status
 
 const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   open:boolean
@@ -57,10 +58,13 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const[directoryKind,setDirectoryKind]=useState<DirectoryKind>('all')
   const[selectedTarget,setSelectedTarget]=useState<SoftphoneTarget|null>(null)
   const[pipWindow,setPipWindow]=useState<Window|null>(null)
+  const[pipOpening,setPipOpening]=useState(false)
   const[pipTransfer,setPipTransfer]=useState(false)
   const browserCall=useRef<WamercioBrowserCall|null>(null)
+  const dialingRef=useRef(false)
   const lastIncoming=useRef('')
   const wasOpen=useRef(false)
+  const previousStore=useRef('')
 
   const closeAudio=useCallback(()=>{
     browserCall.current?.close()
@@ -75,7 +79,19 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     const request=silent
       ?Promise.all([api(`/calls/settings?store_id=${storeId}`),api<any[]>(`/calls?store_id=${storeId}`)]).then(([s,c])=>{setSettings(s);setRows(c)})
       :Promise.all([api(`/calls/settings?store_id=${storeId}`),api<any[]>(`/calls?store_id=${storeId}`),api<any[]>(`/staff?store_id=${storeId}`),api<any[]>(`/customers?store_id=${storeId}`),api<any[]>(`/contacts?store_id=${storeId}`)]).then(([s,c,u,customerRows,contactRows])=>{setSettings(s);setRows(c);setStaff(u.filter((x:any)=>x.status==='active'&&x.role!=='delivery'));setCustomers(customerRows);setContacts(contactRows)})
-    request.then(()=>setError('')).catch((e:any)=>setError(e.message||'No se pudo cargar el softphone.')).finally(()=>{if(!silent)setLoading(false)})
+    request.then(()=>{if(!silent)setError('')}).catch((e:any)=>{if(!silent)setError(e.message||'No se pudo cargar el softphone.')}).finally(()=>{if(!silent)setLoading(false)})
+  },[storeId])
+
+  useEffect(()=>{
+    if(previousStore.current===storeId)return
+    previousStore.current=storeId
+    setRows([])
+    setSettings(null)
+    setStaff([])
+    setCustomers([])
+    setContacts([])
+    setError('')
+    lastIncoming.current=''
   },[storeId])
 
   useEffect(()=>{
@@ -104,7 +120,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   },[rows,audioCallId,closeAudio])
 
   const currentCall=useMemo(()=>rows.find(x=>['ringing','connecting','active','held','transferred'].includes(x.status))||null,[rows])
-  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;window.dispatchEvent(new CustomEvent('wamercio:incoming-call',{detail:{id:currentCall.id,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id}}))},[currentCall])
+  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;window.dispatchEvent(new CustomEvent('wamercio:incoming-call',{detail:{id:currentCall.id,store_id:storeId,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id}}))},[currentCall,storeId])
 
   const directory=useMemo<DirectoryItem[]>(()=>{
     const customerItems=customers.map((x:any)=>({id:`customer:${x.id}`,kind:'customer' as const,name:x.name||x.whatsapp_name||x.phone||'Cliente',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.whatsapp_name&&x.whatsapp_name!==x.name?`WhatsApp: ${x.whatsapp_name}`:'Cliente WAMERCIO',avatar_url:x.profile_picture_url,conversation_id:x.conversation_id||''}))
@@ -144,18 +160,26 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     const phone=String(chosen.phone||form.phone||'').replace(/\D/g,'')
     const targetStore=storeIdOverride||storeId
     if(!targetStore||!phone)return
+    if(dialingRef.current)return
     if(currentCall){setError('Ya existe una llamada activa. Finalízala o transfiérela antes de iniciar otra.');return}
+    dialingRef.current=true
     setBusy(true)
     setError('')
     try{
       const created=await api<any>('/calls',{method:'POST',body:JSON.stringify({store_id:targetStore,phone,display_name:chosen.display_name||form.display_name||'',conversation_id:chosen.conversation_id||form.conversation_id||''})})
       setForm({phone,display_name:chosen.display_name||form.display_name||'',conversation_id:chosen.conversation_id||form.conversation_id||''})
       setSelectedTarget({...chosen,phone})
-      await connectAudio(created.id)
-      load(true)
+      await load(true)
+      try{
+        await connectAudio(created.id)
+      }catch{
+        // The WhatsApp call can keep ringing even if the local browser audio
+        // negotiation fails. connectAudio already exposes the actionable error.
+      }
     }catch(e:any){
       setError(e.message||'No se pudo iniciar la llamada.')
     }finally{
+      dialingRef.current=false
       setBusy(false)
     }
   },[selectedTarget,form,storeId,load,currentCall])
@@ -165,13 +189,15 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const action=async(x:any,a:string,assigned_staff_id='')=>{
     setError('')
     try{
-      await api(`/calls/${x.id}`,{method:'PATCH',body:JSON.stringify({action:a,assigned_staff_id})})
+      const result=await api<any>(`/calls/${x.id}`,{method:'PATCH',body:JSON.stringify({action:a,assigned_staff_id})})
+      const nextStatus=String(result?.status||result?.engine?.status||'').trim()
+      if(nextStatus)setRows(v=>v.map(row=>row.id===x.id?{...row,status:nextStatus,assigned_staff_id:assigned_staff_id||row.assigned_staff_id}:row))
       if(a==='answer')await connectAudio(x.id)
       if(a==='hangup'||a==='reject'||a==='transfer')closeAudio()
       setTransferFor(null)
       setTransferStaff('')
       setPipTransfer(false)
-      setTimeout(()=>load(true),350)
+      window.setTimeout(()=>{void load(true)},250)
     }catch(e:any){
       setError(e.message||'No se pudo ejecutar la acción de llamada.')
     }
@@ -182,19 +208,22 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     const manager=(window as any).documentPictureInPicture
     if(!manager?.requestWindow)return false
     if(pipWindow&&!pipWindow.closed){pipWindow.focus();return true}
+    setPipOpening(true)
     try{
       const win=await manager.requestWindow({width:380,height:640}) as Window
       win.document.title='WAMERCIO Softphone'
       const style=win.document.createElement('style')
       style.textContent=pipCss
       win.document.head.appendChild(style)
-      win.addEventListener('pagehide',()=>{setPipWindow(null);onClose()},{once:true})
+      win.addEventListener('pagehide',()=>{setPipWindow(null);setPipOpening(false);onClose()},{once:true})
       setPipWindow(win)
       return true
     }catch{
       return false
+    }finally{
+      setPipOpening(false)
     }
-  },[pipWindow])
+  },[pipWindow,onClose])
 
   useImperativeHandle(ref,()=>({
     openPictureInPicture,
@@ -233,17 +262,17 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const activeControls=(dark=false)=>{
     if(!currentCall)return null
     if(dark)return <>
-      <div className="wam-contact"><div className="avatar">{(currentCall.display_name||currentCall.phone||'?').slice(0,2).toUpperCase()}</div><h1>{currentCall.display_name||currentCall.phone||'Contacto WhatsApp'}</h1><p>{currentCall.phone||''} · {currentCall.direction==='out'?'Saliente':'Entrante'}</p><div className="wam-timer">{currentCall.duration_seconds||0}s · {currentCall.status}</div></div>
+      <div className="wam-contact"><div className="avatar">{(currentCall.display_name||currentCall.phone||'?').slice(0,2).toUpperCase()}</div><h1>{currentCall.display_name||currentCall.phone||'Contacto WhatsApp'}</h1><p>{currentCall.phone||''} · {currentCall.direction==='out'?'Saliente':'Entrante'}</p><div className="wam-timer">{currentCall.duration_seconds||0}s · {callStatusText(currentCall.status)}</div></div>
       {pipTransfer&&<div className="wam-transfer"><select value={transferStaff} onChange={e=>setTransferStaff(e.target.value)}><option value="">Selecciona un agente</option>{staff.map(x=><option key={x.id} value={x.id}>{x.name} {x.last_name||''}</option>)}</select><div className="row"><button onClick={()=>setPipTransfer(false)}>Cancelar</button><button className="primary" disabled={!transferStaff} onClick={()=>action(currentCall,'transfer',transferStaff)}>Transferir</button></div></div>}
       {!pipTransfer&&<div className="wam-controls">{currentCall.direction==='in'&&currentCall.status==='ringing'&&<><button className="active" onClick={()=>action(currentCall,'answer')}><PhoneIncoming size={18}/>Contestar</button><button className="danger" onClick={()=>action(currentCall,'reject')}><PhoneOff size={18}/>Rechazar</button></>}{['ringing','connecting','active','held','transferred'].includes(currentCall.status)&&audioCallId!==currentCall.id&&<button className="wide" disabled={audioBusy===currentCall.id} onClick={()=>connectAudio(currentCall.id)}><RotateCw size={16}/>{audioBusy===currentCall.id?'Conectando...':'Conectar audio'}</button>}{audioCallId===currentCall.id&&<button className={muted?'active':''} onClick={toggleMute}>{muted?<MicOff size={18}/>:<Mic size={18}/>} {muted?'Activar':'Silenciar'}</button>}{currentCall.status==='active'&&<button onClick={()=>action(currentCall,'hold')}><Pause size={18}/>Espera</button>}{currentCall.status==='held'&&<button onClick={()=>action(currentCall,'resume')}><Play size={18}/>Reanudar</button>}{['active','held'].includes(currentCall.status)&&<button onClick={()=>setPipTransfer(true)}><ArrowRightLeft size={18}/>Transferir</button>}<button onClick={()=>{window.focus();pipWindow?.close()}}><ExternalLink size={18}/>Aplicación</button>{['active','held','connecting','ringing','transferred'].includes(currentCall.status)&&<button className="danger" onClick={()=>action(currentCall,'hangup')}><PhoneOff size={18}/>Colgar</button>}</div>}
     </>
     return <div className="rounded-3xl border border-[#dfe5ea] bg-[#f8fafb] p-4"><div className="flex items-start gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand-50 text-brand-600"><PhoneCall className="h-5 w-5"/></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><strong className="truncate text-sm text-ink-900">{currentCall.display_name||currentCall.phone||'Contacto WhatsApp'}</strong><Status value={currentCall.status}/>{audioCallId===currentCall.id&&<span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">Audio conectado</span>}</div><div className="mt-1 text-[11px] text-[#9aa0b4]">{currentCall.direction==='out'?'Saliente':'Entrante'} · {dateTime(currentCall.started_at)} · {currentCall.duration_seconds||0}s{currentCall.assigned_staff_name?` · ${currentCall.assigned_staff_name}`:''}</div>{(currentCall.recording_url||currentCall.transcript)&&<div className="mt-2 flex flex-wrap gap-2">{currentCall.recording_url&&<a href={currentCall.recording_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-brand-700"><ExternalLink className="h-3.5 w-3.5"/>Grabación</a>}{currentCall.transcript&&<span title={currentCall.transcript} className="inline-flex max-w-[360px] items-center gap-1 truncate text-[11px] text-[#6f758a]"><FileText className="h-3.5 w-3.5 shrink-0"/>{currentCall.transcript}</span>}</div>}</div></div><div className="mt-4 flex flex-wrap gap-2">{currentCall.direction==='in'&&currentCall.status==='ringing'&&<><button className="btn-primary" onClick={()=>{void openPictureInPicture();void action(currentCall,'answer')}}><PhoneIncoming className="h-4 w-4"/>Contestar</button><button className="btn-secondary text-rose-700" onClick={()=>action(currentCall,'reject')}><PhoneOff className="h-4 w-4"/>Rechazar</button></>}{['ringing','connecting','active','held','transferred'].includes(currentCall.status)&&audioCallId!==currentCall.id&&<button disabled={audioBusy===currentCall.id} className="btn-secondary" onClick={()=>connectAudio(currentCall.id)}><Mic className="h-4 w-4"/>{audioBusy===currentCall.id?'Conectando...':'Conectar audio'}</button>}{audioCallId===currentCall.id&&<button className={`btn-secondary ${muted?'text-amber-700':''}`} onClick={toggleMute}>{muted?<MicOff className="h-4 w-4"/>:<Mic className="h-4 w-4"/>}{muted?'Activar micrófono':'Silenciar'}</button>}{currentCall.status==='active'&&<button className="btn-secondary" onClick={()=>action(currentCall,'hold')}><Pause className="h-4 w-4"/>Espera</button>}{currentCall.status==='held'&&<button className="btn-secondary" onClick={()=>action(currentCall,'resume')}><Play className="h-4 w-4"/>Reanudar</button>}{['active','held'].includes(currentCall.status)&&<button className="btn-secondary" onClick={()=>setTransferFor(currentCall)}><ArrowRightLeft className="h-4 w-4"/>Transferir</button>}{['active','held','connecting','ringing','transferred'].includes(currentCall.status)&&<button className="btn-secondary text-rose-700" onClick={()=>action(currentCall,'hangup')}><PhoneOff className="h-4 w-4"/>Colgar</button>}</div></div>
   }
 
-  const pipContent=pipWindow&&!pipWindow.closed?createPortal(<div className="wam-pip"><div className="wam-card"><div className="wam-head"><div><div className="wam-brand">WAMERCIO</div><div className="wam-status">{currentCall?'Llamada WhatsApp activa':'Softphone · disponible'}</div></div><button className="wam-icon" title="Volver a la aplicación" onClick={()=>{window.focus();pipWindow.close()}}><ExternalLink size={17}/></button></div>{currentCall?activeControls(true):<><div className="wam-tabs"><button className={tab==='directory'?'active':''} onClick={()=>setTab('directory')}><BookUser size={15}/>Directorio</button><button className={tab==='keypad'?'active':''} onClick={()=>setTab('keypad')}><Keyboard size={15}/>Teclado</button></div>{tab==='directory'?directoryPanel(true):keypadPanel(true)}<div className="wam-foot">{selectedTargetPanel(true)}<button className="wam-call" disabled={!settings?.is_active||busy||!form.phone.trim()} onClick={()=>void startCall()}><PhoneCall size={16}/>{busy?'Llamando...':'Llamar ahora'}</button></div></>}</div></div>,pipWindow.document.body):null
+  const pipContent=pipWindow&&!pipWindow.closed?createPortal(<div className="wam-pip"><div className="wam-card"><div className="wam-head"><div><div className="wam-brand">WAMERCIO</div><div className="wam-status">{currentCall?'Llamada WhatsApp activa':busy?'Preparando llamada…':'Softphone · disponible'}</div></div><button className="wam-icon" title="Volver a la aplicación" onClick={()=>{window.focus();pipWindow.close()}}><ExternalLink size={17}/></button></div>{error&&<div style={{margin:'10px 12px 0',border:'1px solid rgba(248,113,113,.35)',borderRadius:12,background:'rgba(127,29,29,.35)',padding:'9px 10px',fontSize:10,fontWeight:800,color:'#fecaca'}}>{error}</div>}{currentCall?activeControls(true):busy?<div className="wam-contact"><div className="avatar">{(selectedTarget?.display_name||form.display_name||form.phone||'?').slice(0,2).toUpperCase()}</div><h1>{selectedTarget?.display_name||form.display_name||form.phone||'Contacto WhatsApp'}</h1><p>{form.phone||selectedTarget?.phone||''} · Saliente</p><div className="wam-timer">Preparando llamada…</div></div>:<><div className="wam-tabs"><button className={tab==='directory'?'active':''} onClick={()=>setTab('directory')}><BookUser size={15}/>Directorio</button><button className={tab==='keypad'?'active':''} onClick={()=>setTab('keypad')}><Keyboard size={15}/>Teclado</button></div>{tab==='directory'?directoryPanel(true):keypadPanel(true)}<div className="wam-foot">{selectedTargetPanel(true)}<button className="wam-call" disabled={!settings?.is_active||busy||!form.phone.trim()} onClick={()=>void startCall()}><PhoneCall size={16}/>{busy?'Llamando...':'Llamar ahora'}</button></div></>}</div></div>,pipWindow.document.body):null
 
   return <>
-    <Modal open={open&&!pipWindow} onClose={onClose} title={title} subtitle={subtitle} wide>
+    <Modal open={open&&!pipWindow&&!pipOpening} onClose={onClose} title={title} subtitle={subtitle} wide>
       {!storeId?<div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">Selecciona primero una tienda para utilizar el softphone.</div>:loading&&!settings?<Loading/>:<div className="space-y-4">
         {error&&<Alert text={error}/>}
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e8ebef] bg-[#fbfcfd] p-3"><div className="flex items-center gap-3"><span className={`grid h-10 w-10 place-items-center rounded-2xl ${settings?.engine_ready?'bg-emerald-50 text-emerald-700':'bg-amber-50 text-amber-700'}`}><Radio className="h-4 w-4"/></span><div><div className="text-sm font-semibold text-ink-900">{settings?.engine_ready?'Motor integrado listo':'Motor esperando sesión WhatsApp'}</div><div className="text-xs text-[#8d92aa]">{settings?.is_active?'Calls activo para este negocio':'WAMERCIO Calls está desactivado'}</div></div></div><div className="flex gap-2"><button type="button" onClick={()=>void openPictureInPicture()} className="btn-secondary"><ExternalLink className="h-4 w-4"/>Ventana flotante</button><a href="/calls" className="btn-secondary"><PhoneCall className="h-4 w-4"/>Centro de llamadas</a></div></div>
