@@ -1,3 +1,15 @@
+# WAMERCIO 4.1.11 — Perfil desde sidebar + International Telephone Input global
+
+- Elimina el enlace independiente **Mi cuenta** del grupo Cuenta de la sidebar.
+- La tarjeta inferior del usuario (foto, nombre y WhatsApp) abre ahora `/settings/profile`; el botón de cerrar sesión permanece independiente.
+- Estandariza los campos de WhatsApp/teléfono con el componente `PhoneInput` basado en `@intl-tel-input/react` + `intl-tel-input`.
+- Añade International Telephone Input a Calls, softphone/marcador, Cotizaciones, POS, Reservaciones y WhatsApp de soporte global.
+- Mantiene país inicial automático con fallback República Dominicana, selector de bandera, código separado, búsqueda de país, formato internacional y validación.
+- El Document Picture-in-Picture del softphone clona las hojas de estilo de WAMERCIO para que el selector internacional funcione también dentro de la ventana PiP.
+- Añade variante oscura de `PhoneInput` compatible con el diseño del softphone.
+
+---
+
 # WAMERCIO 4.1.10 — Incoming Call UX + WhatsApp Avatar
 
 - Corrige la foto del perfil de WhatsApp en llamadas salientes: Chat, Clientes y Contactos pasan `avatar_url` al softphone y el API la persiste en `whatsapp_calls.metadata`.

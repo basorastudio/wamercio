@@ -102,3 +102,16 @@ button,a,input,select,textarea { touch-action:manipulation; }
 .customer-map-marker-tip { position:absolute; z-index:1; left:50%; bottom:5px; width:18px; height:18px; transform:translateX(-50%) rotate(45deg); border-right:4px solid #fff; border-bottom:4px solid #fff; border-radius:2px; background:#36b385; box-shadow:3px 3px 8px rgba(30,41,59,.16); }
 .leaflet-container { font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
 .leaflet-control-zoom a { color:#2e3154 !important; }
+
+/* intl-tel-input: dark softphone variant */
+.wamercio-phone-input--dark .iti { width:100%; }
+.wamercio-phone-input--dark .wamercio-phone-control-dark { width:100%; min-height:46px; border:1px solid rgba(255,255,255,.10); border-radius:15px; outline:none; background:rgba(255,255,255,.055); color:#fff; padding:0 12px; font-size:14px; font-weight:800; }
+.wamercio-phone-input--dark .wamercio-phone-control-dark:focus { border-color:rgba(119,227,198,.60); box-shadow:0 0 0 3px rgba(0,168,132,.14); }
+.wamercio-phone-input--dark .iti__selected-country { background:transparent; color:#fff; }
+.wamercio-phone-input--dark .iti__selected-dial-code { color:rgba(255,255,255,.72); }
+.wamercio-phone-input--dark .iti__arrow { border-top-color:rgba(255,255,255,.65); }
+.wamercio-phone-input--dark .iti__dropdown-content { background:#17332c; border-color:rgba(255,255,255,.12); }
+.wamercio-phone-input--dark .iti__search-input { background:#10241f; border-color:rgba(255,255,255,.12); color:#fff; }
+.wamercio-phone-input--dark .iti__country-name { color:#fff; }
+.wamercio-phone-input--dark .iti__dial-code { color:rgba(255,255,255,.52); }
+.wamercio-phone-input--dark .iti__country.iti__highlight { background:rgba(0,168,132,.18); }

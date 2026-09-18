@@ -215,3 +215,17 @@ Después del despliegue prueba en este orden:
 3. Realiza una llamada entrante: debe aparecer directamente dentro del softphone, con **Contestar** y **Rechazar**, sin el modal blanco.
 4. Pulsa **Contestar**. El audio debe conectarse automáticamente; si hace falta reconectar, el botón aparece después de la aceptación.
 5. Pulsa **Colgar**. El softphone debe volver al directorio y no reabrir la llamada finalizada.
+
+## V4.1.11 — perfil en sidebar + International Telephone Input
+
+Si vienes de V4.1.10, esta actualización solo modifica `apps/web` y documentación/pruebas. No agrega migraciones ni cambia API o WhatsApp Bridge.
+
+En Dokploy basta con reconstruir/redeploy **Web**.
+
+Después del despliegue verifica:
+
+1. La sidebar ya no contiene un elemento independiente **Mi cuenta**.
+2. Al pulsar foto/nombre/WhatsApp de la tarjeta inferior se abre `/settings/profile`.
+3. El icono de cerrar sesión sigue cerrando la sesión sin abrir el perfil.
+4. Los campos de teléfono/WhatsApp muestran bandera, código internacional y selector de país en Calls, Cotizaciones, POS, Reservaciones y Configuración global.
+5. El teclado del softphone muestra también el selector internacional dentro de Document PiP.

@@ -49,9 +49,11 @@ type PhoneInputProps={
   id?:string
   name?:string
   className?:string
+  variant?:'default'|'dark'
+  hideValidationMessage?:boolean
 }
 
-export default function PhoneInput({value,onChange,onValidityChange,required=false,disabled=false,autoFocus=false,placeholder,id,name,className=''}:PhoneInputProps){
+export default function PhoneInput({value,onChange,onValidityChange,required=false,disabled=false,autoFocus=false,placeholder,id,name,className='',variant='default',hideValidationMessage=false}:PhoneInputProps){
   const inputRef=useRef<IntlTelInputRef>(null)
   const [touched,setTouched]=useState(false)
   const [valid,setValid]=useState(!required||!value)
@@ -65,7 +67,8 @@ export default function PhoneInput({value,onChange,onValidityChange,required=fal
     onValidityChange?.(next)
   }
 
-  return <div className={`wamercio-phone-input ${className}`}>
+  const dark=variant==='dark'
+  return <div className={`wamercio-phone-input ${dark?'wamercio-phone-input--dark':''} ${className}`}>
     <IntlTelInput
       ref={inputRef}
       value={normalizedValue}
@@ -95,10 +98,10 @@ export default function PhoneInput({value,onChange,onValidityChange,required=fal
         autoComplete:'tel',
         inputMode:'tel',
         ...(placeholder?{placeholder}:{}),
-        className:`field wamercio-phone-control ${touched&&!valid&&value?'!border-rose-300 !ring-4 !ring-rose-100':''}`,
+        className:`${dark?'wamercio-phone-control-dark':'field wamercio-phone-control'} ${touched&&!valid&&value?(dark?'!border-rose-400':'!border-rose-300 !ring-4 !ring-rose-100'):''}`,
         onBlur:()=>setTouched(true),
       }}
     />
-    {touched&&value&&!valid&&<p className="mt-1.5 text-xs text-rose-600">Revisa el número y el código de país.</p>}
+    {!hideValidationMessage&&touched&&value&&!valid&&<p className={`mt-1.5 text-xs ${dark?'text-rose-300':'text-rose-600'}`}>Revisa el número y el código de país.</p>}
   </div>
 }

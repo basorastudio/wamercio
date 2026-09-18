@@ -1,4 +1,4 @@
-# WAMERCIO 4.1.10
+# WAMERCIO 4.1.11
 
 > **V4.1.9:** conserva una sola superficie canónica Document-PiP y elimina también el estado alternativo de llamada entrante de la sidebar. Las entrantes intentan abrir/focalizar directamente el PiP oficial; si Chromium bloquea crear una nueva ventana sin activación del usuario, WAMERCIO mantiene la llamada pendiente y usa la siguiente interacción para abrir ese mismo PiP, sin clones. Consulta `HOTFIX_V4.1.9.md`.
 > **V4.1.7:** Unificación de controles por estado y cronómetro desde `answered_at`, siguiendo el patrón operativo del softphone de Hierro del Norte. Consulta `HOTFIX_V4.1.7.md`.
