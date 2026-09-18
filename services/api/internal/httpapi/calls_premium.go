@@ -50,6 +50,46 @@ func preserveCallProgress(persisted, incoming string) string {
 	return incoming
 }
 
+func (s *Server) resolveCallIdentity(ctx context.Context, storeID, remoteJID, phone, fallback string) (conversationID, displayName, avatarURL string) {
+	normalized := normalizePhone(phone)
+	// Prefer the tenant relationship and the platform/customer identity over the
+	// WhatsApp push name. This mirrors the contact naming rules used by the chat.
+	err := s.db.QueryRow(ctx, `
+		SELECT c.id::text,
+		       coalesce(nullif(c.contact_name,''),nullif(cu.name,''),
+		                nullif(trim(concat_ws(' ',gc.name,nullif(gc.last_name,''))),''),
+		                nullif(c.whatsapp_name,''),nullif(c.display_name,''),$4),
+		       coalesce(nullif(gc.profile_picture_url,''),nullif(c.profile_picture_url,''),'')
+		FROM conversations c
+		LEFT JOIN customers cu ON cu.id=c.customer_id
+		LEFT JOIN global_customers gc ON gc.id=cu.global_customer_id
+		WHERE c.store_id=$1
+		  AND (
+		    ($2<>'' AND c.remote_jid=$2)
+		    OR ($3<>'' AND regexp_replace(coalesce(c.whatsapp_phone,''),'[^0-9]','','g')=$3)
+		    OR ($3<>'' AND regexp_replace(coalesce(cu.phone,''),'[^0-9]','','g')=$3)
+		  )
+		ORDER BY CASE WHEN $2<>'' AND c.remote_jid=$2 THEN 0 ELSE 1 END,
+		         c.updated_at DESC
+		LIMIT 1`, storeID, remoteJID, normalized, strings.TrimSpace(fallback)).Scan(&conversationID, &displayName, &avatarURL)
+	if err == nil {
+		return conversationID, displayName, avatarURL
+	}
+	// A customer can exist before a conversation is linked. Resolve that local
+	// customer by phone so inbound calls still show the WAMERCIO customer name.
+	_ = s.db.QueryRow(ctx, `
+		SELECT coalesce(nullif(cu.name,''),nullif(trim(concat_ws(' ',gc.name,nullif(gc.last_name,''))),''),$3),
+		       coalesce(nullif(gc.profile_picture_url,''),'')
+		FROM customers cu
+		LEFT JOIN global_customers gc ON gc.id=cu.global_customer_id
+		WHERE cu.store_id=$1
+		  AND $2<>''
+		  AND regexp_replace(coalesce(cu.phone,''),'[^0-9]','','g')=$2
+		ORDER BY cu.updated_at DESC
+		LIMIT 1`, storeID, normalized, strings.TrimSpace(fallback)).Scan(&displayName, &avatarURL)
+	return conversationID, displayName, avatarURL
+}
+
 func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
 	if strings.TrimSpace(storeID) == "" {
 		return
@@ -220,8 +260,28 @@ func (s *Server) listCalls(w http.ResponseWriter, r *http.Request) {
 		var duration int
 		var raw []byte
 		if rows.Scan(&id, &conversationID, &jid, &phone, &name, &direction, &status, &staffID, &staffName, &externalID, &started, &answered, &ended, &duration, &recording, &transcript, &raw) == nil {
-			var metadata any = map[string]any{}
+			metadata := map[string]any{}
 			_ = json.Unmarshal(raw, &metadata)
+			// Self-heal a live inbound row created by an older bridge/API build so
+			// the softphone immediately uses the same customer identity as Chat.
+			if direction == "in" && !callStatusTerminal(status) {
+				resolvedConversationID, resolvedName, resolvedAvatar := s.resolveCallIdentity(r.Context(), storeID, jid, phone, name)
+				changed := false
+				if conversationID == "" && resolvedConversationID != "" {
+					conversationID = resolvedConversationID
+					changed = true
+				}
+				if strings.TrimSpace(resolvedName) != "" && resolvedName != name {
+					name = resolvedName
+					changed = true
+				}
+				if resolvedAvatar != "" {
+					metadata["avatar_url"] = resolvedAvatar
+				}
+				if changed {
+					_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET conversation_id=coalesce(NULLIF($1,'')::uuid,conversation_id),display_name=coalesce(NULLIF($2,''),display_name),metadata=metadata||$3::jsonb,updated_at=now() WHERE id=$4 AND store_id=$5`, conversationID, name, mustJSON(metadata), id, storeID)
+				}
+			}
 			out = append(out, map[string]any{"id": id, "conversation_id": conversationID, "remote_jid": jid, "phone": phone, "display_name": name, "direction": direction, "status": status, "assigned_staff_id": staffID, "assigned_staff_name": staffName, "external_call_id": externalID, "started_at": started, "answered_at": answered, "ended_at": ended, "duration_seconds": duration, "recording_url": recording, "transcript": transcript, "metadata": metadata})
 		}
 	}
@@ -430,6 +490,19 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 	if in.Direction != "out" {
 		in.Direction = "in"
 	}
+	resolvedConversationID, resolvedName, resolvedAvatar := s.resolveCallIdentity(r.Context(), in.StoreID, in.RemoteJID, in.Phone, in.DisplayName)
+	if strings.TrimSpace(in.ConversationID) == "" && resolvedConversationID != "" {
+		in.ConversationID = resolvedConversationID
+	}
+	if strings.TrimSpace(resolvedName) != "" {
+		in.DisplayName = resolvedName
+	}
+	if resolvedAvatar != "" {
+		if in.Metadata == nil {
+			in.Metadata = map[string]any{}
+		}
+		in.Metadata["avatar_url"] = resolvedAvatar
+	}
 	if in.CallID == "" && in.ExternalCallID != "" {
 		_ = s.db.QueryRow(r.Context(), `SELECT id::text FROM whatsapp_calls WHERE store_id=$1 AND external_call_id=$2 ORDER BY started_at DESC LIMIT 1`, in.StoreID, in.ExternalCallID).Scan(&in.CallID)
 	}
@@ -451,7 +524,7 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 	in.Status = preserveCallProgress(persistedStatus, in.Status)
 	answeredSQL := "answered_at"
 	ended := callStatusTerminal(in.Status)
-	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID)
+	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,conversation_id=coalesce(NULLIF($10,'')::uuid,conversation_id),remote_jid=coalesce(NULLIF($11,''),remote_jid),phone=coalesce(NULLIF($12,''),phone),display_name=coalesce(NULLIF($13,''),display_name),updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), strings.TrimSpace(in.DisplayName))
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,actor_staff_id,metadata) VALUES($1,$2,NULLIF($3,'')::uuid,$4::jsonb)`, in.CallID, in.Status, in.AssignedStaffID, mustJSON(in.Metadata))
 	s.publishStoreEvent(r.Context(), in.StoreID, "call", map[string]any{"call_id": in.CallID, "status": in.Status})
 	if strings.TrimSpace(in.RecordingURL) != "" {

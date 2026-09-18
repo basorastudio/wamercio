@@ -1,3 +1,15 @@
+# WAMERCIO 4.1.8 — Single PiP Softphone + Caller Identity
+
+- Elimina el softphone embebido/fallback duplicado.
+- Mantiene una sola superficie oficial: el Document Picture-in-Picture de WAMERCIO.
+- Una llamada entrante intenta abrir ese mismo PiP; si el navegador bloquea la apertura automática, la sidebar muestra una alerta compacta y al pulsarla abre el PiP oficial.
+- Resuelve llamadas entrantes contra Conversaciones, Clientes e Identidad Global antes de usar el nombre de WhatsApp.
+- Persiste `conversation_id`, teléfono y nombre resuelto en `whatsapp_calls`.
+- Propaga el avatar conocido del cliente en metadata para mostrarlo dentro del softphone.
+- No agrega migraciones.
+
+---
+
 # WAMERCIO 4.1.7 — Softphone UI State Sync
 
 - Unifica la vista manual, automática y Picture-in-Picture sobre el mismo componente visual del softphone.

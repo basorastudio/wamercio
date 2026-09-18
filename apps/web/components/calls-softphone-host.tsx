@@ -35,6 +35,7 @@ export default function CallsSoftphoneHost(){
         avatar_url:String(detail.avatar_url||''),
       }:null
       setIncomingCallId('')
+      window.dispatchEvent(new CustomEvent('wamercio:call-attention-clear'))
       setTarget(nextTarget)
       setOpen(true)
 
@@ -64,11 +65,24 @@ export default function CallsSoftphoneHost(){
         kind:'contact',
       })
       setOpen(true)
-      // Reutiliza exactamente el mismo softphone. Si el navegador permite abrir
-      // Document Picture-in-Picture sin una nueva interacción del usuario, se
-      // usa esa ventana; si el navegador lo bloquea por seguridad, queda el
-      // fallback embebido con el mismo contenido, controles y dimensiones.
-      void softphoneRef.current?.openPictureInPicture()
+      // Incoming calls always target the one canonical Document-PiP softphone.
+      // Chromium may require a transient user activation for requestWindow().
+      // If automatic PiP is blocked, do NOT render a second softphone: surface
+      // a compact attention state in the sidebar and reuse this same PiP when
+      // the agent clicks it.
+      void softphoneRef.current?.openPictureInPicture().then(opened=>{
+        if(opened){
+          window.dispatchEvent(new CustomEvent('wamercio:call-attention-clear'))
+          return
+        }
+        window.dispatchEvent(new CustomEvent('wamercio:incoming-call-attention',{detail:{id,store_id:nextStore,phone:String(detail.phone||'').replace(/\D/g,''),display_name:String(detail.display_name||'')}}))
+        try{
+          if('Notification' in window&&Notification.permission==='granted'){
+            const label=String(detail.display_name||detail.phone||'Contacto WhatsApp')
+            new Notification('Llamada entrante en WAMERCIO',{body:label,tag:`wamercio-call-${id}`})
+          }
+        }catch{}
+      })
     }
 
     const onStorage=(event:StorageEvent)=>{
@@ -95,6 +109,7 @@ export default function CallsSoftphoneHost(){
     }
     setOpen(false)
     setIncomingCallId('')
+    if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('wamercio:call-attention-clear'))
   }
 
   return <CallsSoftphone

@@ -1,15 +1,14 @@
-# WAMERCIO 4.1.7 — Softphone UI State Sync
+# WAMERCIO 4.1.8 — Single PiP Softphone + Caller Identity
 
-Esta versión mantiene las correcciones de ciclo de vida de V4.1.6 y unifica la experiencia del softphone manual, automático y Picture-in-Picture. **No agrega migraciones ni variables obligatorias nuevas.**
+Esta versión mantiene el ciclo de llamadas de V4.1.6/V4.1.7, elimina el softphone embebido duplicado y hace que las llamadas entrantes utilicen la identidad Cliente/Contacto de WAMERCIO. **No agrega migraciones ni variables obligatorias nuevas.**
 
-## Validación visual obligatoria V4.1.7
+## Validación visual obligatoria V4.1.8
 
-1. Abre manualmente **Abrir softphone** y verifica Directorio/Teclado.
-2. Recibe una llamada sin abrir manualmente el softphone: debe aparecer la misma superficie visual. Si el navegador permite Document PiP automático, se reutiliza; si lo bloquea por seguridad, el fallback dentro de la app debe verse igual.
-3. Mientras una entrante está **Timbrando**, solo deben aparecer **Contestar** y **Rechazar**.
-4. Mientras una saliente está **Timbrando**, solo debe aparecer **Cancelar llamada**.
-5. Al contestar, el contador debe comenzar en **00:00** y mostrar `MM:SS`; no debe heredar los segundos acumulados del timbrado.
-6. En llamada **Activa** deben aparecer únicamente controles válidos: Silenciar, Espera, Transferir y Colgar; si se pierde WebRTC, aparece Reconectar audio.
+1. Pulsa **Abrir softphone**: debe abrirse el PiP oficial con Directorio/Teclado; no debe existir un segundo panel flotante dentro de la página.
+2. Recibe una llamada con el PiP ya abierto: la misma ventana PiP debe cambiar a la llamada entrante.
+3. Recibe una llamada con el PiP cerrado: WAMERCIO intenta abrir el PiP; si Chromium lo bloquea por seguridad, la sidebar debe mostrar **Llamada entrante** con el nombre/número. Al pulsarla debe abrir exactamente el mismo PiP oficial.
+4. Si el número corresponde a un cliente existente, la llamada entrante debe mostrar su nombre de WAMERCIO y avatar disponible, no solo el push-name de WhatsApp.
+5. Confirma que no aparece ningún elemento `embeddedContent`/softphone duplicado en la esquina de la página.
 
 
 ## Servicios que deben reconstruirse
@@ -18,7 +17,7 @@ Haz un **Redeploy completo** para reconstruir, como mínimo:
 
 1. **API** — reconcilia llamadas persistidas contra el motor real y libera registros fantasma antes de marcar.
 2. **WhatsApp Bridge** — finaliza llamadas localmente antes de persistir, vigila setup, recupera relay SRTP/SCTP y promueve estado a Activa al detectar media real.
-3. **Web** — detecta pérdida de WebRTC del navegador, muestra duración real y permite reconectar audio sin dejar el softphone bloqueado.
+3. **Web** — usa un único Document-PiP, muestra alerta compacta en sidebar cuando el navegador bloquea apertura automática y conserva los controles/cronómetro de V4.1.7.
 
 ## Variables existentes de WebRTC
 

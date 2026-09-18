@@ -1,12 +1,13 @@
-# WAMERCIO 4.1.7
+# WAMERCIO 4.1.8
 
-> **V4.1.7:** Unificación definitiva del softphone manual/automático/PiP, controles coherentes por estado y cronómetro desde `answered_at`, siguiendo el patrón operativo del softphone de Hierro del Norte. Consulta `HOTFIX_V4.1.7.md`.
+> **V4.1.8:** elimina el softphone embebido duplicado y conserva una sola superficie canónica Document-PiP. Las llamadas entrantes resuelven primero la identidad Cliente/Contacto de WAMERCIO y usan su nombre/avatar. Si el navegador bloquea PiP automático, la sidebar muestra una alerta compacta para abrir el mismo softphone, sin crear un clon. Consulta `HOTFIX_V4.1.8.md`.
+> **V4.1.7:** Unificación de controles por estado y cronómetro desde `answered_at`, siguiendo el patrón operativo del softphone de Hierro del Norte. Consulta `HOTFIX_V4.1.7.md`.
 > **V4.1.6:** Ciclo de llamadas endurecido según el patrón de Hierro del Norte: liberación inmediata al terminar, reconciliación con el motor vivo, watchdog de salida, recuperación de relay/audio y promoción a Activa por media real. Consulta `HOTFIX_V4.1.6.md`.
 >
 > **V4.1.5:** Calls usa una sola interfaz de softphone para entrantes/salientes, corrige el bloqueo de llamadas salientes en PostgreSQL y evita que estados atrasados vuelvan a mostrar una llamada ya finalizada. Consulta `HOTFIX_V4.1.5.md`.
 
 
-Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher integrado en la sidebar, Picture-in-Picture con fallback modal, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.
+Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher integrado en la sidebar, Picture-in-Picture canónico, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.
 
 Ver `IMPLEMENTACION_V4.1.1.md` y `DEPLOY_DOKPLOY.md`.
 

@@ -2,23 +2,24 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 def text(rel): return (root/rel).read_text(encoding='utf-8')
 
-assert text('VERSION').strip()=='4.1.7'
-assert '"version": "4.1.7"' in text('apps/web/package.json')
-assert 'wamercio-store-v4.1.7' in text('apps/web/public/sw.js')
+version=text('VERSION').strip()
+assert version in {'4.1.7','4.1.8'}
+assert f'"version": "{version}"' in text('apps/web/package.json')
+assert f'wamercio-store-v{version}' in text('apps/web/public/sw.js')
 
 soft=text('apps/web/components/calls-softphone.tsx')
 host=text('apps/web/components/calls-softphone-host.tsx')
 
-# Same render tree for manual, automatic fallback and real Document PiP.
-for token in [
-    'const softphoneSurface=(inPip=false)',
-    'softphoneSurface(true)',
-    'softphoneSurface(false)',
-    'h-[min(640px,calc(100dvh-24px))]',
-    'w-[min(380px,calc(100vw-24px))]',
-]:
-    assert token in soft, token
+# Softphone surface remains canonical. V4.1.8 removes the embedded clone and
+# uses only Document PiP; V4.1.7 still had the same-surface fallback.
+assert 'const softphoneSurface' in soft
+assert 'softphoneSurface()' in soft or 'softphoneSurface(true)' in soft
 assert 'void softphoneRef.current?.openPictureInPicture()' in host
+if version=='4.1.8':
+    assert 'embeddedContent' not in soft
+    assert 'softphoneSurface(false)' not in soft
+else:
+    assert 'softphoneSurface(false)' in soft
 
 # Counter follows the HDN rule: conversation time begins once answered/active,
 # never from started_at while the phone is still ringing.
