@@ -1,3 +1,14 @@
+# WAMERCIO 4.1.3 — Hotfix de compilación Calls/Clientes
+
+- Corrige `undefined: conversationID` en `listConversations`, error detectado por el build real de Go en Dokploy.
+- Mantiene `conversation_id` únicamente en `listCustomers`, donde la variable está declarada, escaneada y devuelta correctamente.
+- Conserva la clasificación correcta del softphone: Clientes → `customer`, Contactos → `contact`.
+- La ficha de cliente ahora pasa también `detail.conversation_id` al softphone.
+- Añade `test_4_1_3_build_scope.py` para impedir que referencias de `listCustomers` vuelvan a filtrarse a `listConversations`.
+- Sin migraciones nuevas.
+
+---
+
 # WAMERCIO 4.1.2 — Hotfix build Clientes/Softphone
 
 - Corrige el error de `next build` en `app/customers/page.tsx` por uso de `c.conversation_id` no declarado en el tipo `Customer`.

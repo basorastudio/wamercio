@@ -65,3 +65,8 @@ sh scripts/verify-4.1.0.sh
 ## Despliegue
 
 Consulta `DEPLOY_DOKPLOY.md`. Para esta versión recompila al menos **WhatsApp Bridge, API y Web**.
+
+
+## WAMERCIO 4.1.3
+
+Hotfix de compilación del softphone global: corrige el scope de `conversationID` en el API y mantiene la asociación Cliente/Conversación para llamadas contextuales. Ver `HOTFIX_V4.1.3.md`.

@@ -2621,7 +2621,7 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 			"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread,
 			"last_message": last, "last_message_at": lastAt, "created_at": created,
 			"customer_id": customerID, "status": status, "phone": phone,
-			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "conversation_id": conversationID, "contact_type": contactType,
+			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "contact_type": contactType,
 			"queue_id": queueID, "queue_name": queueName, "assigned_staff_id": staffID, "assigned_staff_name": staffName,
 			"priority": priority, "sla_minutes": slaMinutes, "waiting_minutes": waitingMinutes, "sla_breached": lastInboundAt != nil && status != "closed" && (lastOutboundAt == nil || lastInboundAt.After(*lastOutboundAt)) && waitingMinutes > slaMinutes,
 		})
