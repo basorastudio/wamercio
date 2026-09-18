@@ -1,3 +1,13 @@
+# WAMERCIO 4.0.1 — Hotfix de build del portal de cotizaciones
+
+- Corrige el error de TypeScript/React en `app/quote/[token]/page.tsx`: `useEffect` ya no recibe una función que retorna `Promise<void>`.
+- La carga pública de cotizaciones se ejecuta mediante `useEffect(() => { void load() }, [token])`.
+- Añade la regresión `scripts/test_4_0_1_web_build_hotfix.py` para impedir que una función `load` que retorna una promesa vuelva a pasarse directamente como `EffectCallback`.
+- Actualiza la versión web y el cache PWA a `4.0.1` para evitar reutilizar assets de la compilación fallida/anterior.
+- No agrega migraciones ni altera API/WhatsApp/Domain Router; los tres ya compilaron correctamente en el build de Dokploy reportado.
+
+---
+
 # WAMERCIO 4.0.0 — Expansión Operativa y Comercial
 
 ## Nuevo

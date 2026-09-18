@@ -1,6 +1,6 @@
-# WAMERCIO 4.0.0
+# WAMERCIO 4.0.1
 
-WAMERCIO 4.0.0 integra simultáneamente las fases posteriores al **Centro Conversacional PRO 3.0.0**, conservando el mismo patrón visual, arquitectura multi-tenant y modelo WhatsApp-first.
+WAMERCIO 4.0.1 conserva la expansión de 4.0.0 e integra simultáneamente las fases posteriores al **Centro Conversacional PRO 3.0.0**, conservando el mismo patrón visual, arquitectura multi-tenant y modelo WhatsApp-first.
 
 ## Módulos incluidos
 

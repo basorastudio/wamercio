@@ -5,7 +5,7 @@ import {api,dateTime,money} from '@/lib/api'
 import {Check,FileText,MessageCircleMore,Store,X,Download} from 'lucide-react'
 export default function QuotePortal(){
  const{token}=useParams<{token:string}>(),[q,setQ]=useState<any>(null),[err,setErr]=useState(''),[busy,setBusy]=useState(false),[comment,setComment]=useState(''),[done,setDone]=useState('')
- const load=()=>api(`/public/quotes/${token}`).then(setQ).catch((e:any)=>setErr(e.message));useEffect(load,[token])
+ const load=()=>api(`/public/quotes/${token}`).then(setQ).catch((e:any)=>setErr(e.message));useEffect(()=>{void load()},[token])
  const decide=async(decision:'approved'|'rejected')=>{setBusy(true);try{await api(`/public/quotes/${token}/decision`,{method:'POST',body:JSON.stringify({decision,comment})});setDone(decision);load()}catch(e:any){setErr(e.message)}finally{setBusy(false)}}
  if(err&&!q)return <div className="grid min-h-dvh place-items-center bg-[#f7f9fc] p-6"><div className="card max-w-md p-8 text-center"><FileText className="mx-auto h-10 w-10 text-slate-300"/><h1 className="mt-4 text-xl font-semibold">Cotización no disponible</h1><p className="mt-2 text-sm text-[#8d92aa]">{err}</p></div></div>
  if(!q)return <div className="grid min-h-dvh place-items-center bg-[#f7f9fc] text-[#8d92aa]">Cargando cotización...</div>
