@@ -1,3 +1,10 @@
+# WAMERCIO 2.9.3 — Hotfix de prerender de Publicaciones sociales
+
+- Corrige el fallo de `next build` en `/social-publishing` causado por `useSearchParams()` fuera de un límite `Suspense`.
+- Mantiene el consumidor de parámetros en un componente hijo y envuelve la página con `Suspense`, siguiendo el requisito de Next.js 14 para prerender estático.
+- Añade una regresión específica para impedir que `/social-publishing` vuelva a romper el build de producción.
+- No añade migraciones ni variables de entorno; conserva `000038`–`000040`.
+
 # WAMERCIO 2.9.2 — Hotfix de compilación frontend
 
 - Sustituye `MessageSquareStar`, no exportado por `lucide-react` 0.468.0, por el icono soportado `MessageCircleMore` en Evaluaciones.

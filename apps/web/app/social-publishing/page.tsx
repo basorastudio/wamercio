@@ -1,5 +1,5 @@
 'use client'
-import {useEffect,useMemo,useState} from 'react'
+import {Suspense,useEffect,useMemo,useState} from 'react'
 import {useSearchParams} from 'next/navigation'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,dateTime,money} from '@/lib/api'
@@ -11,6 +11,10 @@ type Conn={id:string;provider:string;display_name:string;avatar_url:string;statu
 type Asset={id:string;name:string;url:string;kind:string}
 const statusLabel:any={draft:'Borrador',approved:'Aprobada',scheduled:'Programada',publishing:'Publicando',published:'Publicada',partial:'Parcial',failed:'Fallida'}
 export default function SocialPublishing(){
+ return <Suspense fallback={<div className="p-6 text-sm text-[#8d92aa]">Cargando publicaciones…</div>}><SocialPublishingContent/></Suspense>
+}
+
+function SocialPublishingContent(){
  const searchParams=useSearchParams()
  const requestedStore=searchParams.get('store_id')||''
  const promotionID=searchParams.get('promotion_id')||''

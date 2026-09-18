@@ -1,10 +1,14 @@
-# Despliegue WAMERCIO 2.9.2 en Dokploy
+# WAMERCIO 2.9.3 — Despliegue
+
+V2.9.3 corrige el prerender de `/social-publishing` en Next.js 14. No agrega migraciones ni variables de entorno nuevas. Despliega API/WhatsApp/Web normalmente y verifica que `npm run build` complete la generación de las 60 páginas sin el error `missing-suspense-with-csr-bailout`.
+
+# Despliegue WAMERCIO 2.9.3 en Dokploy
 
 ## Orden recomendado
 
 1. Haz respaldo de PostgreSQL y del volumen de uploads.
-2. Sustituye el código por **WAMERCIO 2.9.2** conservando volúmenes y secretos actuales.
-3. Ejecuta `sh scripts/verify-2.9.2.sh` antes del despliegue.
+2. Sustituye el código por **WAMERCIO 2.9.3** conservando volúmenes y secretos actuales.
+3. Ejecuta `sh scripts/verify-2.9.3.sh` antes del despliegue.
 4. Despliega primero **API** para aplicar las migraciones `000038`, `000039` y `000040`.
 5. Despliega **Web** y después reconstruye el resto del Compose si Dokploy lo administra como una sola aplicación.
 6. Comprueba `/health`, una tienda pública, WhatsApp, Publicaciones, Redes sociales, Evaluaciones y Métodos de pago.
@@ -54,7 +58,7 @@ Si necesitas volver al código 2.8.12, ejecuta los `.down.sql` en orden inverso 
 
 V2.9.1 corrige errores de compilación del API detectados por el build real de Dokploy en V2.9.0. No agrega migraciones ni variables de entorno.
 
-Antes de hacer `Redeploy`, ejecuta `sh scripts/verify-2.9.2.sh`. En CI/Dokploy deben completar sin error estos pasos equivalentes a producción:
+Antes de hacer `Redeploy`, ejecuta `sh scripts/verify-2.9.3.sh`. En CI/Dokploy deben completar sin error estos pasos equivalentes a producción:
 
 - API: `go build -mod=readonly ... ./cmd/api`
 - WhatsApp bridge: `go build -mod=readonly ... ./cmd/bridge`
