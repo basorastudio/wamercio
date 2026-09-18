@@ -467,6 +467,15 @@ func (s *Server) discoverSocialConnections(ctx context.Context, provider string,
 	return nil, fmt.Errorf("proveedor no compatible")
 }
 
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func socialProviderLabel(provider string) string {
 	if cfg, ok := socialProviderByID(provider); ok {
 		return cfg.Name

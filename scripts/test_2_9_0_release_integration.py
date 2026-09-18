@@ -38,7 +38,7 @@ for key in [
 ]:
     assert key in env, f'missing {key} in .env.example'
 
-assert version == '2.9.0', f'expected VERSION 2.9.0, got {version}'
-assert '"version": "2.9.0"' in package, 'web package version not 2.9.0'
+assert version.startswith('2.9.'), f'expected VERSION 2.9.x, got {version}'
+assert f'\"version\": \"{version}\"' in package, f'web package version not {version}'
 
 print('PASS: WAMERCIO 2.9.0 release integration contract')

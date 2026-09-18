@@ -1,3 +1,11 @@
+# WAMERCIO 2.9.1 — Hotfix de compilación de producción
+
+- Corrige el scope de `chequeEnabled` en el API: elimina una declaración no utilizada en el contexto de conversación y declara la variable donde se escanea en el listado de clientes.
+- Añade el helper variádico `firstNonBlank` usado por Facebook/Instagram/Google Business y callbacks OAuth.
+- Añade guardas de compilación estática para detectar identificadores Go no resueltos, variables/imports no usados y regresiones específicas del hotfix.
+- Alinea CI con las toolchains de producción: Go 1.27.1 y Node 20, e incorpora build exacto de API, bridge, router y frontend.
+- No añade migraciones ni cambia variables de entorno; conserva las migraciones `000038`–`000040` de V2.9.0.
+
 # WAMERCIO 2.9.0
 
 - Proxy Auth administrado para Facebook, Instagram, LinkedIn y Google Business, sin credenciales OAuth visibles para las tiendas.

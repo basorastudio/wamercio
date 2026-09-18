@@ -2632,7 +2632,6 @@ func (s *Server) conversationDetails(w http.ResponseWriter, r *http.Request) {
 		_ = s.db.QueryRow(r.Context(), `SELECT EXISTS(SELECT 1 FROM orders WHERE customer_id=$1 AND status<>'canceled' AND flow_type<>'quote')`, customerID).Scan(&isCustomer)
 		var name, cphone, address, notes, cstatus string
 		var count int
-		var chequeEnabled bool
 		var spent float64
 		var last *time.Time
 		var created time.Time
@@ -5106,6 +5105,7 @@ func (s *Server) listCustomers(w http.ResponseWriter, r *http.Request) {
 		var spent float64
 		var last *time.Time
 		var created time.Time
+		var chequeEnabled bool
 		_ = rows.Scan(&id, &name, &phone, &address, &notes, &status, &blockedReason, &blockedAt, &count, &spent, &last, &created, &chequeEnabled, &whatsappName, &profilePictureURL)
 		out = append(out, map[string]any{
 			"id": id, "name": name, "phone": phone, "address": address, "notes": notes, "status": status, "blocked_reason": blockedReason, "blocked_at": blockedAt,

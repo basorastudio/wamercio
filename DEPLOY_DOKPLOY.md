@@ -1,10 +1,10 @@
-# Despliegue WAMERCIO 2.9.0 en Dokploy
+# Despliegue WAMERCIO 2.9.1 en Dokploy
 
 ## Orden recomendado
 
 1. Haz respaldo de PostgreSQL y del volumen de uploads.
-2. Sustituye el código por **WAMERCIO 2.9.0** conservando volúmenes y secretos actuales.
-3. Ejecuta `sh scripts/verify-2.9.0.sh` antes del despliegue.
+2. Sustituye el código por **WAMERCIO 2.9.1** conservando volúmenes y secretos actuales.
+3. Ejecuta `sh scripts/verify-2.9.1.sh` antes del despliegue.
 4. Despliega primero **API** para aplicar las migraciones `000038`, `000039` y `000040`.
 5. Despliega **Web** y después reconstruye el resto del Compose si Dokploy lo administra como una sola aplicación.
 6. Comprueba `/health`, una tienda pública, WhatsApp, Publicaciones, Redes sociales, Evaluaciones y Métodos de pago.
@@ -34,7 +34,7 @@ Las variables `WAMERCIO_SOCIAL_*_CLIENT_ID/CLIENT_SECRET/REDIRECT_URI` son únic
 
 ## Encuestas nativas de WhatsApp
 
-No requieren variables nuevas. El `whatsapp-bridge` debe desplegarse junto con el API porque V2.9.0 añade el endpoint interno de encuestas y el descifrado/correlación de votos (`BuildPollCreation` / `DecryptPollVote`).
+No requieren variables nuevas. El `whatsapp-bridge` debe desplegarse junto con el API porque V2.9.1 conserva el endpoint interno de encuestas y el descifrado/correlación de votos (`BuildPollCreation` / `DecryptPollVote`).
 
 ## Validaciones después del despliegue
 
@@ -49,3 +49,15 @@ No requieren variables nuevas. El `whatsapp-bridge` debe desplegarse junto con e
 ## Rollback
 
 Si necesitas volver al código 2.8.12, ejecuta los `.down.sql` en orden inverso (`000040`, `000039`, `000038`) antes de levantar la versión antigua. Conserva siempre un respaldo previo del esquema y de los datos.
+
+## Hotfix 2.9.1
+
+V2.9.1 corrige errores de compilación del API detectados por el build real de Dokploy en V2.9.0. No agrega migraciones ni variables de entorno.
+
+Antes de hacer `Redeploy`, ejecuta `sh scripts/verify-2.9.1.sh`. En CI/Dokploy deben completar sin error estos pasos equivalentes a producción:
+
+- API: `go build -mod=readonly ... ./cmd/api`
+- WhatsApp bridge: `go build -mod=readonly ... ./cmd/bridge`
+- Domain router: `go build -mod=readonly ... ./cmd/router`
+- Web: `npm run build`
+- Compose: `docker compose config`

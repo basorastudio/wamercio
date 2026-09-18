@@ -19,8 +19,9 @@ assert not violations, "invalid pgx RowsAffected tuple assignments:\n" + "\n".jo
 
 # Keep CI as the authoritative full compiler/build gate before production.
 ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-for required in ["go test ./...", "go build ./...", "npm run build", "docker compose config"]:
+for required in ["go test ./...", "npm run build", "docker compose config"]:
     assert required in ci, f"CI missing production gate: {required}"
+assert ("go build ./..." in ci or "go build -mod=readonly" in ci), "CI missing production Go build gate"
 
 api_docker = (root / "services/api/Dockerfile").read_text(encoding="utf-8")
 assert "go build -mod=readonly" in api_docker, "API Dockerfile must compile with readonly modules"
