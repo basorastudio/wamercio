@@ -1,3 +1,16 @@
+# WAMERCIO 3.0.0 — Centro Conversacional PRO
+
+- Incorpora colas de atención multi-tenant con estrategias Manual, Round-robin, Menor carga y Aleatoria.
+- Permite asignar y transferir conversaciones entre usuarios internos, definir agentes por cola, prioridad y SLA.
+- Añade filtros operativos en Conversaciones: Sin asignar, Urgentes y SLA vencido, con indicadores de cola/agente/prioridad.
+- Añade etiquetas conversacionales editables por tienda y registro automático de cambios dentro de Registros de atención.
+- Añade seguimientos programados desde el chat con cancelación automática cuando el cliente responde antes del envío.
+- Añade respuestas rápidas mediante `/comando` conservando el panel visual existente.
+- Añade envío manual de encuestas nativas de WhatsApp desde el compositor, reutilizando WhatsMeow y el endpoint de polls existente.
+- Corrige el cálculo de SLA para medir solamente conversaciones cuyo último mensaje del cliente aún no tiene una respuesta posterior del negocio.
+- Añade `000041_conversation_center_pro` con colas, miembros, etiquetas, eventos, campos operativos y mensajes programados.
+- Mantiene la identidad global del cliente, la relación comercial por `store_id`, el catálogo, pedidos, pagos, POS y bloqueo comercial sin duplicar modelos de HDN.
+
 # WAMERCIO 2.9.3 — Hotfix de prerender de Publicaciones sociales
 
 - Corrige el fallo de `next build` en `/social-publishing` causado por `useSearchParams()` fuera de un límite `Suspense`.

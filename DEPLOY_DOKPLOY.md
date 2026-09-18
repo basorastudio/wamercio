@@ -1,15 +1,15 @@
-# WAMERCIO 2.9.3 — Despliegue
+# WAMERCIO 3.0.0 — Despliegue
 
-V2.9.3 corrige el prerender de `/social-publishing` en Next.js 14. No agrega migraciones ni variables de entorno nuevas. Despliega API/WhatsApp/Web normalmente y verifica que `npm run build` complete la generación de las 60 páginas sin el error `missing-suspense-with-csr-bailout`.
+V3.0.0 incorpora el Centro Conversacional PRO. Agrega la migración `000041_conversation_center_pro` y no requiere variables de entorno nuevas. Despliega API antes que Web para que las nuevas tablas/campos existan cuando la interfaz consulte colas, etiquetas, SLA y seguimientos.
 
-# Despliegue WAMERCIO 2.9.3 en Dokploy
+# Despliegue WAMERCIO 3.0.0 en Dokploy
 
 ## Orden recomendado
 
 1. Haz respaldo de PostgreSQL y del volumen de uploads.
-2. Sustituye el código por **WAMERCIO 2.9.3** conservando volúmenes y secretos actuales.
-3. Ejecuta `sh scripts/verify-2.9.3.sh` antes del despliegue.
-4. Despliega primero **API** para aplicar las migraciones `000038`, `000039` y `000040`.
+2. Sustituye el código por **WAMERCIO 3.0.0** conservando volúmenes y secretos actuales.
+3. Ejecuta `sh scripts/verify-3.0.0.sh` antes del despliegue.
+4. Despliega primero **API** para aplicar `000041` (además de cualquier migración 2.9.x aún pendiente).
 5. Despliega **Web** y después reconstruye el resto del Compose si Dokploy lo administra como una sola aplicación.
 6. Comprueba `/health`, una tienda pública, WhatsApp, Publicaciones, Redes sociales, Evaluaciones y Métodos de pago.
 
@@ -18,6 +18,7 @@ V2.9.3 corrige el prerender de `/social-publishing` en Next.js 14. No agrega mig
 - `000038_social_google_evaluations`: conexiones sociales, OAuth temporal, multimedia, publicaciones, Google Business y evaluaciones.
 - `000039_store_bank_accounts`: múltiples cuentas bancarias, cuenta elegida por pedido, cheque global, cuenta de transferencia/terminal y comisiones.
 - `000040_customer_cheque_authorization`: autorización de cheque individual por cliente y negocio.
+- `000041_conversation_center_pro`: colas, miembros, asignación multiagente, prioridades, SLA, etiquetas, eventos operativos y seguimientos programados.
 
 Las migraciones son reversibles y tienen su archivo `.down.sql` correspondiente.
 
@@ -50,9 +51,15 @@ No requieren variables nuevas. El `whatsapp-bridge` debe desplegarse junto con e
 - Registra dos cuentas bancarias y confirma la selección en checkout/seguimiento.
 - Activa Cheque globalmente, autoriza a un cliente desde su ficha y comprueba que otro cliente no autorizado no pueda utilizarlo.
 
+
+- En **Conversaciones → Registros de atención**, crea una cola, selecciona agentes, configura estrategia/SLA y transfiere una conversación.
+- Programa un seguimiento con “Cancelar si el cliente responde”, responde desde el teléfono y verifica que quede Cancelado.
+- Envía una encuesta manual desde el nuevo botón del compositor.
+- Comprueba los filtros Sin asignar, Urgentes y SLA.
+
 ## Rollback
 
-Si necesitas volver al código 2.8.12, ejecuta los `.down.sql` en orden inverso (`000040`, `000039`, `000038`) antes de levantar la versión antigua. Conserva siempre un respaldo previo del esquema y de los datos.
+Si necesitas volver al código 2.8.12, ejecuta primero `000041_conversation_center_pro.down.sql` y después, si también retrocedes toda la línea 2.9.x, los `.down.sql` `000040`, `000039`, `000038` antes de levantar la versión antigua. Conserva siempre un respaldo previo del esquema y de los datos.
 
 ## Hotfix 2.9.1
 

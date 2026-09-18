@@ -55,6 +55,7 @@ func New(cfg config.Config, db *pgxpool.Pool) *Server {
 	srv := &Server{cfg: cfg, db: db, cache: cache, http: &http.Client{Timeout: 12 * time.Second}}
 	go srv.outboxLoop()
 	go srv.automationLoop()
+	go srv.conversationWorkflowLoop()
 	go srv.socialPublishLoop()
 	return srv
 }
@@ -260,10 +261,26 @@ func (s *Server) Router() http.Handler {
 			p.Delete("/conversations/{id}", s.deleteConversation)
 			p.Delete("/conversations/{id}/messages", s.clearConversationMessages)
 			p.Patch("/conversations/{id}/block", s.blockConversation)
+			p.Get("/conversation-queues", s.listConversationQueues)
+			p.Post("/conversation-queues", s.createConversationQueue)
+			p.Put("/conversation-queues/{id}", s.updateConversationQueue)
+			p.Get("/conversation-queues/{id}/members", s.listConversationQueueMembers)
+			p.Put("/conversation-queues/{id}/members", s.updateConversationQueueMembers)
+			p.Get("/conversation-tags", s.listConversationTags)
+			p.Post("/conversation-tags", s.createConversationTag)
+			p.Get("/conversations/{id}/workflow", s.conversationWorkflow)
+			p.Patch("/conversations/{id}/workflow", s.updateConversationWorkflow)
+			p.Post("/conversations/{id}/auto-assign", s.autoAssignConversation)
+			p.Post("/conversations/{id}/tags", s.addConversationTag)
+			p.Delete("/conversations/{id}/tags/{tagID}", s.removeConversationTag)
+			p.Get("/conversations/{id}/scheduled", s.listScheduledConversationMessages)
+			p.Post("/conversations/{id}/scheduled", s.scheduleConversationMessage)
+			p.Delete("/conversations/{id}/scheduled/{scheduledID}", s.cancelScheduledConversationMessage)
 			p.Get("/conversations/{id}/notes", s.listConversationNotes)
 			p.Post("/conversations/{id}/notes", s.createConversationNote)
 			p.Patch("/conversations/{id}/read", s.readConversation)
 			p.Post("/conversations/{id}/send", s.sendConversationMessage)
+			p.Post("/conversations/{id}/send-poll", s.sendConversationPoll)
 			p.Post("/conversations/{id}/send-media", s.sendConversationMedia)
 			p.Post("/conversations/{id}/orders", s.createConversationOrder)
 			p.Post("/uploads", s.upload)
@@ -2468,9 +2485,13 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 		       coalesce(nullif(c.whatsapp_phone,''),nullif(cu.phone,''),
 		                CASE WHEN split_part(lower(c.remote_jid),'@',2)='s.whatsapp.net' THEN regexp_replace(split_part(c.remote_jid,'@',1),'[^0-9]','','g') ELSE '' END),
 		       coalesce(c.whatsapp_name,''),coalesce(c.profile_picture_url,''),
-		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote') THEN 'customer' ELSE 'contact' END
+		       CASE WHEN EXISTS (SELECT 1 FROM orders o WHERE o.customer_id=c.customer_id AND o.status<>'canceled' AND o.flow_type<>'quote') THEN 'customer' ELSE 'contact' END,
+		       coalesce(c.queue_id::text,''),coalesce(q.name,''),coalesce(c.assigned_staff_id::text,''),coalesce(ss.name,''),
+		       coalesce(c.priority,'normal'),coalesce(q.sla_minutes,30),c.last_inbound_at,c.last_outbound_at
 		FROM conversations c
 		LEFT JOIN customers cu ON cu.id=c.customer_id
+		LEFT JOIN conversation_queues q ON q.id=c.queue_id
+		LEFT JOIN store_staff ss ON ss.id=c.assigned_staff_id
 		LEFT JOIN LATERAL (
 			SELECT trim(concat_ws(' ',g.name,nullif(g.last_name,''))) AS global_name
 			FROM global_customers g
@@ -2502,15 +2523,25 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, jid, name, last, customerID, status, phone, whatsappName, profilePictureURL, contactType string
-		var unread int
-		var lastAt *time.Time
+		var queueID, queueName, staffID, staffName, priority string
+		var unread, slaMinutes int
+		var lastAt, lastInboundAt, lastOutboundAt *time.Time
 		var created time.Time
-		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created, &customerID, &status, &phone, &whatsappName, &profilePictureURL, &contactType)
+		_ = rows.Scan(&id, &jid, &name, &unread, &last, &lastAt, &created, &customerID, &status, &phone, &whatsappName, &profilePictureURL, &contactType, &queueID, &queueName, &staffID, &staffName, &priority, &slaMinutes, &lastInboundAt, &lastOutboundAt)
+		waitingMinutes := 0
+		if lastInboundAt != nil && status != "closed" && (lastOutboundAt == nil || lastInboundAt.After(*lastOutboundAt)) {
+			waitingMinutes = int(time.Since(*lastInboundAt).Minutes())
+			if waitingMinutes < 0 {
+				waitingMinutes = 0
+			}
+		}
 		out = append(out, map[string]any{
 			"id": id, "remote_jid": jid, "display_name": name, "unread_count": unread,
 			"last_message": last, "last_message_at": lastAt, "created_at": created,
 			"customer_id": customerID, "status": status, "phone": phone,
 			"whatsapp_name": whatsappName, "profile_picture_url": profilePictureURL, "contact_type": contactType,
+			"queue_id": queueID, "queue_name": queueName, "assigned_staff_id": staffID, "assigned_staff_name": staffName,
+			"priority": priority, "sla_minutes": slaMinutes, "waiting_minutes": waitingMinutes, "sla_breached": lastInboundAt != nil && status != "closed" && (lastOutboundAt == nil || lastInboundAt.After(*lastOutboundAt)) && waitingMinutes > slaMinutes,
 		})
 	}
 	jsonOut(w, 200, out)
@@ -2779,7 +2810,7 @@ func (s *Server) updateConversationStatus(w http.ResponseWriter, r *http.Request
 	if in.Status != "open" && in.Status != "pending" && in.Status != "closed" {
 		in.Status = "open"
 	}
-	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET status=$1,updated_at=now() WHERE id=$2`, in.Status, id)
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET status=$1,resolved_at=CASE WHEN $1='closed' THEN now() ELSE NULL END,updated_at=now() WHERE id=$2`, in.Status, id)
 	if in.Status == "closed" {
 		actorID := ""
 		if c != nil {
@@ -2888,7 +2919,26 @@ func (s *Server) listConversationNotes(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT n.id,n.note,n.created_at,coalesce(u.name,'WAMERCIO') FROM conversation_notes n LEFT JOIN users u ON u.id=n.created_by WHERE n.conversation_id=$1 ORDER BY n.created_at DESC LIMIT 100`, id)
+	rows, err := s.db.Query(r.Context(), `
+		SELECT id,note,created_at,author FROM (
+		  SELECT n.id::text AS id,n.note,n.created_at,coalesce(u.name,'WAMERCIO') AS author
+		  FROM conversation_notes n LEFT JOIN users u ON u.id=n.created_by WHERE n.conversation_id=$1
+		  UNION ALL
+		  SELECT e.id::text,
+		    CASE e.event_type
+		      WHEN 'workflow_updated' THEN 'Atención actualizada'
+		      WHEN 'auto_assigned' THEN 'Conversación autoasignada'
+		      WHEN 'tag_added' THEN 'Etiqueta agregada: '||coalesce(e.metadata->>'tag_name','')
+		      WHEN 'tag_removed' THEN 'Etiqueta eliminada'
+		      WHEN 'message_scheduled' THEN 'Seguimiento programado'
+		      WHEN 'message_schedule_cancelled' THEN 'Seguimiento cancelado'
+		      WHEN 'scheduled_message_sent' THEN 'Seguimiento enviado automáticamente'
+			      WHEN 'poll_sent' THEN 'Encuesta de WhatsApp enviada'
+		      ELSE replace(e.event_type,'_',' ')
+		    END AS note,
+		    e.created_at,coalesce(u.name,'WAMERCIO') AS author
+		  FROM conversation_events e LEFT JOIN users u ON u.id=e.actor_user_id WHERE e.conversation_id=$1
+		) history ORDER BY created_at DESC LIMIT 150`, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los registros")
 		return
@@ -2903,6 +2953,7 @@ func (s *Server) listConversationNotes(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, 200, out)
 }
+
 func (s *Server) createConversationNote(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	id := chi.URLParam(r, "id")
@@ -2979,7 +3030,7 @@ func (s *Server) sendConversationMessage(w http.ResponseWriter, r *http.Request)
 	msgID := fmt.Sprint(out["id"])
 	now := time.Now()
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,'out','text',$3,'sent',$4) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, strings.TrimSpace(in.Text), now)
-	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Text), now, id)
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET last_message=$1,last_message_at=$2,last_outbound_at=$2,first_response_at=coalesce(first_response_at,$2),updated_at=now() WHERE id=$3`, strings.TrimSpace(in.Text), now, id)
 	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "occurred_at": now})
 }
 
@@ -4482,7 +4533,7 @@ func (s *Server) deliverOutbox(id string) {
 		}
 		now := time.Now()
 		_, _ = s.db.Exec(ctx, `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,occurred_at) VALUES($1,$2,'out',$3,$4,'sent',$5) ON CONFLICT(conversation_id,message_id) DO NOTHING`, conversationID, msgID, messageType, visibleBody, now)
-		_, _ = s.db.Exec(ctx, `UPDATE conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, visibleBody, now, conversationID)
+		_, _ = s.db.Exec(ctx, `UPDATE conversations SET last_message=$1,last_message_at=$2,last_outbound_at=$2,first_response_at=coalesce(first_response_at,$2),updated_at=now() WHERE id=$3`, visibleBody, now, conversationID)
 		if kind == "evaluation_poll" {
 			_, _ = s.db.Exec(ctx, `UPDATE store_evaluation_pending SET sent_message_id=$1,updated_at=now() WHERE store_id=$2 AND conversation_id=$3 AND state='rating'`, msgID, storeID, conversationID)
 		}
@@ -4613,7 +4664,13 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		unreadInc = 1
 	}
 	var convID string
-	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,whatsapp_name,whatsapp_phone,customer_id,unread_count,last_message,last_message_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=CASE WHEN coalesce(conversations.contact_name,'')='' THEN coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name) ELSE conversations.display_name END,whatsapp_name=coalesce(nullif(EXCLUDED.whatsapp_name,''),conversations.whatsapp_name),whatsapp_phone=coalesce(nullif(EXCLUDED.whatsapp_phone,''),conversations.whatsapp_phone),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$7,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, displayName, whatsappName, phone, customerID, unreadInc, in.Body, in.OccurredAt).Scan(&convID)
+	var inboundAt, outboundAt any
+	if in.Direction != "out" {
+		inboundAt = in.OccurredAt
+	} else {
+		outboundAt = in.OccurredAt
+	}
+	err = tx.QueryRow(r.Context(), `INSERT INTO conversations(store_id,remote_jid,display_name,whatsapp_name,whatsapp_phone,customer_id,unread_count,last_message,last_message_at,last_inbound_at,last_outbound_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT(store_id,remote_jid) DO UPDATE SET display_name=CASE WHEN coalesce(conversations.contact_name,'')='' THEN coalesce(nullif(EXCLUDED.display_name,''),conversations.display_name) ELSE conversations.display_name END,whatsapp_name=coalesce(nullif(EXCLUDED.whatsapp_name,''),conversations.whatsapp_name),whatsapp_phone=coalesce(nullif(EXCLUDED.whatsapp_phone,''),conversations.whatsapp_phone),customer_id=coalesce(conversations.customer_id,EXCLUDED.customer_id),unread_count=conversations.unread_count+$7,last_message=EXCLUDED.last_message,last_message_at=EXCLUDED.last_message_at,last_inbound_at=coalesce(EXCLUDED.last_inbound_at,conversations.last_inbound_at),last_outbound_at=coalesce(EXCLUDED.last_outbound_at,conversations.last_outbound_at),first_response_at=CASE WHEN EXCLUDED.last_outbound_at IS NOT NULL THEN coalesce(conversations.first_response_at,EXCLUDED.last_outbound_at) ELSE conversations.first_response_at END,status=CASE WHEN $7>0 AND coalesce(conversations.contact_status,'active')<>'blocked' THEN 'open' ELSE conversations.status END,resolved_at=CASE WHEN $7>0 THEN NULL ELSE conversations.resolved_at END,updated_at=now() RETURNING id`, in.StoreID, in.RemoteJID, displayName, whatsappName, phone, customerID, unreadInc, in.Body, in.OccurredAt, inboundAt, outboundAt).Scan(&convID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo registrar conversación")
 		return
@@ -4625,6 +4682,8 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,file_size,caption,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),messages.file_name),file_size=GREATEST(messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),messages.caption)`, convID, in.MessageID, in.Direction, in.Type, in.Body, status, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt)
 	_ = tx.Commit(r.Context())
 	if in.Direction != "out" {
+		s.cancelReplySensitiveFollowups(r.Context(), convID, in.OccurredAt)
+		go s.maybeAutoAssignIncomingConversation(context.Background(), in.StoreID, convID)
 		if in.Type == "poll_vote" {
 			go s.capturePendingEvaluationPoll(context.Background(), in.StoreID, convID, in.PollMessageID, in.PollSelectedOptions)
 		} else {
@@ -6191,7 +6250,7 @@ func (s *Server) sendConversationMedia(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	_, _ = s.db.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,caption,occurred_at) VALUES($1,$2,'out',$3,$4,'sent',$5,$6,$7,$8,$9) ON CONFLICT(conversation_id,message_id) DO NOTHING`, id, msgID, typ, body, mediaURL, mimeType, fileName, caption, now)
-	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET last_message=$1,last_message_at=$2,updated_at=now() WHERE id=$3`, body, now, id)
+	_, _ = s.db.Exec(r.Context(), `UPDATE conversations SET last_message=$1,last_message_at=$2,last_outbound_at=$2,first_response_at=coalesce(first_response_at,$2),updated_at=now() WHERE id=$3`, body, now, id)
 	jsonOut(w, 200, map[string]any{"ok": true, "id": msgID, "type": typ, "body": body, "media_url": mediaURL, "mime_type": mimeType, "file_name": fileName, "caption": caption, "occurred_at": now})
 }
 

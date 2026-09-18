@@ -1,8 +1,15 @@
-# WAMERCIO 2.9.3
+# WAMERCIO 3.0.0
 
-WAMERCIO 2.9.3 consolida el comercio conversacional con publicación social, Perfil de Empresa en Google, evaluaciones nativas por WhatsApp y pagos bancarios avanzados, manteniendo el modelo multi-tenant por tienda y el diseño actual de WAMERCIO.
+WAMERCIO 3.0.0 incorpora el **Centro Conversacional PRO** sobre la base existente de comercio conversacional: colas, agentes, transferencias, prioridades, SLA, etiquetas, seguimientos programados y encuestas nativas, manteniendo el diseño actual y el aislamiento multi-tenant por tienda.
 
 La experiencia pública conserva el flujo de catálogo, **Mi compra**, pedidos y cuenta del cliente.
+
+
+## Centro Conversacional PRO
+
+La bandeja de Conversaciones conserva la interfaz tipo WhatsApp de WAMERCIO y añade gestión operativa sin abrir un CRM paralelo. Cada conversación puede pertenecer a una cola, tener un agente responsable, prioridad, etiquetas y SLA. Las colas admiten asignación manual, Round-robin, Menor carga o Aleatoria y pueden limitarse a agentes concretos.
+
+Los seguimientos se programan desde **Registros de atención** y pueden cancelarse automáticamente si el cliente responde antes. El historial combina notas internas y eventos operativos. El compositor admite `/comando` para respuestas rápidas y encuestas nativas de WhatsApp.
 
 ## Comercio social y conexiones administradas
 
@@ -30,7 +37,7 @@ Cada tienda puede registrar varias cuentas bancarias usando el catálogo de banc
 
 ## Actualización
 
-Las migraciones nuevas son `000038_social_google_evaluations`, `000039_store_bank_accounts` y `000040_customer_cheque_authorization`. Consulta `CHANGELOG.md` y `DEPLOY_DOKPLOY.md` antes de desplegar.
+La migración nueva de esta versión es `000041_conversation_center_pro`; se conservan `000038`–`000040` de la línea 2.9.x. Consulta `CHANGELOG.md` y `DEPLOY_DOKPLOY.md` antes de desplegar.
 
 ## Bloqueo comercial por negocio (2.8.12)
 
