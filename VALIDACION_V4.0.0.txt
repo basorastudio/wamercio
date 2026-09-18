@@ -1,0 +1,19 @@
+WAMERCIO 4.0.0 - VALIDACION FINAL
+Fecha: 2026-09-18
+
+PASS: contrato funcional WAMERCIO 4.0.0
+PASS: contrato Centro Conversacional PRO 3.0.0
+PASS: 47/47 pares de migraciones up/down
+PASS: 340 handlers HTTP registrados, 0 faltantes
+PASS: 107 archivos TypeScript, 0 errores de sintaxis
+PASS: 49 archivos Go, 0 errores de parseo
+PASS: Go package scope guard, 0 problemas
+PASS: gofmt limpio
+PASS: scripts shell válidos
+PASS: docker-compose.yml YAML
+PASS: docker-compose.local.yml YAML
+PASS: GitHub Actions YAML
+PASS: regresiones 2.5.x, 2.6, 2.7, 2.8.x, 2.9.x y 3.0 ejecutadas
+
+Nota de entorno:
+El proyecto requiere Go 1.26. El entorno de construcción disponible durante esta revisión tiene Go 1.23.2 y no dispone de red/caché completa para descargar toolchain/módulos; por ello no se ejecutó el build binario final Go 1.26. No se alteró go.mod para ocultar esa diferencia.

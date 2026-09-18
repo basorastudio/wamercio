@@ -956,13 +956,16 @@ func pollV4Name(wrapper *waE2E.FutureProofMessage) string {
 }
 
 type mediaMeta struct {
-	Type     string
-	Body     string
-	URL      string
-	MimeType string
-	FileName string
-	FileSize int64
-	Caption  string
+	Type       string
+	Body       string
+	URL        string
+	MimeType   string
+	FileName   string
+	FileSize   int64
+	Caption    string
+	Latitude   *float64
+	Longitude  *float64
+	Structured map[string]any
 }
 
 func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
@@ -1037,14 +1040,21 @@ func (m *Manager) extractMedia(s *Session, v *events.Message) mediaMeta {
 	case v.Message.GetLocationMessage() != nil:
 		x := v.Message.GetLocationMessage()
 		meta.Type = "location"
-		meta.Body = fmt.Sprintf("Ubicación · %.6f, %.6f", x.GetDegreesLatitude(), x.GetDegreesLongitude())
+		lat, lon := x.GetDegreesLatitude(), x.GetDegreesLongitude()
+		meta.Latitude, meta.Longitude = &lat, &lon
+		meta.Structured = map[string]any{"latitude": lat, "longitude": lon, "name": x.GetName(), "address": x.GetAddress(), "url": x.GetURL()}
+		meta.Body = fmt.Sprintf("Ubicación · %.6f, %.6f", lat, lon)
 	case v.Message.GetLiveLocationMessage() != nil:
 		x := v.Message.GetLiveLocationMessage()
 		meta.Type = "live_location"
-		meta.Body = fmt.Sprintf("Ubicación en vivo · %.6f, %.6f", x.GetDegreesLatitude(), x.GetDegreesLongitude())
+		lat, lon := x.GetDegreesLatitude(), x.GetDegreesLongitude()
+		meta.Latitude, meta.Longitude = &lat, &lon
+		meta.Structured = map[string]any{"latitude": lat, "longitude": lon, "caption": x.GetCaption(), "sequence": x.GetSequenceNumber()}
+		meta.Body = fmt.Sprintf("Ubicación en vivo · %.6f, %.6f", lat, lon)
 	case v.Message.GetContactMessage() != nil:
 		x := v.Message.GetContactMessage()
 		meta.Type = "contact"
+		meta.Structured = map[string]any{"display_name": x.GetDisplayName(), "vcard": x.GetVcard()}
 		meta.Body = fallback(x.GetDisplayName(), "Contacto")
 	case v.Message.GetContactsArrayMessage() != nil:
 		meta.Type = "contacts_array"
@@ -1399,6 +1409,7 @@ func (m *Manager) forwardMessage(s *Session, v *events.Message) {
 		"body": meta.Body, "direction": direction, "type": meta.Type, "display_name": whatsappName,
 		"phone": phone, "occurred_at": v.Info.Timestamp, "media_url": meta.URL, "mime_type": meta.MimeType,
 		"file_name": meta.FileName, "file_size": meta.FileSize, "caption": meta.Caption,
+		"latitude": meta.Latitude, "longitude": meta.Longitude, "structured_payload": meta.Structured,
 		"poll_message_id": pollMessageID, "poll_selected_options": pollSelectedOptions,
 	}
 	m.postCore("/api/v1/internal/whatsapp/events", payload)

@@ -1,73 +1,56 @@
-# WAMERCIO 3.0.0 — Centro Conversacional PRO
+# WAMERCIO 4.0.0 — Expansión Operativa y Comercial
 
-- Incorpora colas de atención multi-tenant con estrategias Manual, Round-robin, Menor carga y Aleatoria.
-- Permite asignar y transferir conversaciones entre usuarios internos, definir agentes por cola, prioridad y SLA.
-- Añade filtros operativos en Conversaciones: Sin asignar, Urgentes y SLA vencido, con indicadores de cola/agente/prioridad.
-- Añade etiquetas conversacionales editables por tienda y registro automático de cambios dentro de Registros de atención.
-- Añade seguimientos programados desde el chat con cancelación automática cuando el cliente responde antes del envío.
-- Añade respuestas rápidas mediante `/comando` conservando el panel visual existente.
-- Añade envío manual de encuestas nativas de WhatsApp desde el compositor, reutilizando WhatsMeow y el endpoint de polls existente.
-- Corrige el cálculo de SLA para medir solamente conversaciones cuyo último mensaje del cliente aún no tiene una respuesta posterior del negocio.
-- Añade `000041_conversation_center_pro` con colas, miembros, etiquetas, eventos, campos operativos y mensajes programados.
-- Mantiene la identidad global del cliente, la relación comercial por `store_id`, el catálogo, pedidos, pagos, POS y bloqueo comercial sin duplicar modelos de HDN.
+## Nuevo
 
-# WAMERCIO 2.9.3 — Hotfix de prerender de Publicaciones sociales
+### 3.1 Cotizaciones Conversacionales PRO
+- Modelo `quotes` independiente del pedido.
+- Artículos, revisiones, eventos, enlaces seguros y follow-ups.
+- Portal público responsive para aceptar/rechazar.
+- PDF generado por la API sin dependencia externa.
+- Conversión a pedido.
+- Sincronización automática con CRM.
 
-- Corrige el fallo de `next build` en `/social-publishing` causado por `useSearchParams()` fuera de un límite `Suspense`.
-- Mantiene el consumidor de parámetros en un componente hijo y envuelve la página con `Suspense`, siguiendo el requisito de Next.js 14 para prerender estático.
-- Añade una regresión específica para impedir que `/social-publishing` vuelva a romper el build de producción.
-- No añade migraciones ni variables de entorno; conserva `000038`–`000040`.
+### 3.2 Delivery PRO
+- Persistencia de payload estructurado y coordenadas WhatsApp.
+- Asociación de una ubicación recibida a dirección global del cliente.
+- Zonas manuales, territoriales y por radio.
+- Asignaciones y estados de entrega.
+- Rutas y paradas.
+- Optimización local nearest-neighbour, distancia Haversine y ETA operativo.
+- Modo Repartidor con `watchPosition` y eventos de ubicación.
 
-# WAMERCIO 2.9.2 — Hotfix de compilación frontend
+### 3.3 CRM Operativo
+- Etapas, oportunidades, tareas y actividad.
+- Kanban comercial.
+- Integración cotización ↔ oportunidad.
+- Trigger visual `task_due` con protección contra doble disparo.
 
-- Sustituye `MessageSquareStar`, no exportado por `lucide-react` 0.468.0, por el icono soportado `MessageCircleMore` en Evaluaciones.
-- Corrige el tipado de modalidades de pago para conservar `Fulfillment`/`PaymentMethod` y evitar indexaciones `any` sobre `Rules` durante `next build`.
-- Añade una regresión específica para ambos errores detectados por el build real de Dokploy.
-- Mantiene intactas las migraciones `000038`–`000040` y no agrega variables de entorno.
+### 3.4 Flow Builder
+- Flujos, nodos, conexiones, runs y steps.
+- Triggers comerciales y conversacionales.
+- Acciones WhatsApp, etiquetas, colas, tareas, prioridad y seguimientos persistentes.
+- Condición de contenido y ramificación true/false.
 
-# WAMERCIO 2.9.1 — Hotfix de compilación de producción
+### 3.5 Voz/Transcripción
+- Configuración por tienda.
+- Cola persistente de transcripciones.
+- Proveedor STT configurable.
+- Búsqueda y render de transcripciones en chat.
 
-- Corrige el scope de `chequeEnabled` en el API: elimina una declaración no utilizada en el contexto de conversación y declara la variable donde se escanea en el listado de clientes.
-- Añade el helper variádico `firstNonBlank` usado por Facebook/Instagram/Google Business y callbacks OAuth.
-- Añade guardas de compilación estática para detectar identificadores Go no resueltos, variables/imports no usados y regresiones específicas del hotfix.
-- Alinea CI con las toolchains de producción: Go 1.27.1 y Node 20, e incorpora build exacto de API, bridge, router y frontend.
-- No añade migraciones ni cambia variables de entorno; conserva las migraciones `000038`–`000040` de V2.9.0.
+### Calls Premium
+- Control plane de llamadas multi-tenant.
+- Eventos entrantes desde adaptador WACalls/WebRTC.
+- Iniciar, contestar, rechazar, colgar, hold, resume y transfer.
+- Historial, grabación y transcripción como propiedades de llamada.
 
-# WAMERCIO 2.9.0
+## Mejorado
+- Sidebar y navegación para Cotizaciones, CRM, Tareas, Flow Builder, Voz y Calls.
+- Registros de atención muestra la última ubicación WhatsApp exacta y permite convertirla en dirección.
+- Delivery muestra distancia/ETA de rutas y acceso a Modo Repartidor.
+- Mensajes de audio muestran transcripción cuando existe.
+- Ubicaciones usan coordenadas estructuradas en vez de depender de texto.
+- Service Worker actualizado a `wamercio-store-v4.0.0`.
 
-- Proxy Auth administrado para Facebook, Instagram, LinkedIn y Google Business, sin credenciales OAuth visibles para las tiendas.
-- Conexiones sociales multi-tenant con tokens cifrados y PKCE para Google.
-- Biblioteca multimedia por tienda y compositor de publicaciones con borradores, aprobadas, programadas, publicadas, parciales y fallidas.
-- Publicación/reintento por destino y prellenado desde Promociones.
-- Workspace de Perfil de Empresa en Google: perfil, sincronización, reseñas/respuestas, rendimiento y multimedia.
-- Evaluaciones mediante encuesta nativa de WhatsApp posterior al cierre de conversaciones: cinco respuestas 1–5, correlación por ID de encuesta, descifrado del voto, feedback, agradecimiento e invitación neutral a reseña.
-- Filtros por agente/canal/fecha, impresión y exportación compatible con Excel en Evaluaciones.
-- Varias cuentas bancarias por negocio, selección de cuenta para transferencia, cuenta de terminal y comisiones.
-- Método Cheque con habilitación del negocio y autorización explícita por cliente/negocio.
-- Migraciones nuevas `000038`, `000039` y `000040`.
-
-# WAMERCIO 2.8.12
-
-- Reemplaza la edición rápida del cliente por Bloquear/Desbloquear por negocio.
-- Todo bloqueo exige un motivo y registra fecha, actor y evento de auditoría.
-- Un cliente bloqueado conserva su identidad global WAMERCIO y puede comprar en otras tiendas, pero no puede operar comercialmente en el negocio que lo bloqueó.
-- El bloqueo se aplica a checkout, reservas, pedidos desde conversación, POS y reseñas verificadas.
-- Superadmin muestra cuántos negocios han bloqueado al cliente y el detalle con negocio, fecha, motivo y actor.
-- La vista de cada negocio mantiene aislamiento multi-tenant y no expone bloqueos de otras tiendas.
-- Añade la migración reversible `000037_store_customer_blocking`.
-
-# WAMERCIO 2.8.11 — Mapa interactivo con marcador geográfico real
-
-## Correcciones
-
-- El mapa de ubicación del cliente vuelve a ser completamente interactivo dentro del modal y del perfil.
-- Se eliminó la navegación automática hacia Google Maps al pulsar el mapa o el pin.
-- Se sustituyó el `iframe` por Leaflet con teselas de OpenStreetMap, permitiendo zoom, desplazamiento, gestos táctiles y controles nativos sin salir de WAMERCIO.
-- La foto de WhatsApp ahora es un marcador geográfico real anclado a `latitude`/`longitude`, por lo que permanece unida a la ubicación al hacer zoom o desplazar el mapa.
-- El mismo componente interactivo se reutiliza en Superadmin, ficha del negocio y Mi perfil > Direcciones.
-- No hay migraciones nuevas; la última continúa siendo `000036_customer_address_geolocation`.
-
-## Dependencias web
-
-- `leaflet` 1.9.4
-- `@types/leaflet` 1.9.16
+## Compatibilidad
+- Se conserva Centro Conversacional PRO 3.0.0.
+- Se conservaron las regresiones de identidad global, clientes/contactos, POS, mesas/reservas, WhatsApp, mapas, bloqueo, pagos, cheque, evaluaciones y publicación social.

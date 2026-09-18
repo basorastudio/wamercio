@@ -1,6 +1,6 @@
 import {NextRequest,NextResponse} from 'next/server'
 
-const platformRoutes=['/admin','/dashboard','/pos','/orders','/conversations','/customers','/catalog','/staff','/delivery','/payment-methods','/settings','/stores','/plans','/support','/transactions','/coupons','/register','/login']
+const platformRoutes=['/admin','/dashboard','/pos','/orders','/quotes','/conversations','/customers','/crm','/tasks','/flows','/voice','/calls','/courier','/catalog','/staff','/delivery','/payment-methods','/settings','/stores','/plans','/support','/transactions','/coupons','/register','/login']
 const clean=(v:string)=>v.split(':')[0].toLowerCase().replace(/\.$/,'')
 
 export function middleware(req:NextRequest){

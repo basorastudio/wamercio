@@ -15,6 +15,12 @@ export type WhatsAppMessage={
   file_size?:number
   caption?:string
   occurred_at:string
+  structured_payload?:Record<string,any>
+  latitude?:number|null
+  longitude?:number|null
+  transcript?:string
+  transcript_status?:string
+  transcript_error?:string
 }
 
 const humanSize=(n?:number)=>{
@@ -24,7 +30,8 @@ const humanSize=(n?:number)=>{
   if(v<1024*1024)return `${(v/1024).toFixed(v<10240?1:0)} KB`
   return `${(v/1024/1024).toFixed(v<10*1024*1024?1:0)} MB`
 }
-const mapHref=(body:string)=>{
+const mapHref=(body:string,lat?:number|null,lon?:number|null)=>{
+  if(lat!==null&&lat!==undefined&&lon!==null&&lon!==undefined)return `https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lon}`)}`
   const m=body.match(/(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/)
   return m?`https://www.google.com/maps?q=${encodeURIComponent(`${m[1]},${m[2]}`)}`:''
 }
@@ -80,13 +87,13 @@ export function WhatsAppMessageContent({m}:{m:WhatsAppMessage}){
     {(caption&&caption!==text)&&<div className="mt-1.5"><TextWithLinks text={caption}/></div>}
   </div>
 
-  if(isAudio&&media)return <div className="min-w-[260px] max-w-[380px] rounded-[12px] bg-black/[.035] p-2.5"><div className="mb-2 flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[#00a884] text-white"><Mic className="h-4 w-4"/></span><div><div className="text-xs font-medium text-[#3b4a54]">{type.includes('ptt')?'Nota de voz':'Audio'}</div>{m.file_name&&<div className="max-w-[230px] truncate text-[10px] text-[#8696a0]">{m.file_name}</div>}</div></div><audio src={media} controls preload="metadata" className="h-9 w-full"/></div>
+  if(isAudio&&media)return <div className="min-w-[260px] max-w-[380px] rounded-[12px] bg-black/[.035] p-2.5"><div className="mb-2 flex items-center gap-2"><span className="grid h-8 w-8 place-items-center rounded-full bg-[#00a884] text-white"><Mic className="h-4 w-4"/></span><div><div className="text-xs font-medium text-[#3b4a54]">{type.includes('ptt')?'Nota de voz':'Audio'}</div>{m.file_name&&<div className="max-w-[230px] truncate text-[10px] text-[#8696a0]">{m.file_name}</div>}</div></div><audio src={media} controls preload="metadata" className="h-9 w-full"/>{m.transcript&&<div className="mt-2 rounded-lg bg-white/75 p-2.5"><div className="mb-1 text-[9px] font-bold uppercase tracking-[.12em] text-[#008069]">Transcripción</div><p className="whitespace-pre-wrap text-xs leading-5 text-[#3b4a54]">{m.transcript}</p></div>}{!m.transcript&&m.transcript_status==='processing'&&<div className="mt-2 text-[10px] font-medium text-[#667781]">Transcribiendo audio...</div>}</div>
 
   if(isDoc)return <div>{<FileCard m={m} text={text}/>} {(caption&&caption!==text)&&<div className="mt-1.5"><TextWithLinks text={caption}/></div>}</div>
 
   if(type.includes('location')){
-    const href=mapHref(text)
-    return <a href={href||undefined} target={href?'_blank':undefined} rel="noreferrer" className="flex min-w-[220px] max-w-[340px] items-center gap-3 rounded-[10px] bg-black/[.045] p-3 hover:bg-black/[.075]"><div className="grid h-12 w-12 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MapPin className="h-6 w-6"/></div><div className="min-w-0"><div className="text-sm font-medium text-[#111b21]">{type.includes('live')?'Ubicación en vivo':'Ubicación'}</div><div className="mt-0.5 truncate text-xs text-[#667781]">{text.replace(/^Ubicación(?: en vivo)?\s*·\s*/i,'')||'Abrir ubicación'}</div><div className="mt-1 text-[10px] font-semibold text-[#008069]">Abrir mapa</div></div></a>
+    const href=mapHref(text,m.latitude,m.longitude)
+    return <a href={href||undefined} target={href?'_blank':undefined} rel="noreferrer" className="flex min-w-[220px] max-w-[340px] items-center gap-3 rounded-[10px] bg-black/[.045] p-3 hover:bg-black/[.075]"><div className="grid h-12 w-12 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><MapPin className="h-6 w-6"/></div><div className="min-w-0"><div className="text-sm font-medium text-[#111b21]">{type.includes('live')?'Ubicación en vivo':'Ubicación'}</div><div className="mt-0.5 truncate text-xs text-[#667781]">{m.structured_payload?.name||m.structured_payload?.address||text.replace(/^Ubicación(?: en vivo)?\s*·\s*/i,'')||`${m.latitude??''}, ${m.longitude??''}`||'Abrir ubicación'}</div><div className="mt-1 text-[10px] font-semibold text-[#008069]">Abrir mapa</div></div></a>
   }
 
   if(type.includes('contact'))return <div className="min-w-[220px] max-w-[340px] rounded-[10px] bg-black/[.045] p-3"><div className="flex items-center gap-3"><div className="grid h-12 w-12 place-items-center rounded-full bg-[#d9fdd3] text-[#008069]"><ContactRound className="h-6 w-6"/></div><div className="min-w-0"><div className="text-sm font-medium text-[#111b21]">{type.includes('array')?'Contactos':'Contacto'}</div><div className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[#667781]">{text||'Contacto de WhatsApp'}</div></div></div></div>

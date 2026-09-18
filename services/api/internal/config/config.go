@@ -20,6 +20,8 @@ type Config struct {
 	TenantRootDomain        string
 	CustomDomainCNAMETarget string
 	WhatsAppBridgeURL       string
+	CallsAdapterURL         string
+	CallsAdapterSecret      string
 	UploadDir               string
 	AllowedOrigins          []string
 }
@@ -40,6 +42,8 @@ func Load() Config {
 		TenantRootDomain:        strings.ToLower(env("TENANT_ROOT_DOMAIN", "ltd.do")),
 		CustomDomainCNAMETarget: strings.ToLower(env("CUSTOM_DOMAIN_CNAME_TARGET", "domains.ltd.do")),
 		WhatsAppBridgeURL:       env("WHATSAPP_BRIDGE_URL", "http://whatsapp:8090"),
+		CallsAdapterURL:         strings.TrimRight(os.Getenv("CALLS_ADAPTER_URL"), "/"),
+		CallsAdapterSecret:      os.Getenv("CALLS_ADAPTER_SECRET"),
 		UploadDir:               env("UPLOAD_DIR", "/app/data/uploads"),
 		AllowedOrigins:          splitCSV(env("CORS_ALLOWED_ORIGINS", env("APP_URL", "http://localhost:3000"))),
 	}

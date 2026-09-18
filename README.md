@@ -1,44 +1,92 @@
-# WAMERCIO 3.0.0
+# WAMERCIO 4.0.0
 
-WAMERCIO 3.0.0 incorpora el **Centro Conversacional PRO** sobre la base existente de comercio conversacional: colas, agentes, transferencias, prioridades, SLA, etiquetas, seguimientos programados y encuestas nativas, manteniendo el diseño actual y el aislamiento multi-tenant por tienda.
+WAMERCIO 4.0.0 integra simultáneamente las fases posteriores al **Centro Conversacional PRO 3.0.0**, conservando el mismo patrón visual, arquitectura multi-tenant y modelo WhatsApp-first.
 
-La experiencia pública conserva el flujo de catálogo, **Mi compra**, pedidos y cuenta del cliente.
+## Módulos incluidos
 
+### Cotizaciones Conversacionales PRO
+- Cotizaciones independientes de pedidos.
+- Artículos, revisiones, eventos y seguimiento.
+- Enlace público seguro con aceptar/rechazar.
+- Envío por WhatsApp.
+- PDF descargable desde panel y portal público.
+- Seguimientos automáticos cancelables cuando la cotización cambia de estado.
+- Conversión cotización → pedido.
+- Sincronización automática con CRM.
 
-## Centro Conversacional PRO
+### Delivery PRO
+- Ubicación WhatsApp estructurada con latitud/longitud reales.
+- Acción **Asociar a dirección** desde Registros de atención.
+- Dirección global del cliente y actualización del contacto local.
+- Creación opcional de zona territorial a partir de la ubicación.
+- Entregas y asignación de repartidores.
+- Rutas con secuencia de paradas.
+- Optimización local por proximidad + distancia/ETA aproximados.
+- Modo Repartidor con estados y geolocalización del dispositivo.
+- Modelo preparado para reemplazar la heurística por GEO RD MAP/routing sin cambiar contratos.
 
-La bandeja de Conversaciones conserva la interfaz tipo WhatsApp de WAMERCIO y añade gestión operativa sin abrir un CRM paralelo. Cada conversación puede pertenecer a una cola, tener un agente responsable, prioridad, etiquetas y SLA. Las colas admiten asignación manual, Round-robin, Menor carga o Aleatoria y pueden limitarse a agentes concretos.
+### CRM Operativo
+- Embudo configurable por tienda.
+- Oportunidades relacionadas con cliente, conversación y cotización.
+- Kanban comercial.
+- Tareas, responsables, prioridad y vencimiento.
+- Actividad operativa.
+- Sincronización de cotización: Cotizado → Negociación → Ganado/Perdido.
 
-Los seguimientos se programan desde **Registros de atención** y pueden cancelarse automáticamente si el cliente responde antes. El historial combina notas internas y eventos operativos. El compositor admite `/comando` para respuestas rápidas y encuestas nativas de WhatsApp.
+### Flow Builder
+- Constructor visual basado en nodos y conexiones.
+- Triggers: manual, mensaje recibido, keyword, cotización enviada/aprobada, pedido creado/cambio de estado y tarea vencida.
+- Acciones: enviar WhatsApp, etiqueta, cola, tarea, seguimiento programado, prioridad y condiciones.
+- Historial de ejecuciones y pasos para auditoría.
 
-## Comercio social y conexiones administradas
+### Voz y transcripción
+- Transcripción automática de notas de voz.
+- Proveedor STT desacoplado mediante endpoint multipart compatible.
+- Procesamiento persistente y estados pending/processing/done/failed/skipped.
+- Búsqueda de transcripciones.
+- Transcripción visible dentro de la burbuja de audio.
 
-Las tiendas pueden conectar **Facebook, Instagram, LinkedIn y Perfil de Empresa en Google** desde **Configuración → Redes sociales** mediante el Proxy Auth administrado. El comercio no introduce Client ID, Client Secret, token ni contraseña dentro de WAMERCIO; los tokens de conexión se almacenan cifrados en el backend con `PLATFORM_CONFIG_SECRET`.
+### WAMERCIO Calls Premium
+- Configuración por negocio.
+- Registro de llamadas entrantes/salientes.
+- Contestar, rechazar, colgar, espera, reanudar y transferir.
+- Routing configurable.
+- Campos para grabación y transcripción.
+- Webhook de eventos y control plane multi-tenant.
+- Transporte de audio desacoplado mediante `CALLS_ADAPTER_URL` para WACalls/WebRTC.
 
-Los módulos visibles incorporados son **Multimedia**, **Publicaciones**, **Evaluaciones** y la ampliación de **Métodos de pago**. Cada conexión, publicación, activo multimedia y configuración pertenece a un `store_id`.
+## Migraciones nuevas
 
-## Publicaciones y Promociones
+- `000042_quotes_pro`
+- `000043_delivery_pro`
+- `000044_crm_operations`
+- `000045_flow_builder`
+- `000046_voice_transcription`
+- `000047_calls_premium`
 
-El compositor social admite borradores, aprobadas, programadas, publicación inmediata, estados parciales/fallidos, reintentos por destino, texto por plataforma, enlace/CTA y recursos de la Biblioteca multimedia. Una Promoción de WAMERCIO puede abrir directamente el compositor con el contexto de la promoción prellenado.
+Todas tienen archivo `up` y `down`.
 
-## Perfil de Empresa en Google
+## Variables opcionales nuevas
 
-El workspace de Google Business permite trabajar con perfil, ubicación, horario, reseñas/respuestas, rendimiento y multimedia. La sincronización de horarios normaliza explícitamente el formato Google ↔ WAMERCIO en lugar de almacenar el payload del proveedor directamente.
+```env
+STT_API_URL=
+STT_API_KEY=
+STT_MODEL=whisper-1
 
-## Evaluaciones nativas por WhatsApp
+CALLS_ADAPTER_URL=
+CALLS_ADAPTER_SECRET=
+```
 
-Al cerrar una conversación, WAMERCIO puede enviar una **encuesta nativa de WhatsApp** con cinco respuestas configurables de 1 a 5. El bridge utiliza `BuildPollCreation`, correlaciona el ID enviado y descifra la selección recibida mediante `DecryptPollVote`; solo el voto perteneciente a la encuesta pendiente de esa conversación puede registrar la evaluación. El flujo admite feedback posterior, agradecimiento e invitación neutral a reseña de Google.
+Sin `STT_API_URL`, WAMERCIO sigue funcionando y las transcripciones quedan marcadas como proveedor no configurado. Sin `CALLS_ADAPTER_URL`, el módulo Calls conserva configuración e historial pero no intenta establecer audio real.
 
-El panel de Evaluaciones incluye filtros por agente, canal y fechas, impresión y exportación compatible con Excel.
+## Verificación
 
-## Métodos de pago y cuentas bancarias
+```bash
+sh scripts/verify-4.0.0.sh
+```
 
-Cada tienda puede registrar varias cuentas bancarias usando el catálogo de bancos de la plataforma, elegir la cuenta principal para transferencias y la cuenta vinculada a terminal, y configurar comisión porcentual/fija. El método **Cheque** requiere habilitación del negocio y autorización explícita del cliente en ese negocio.
+La verificación comprueba versión, migraciones, rutas HTTP, sintaxis TypeScript/Go, `gofmt`, scripts shell y el contrato funcional de las seis fases.
 
-## Actualización
+## Despliegue
 
-La migración nueva de esta versión es `000041_conversation_center_pro`; se conservan `000038`–`000040` de la línea 2.9.x. Consulta `CHANGELOG.md` y `DEPLOY_DOKPLOY.md` antes de desplegar.
-
-## Bloqueo comercial por negocio (2.8.12)
-
-Los negocios pueden bloquear a un cliente localmente indicando un motivo obligatorio. El bloqueo no afecta la cuenta global del cliente ni su acceso a otros negocios. Superadmin puede auditar los bloqueos por negocio.
+Consulta `DEPLOY_DOKPLOY.md`. El orden recomendado es **API → WhatsApp Bridge → Web** para que las migraciones estén aplicadas antes de que la interfaz consulte las nuevas entidades.

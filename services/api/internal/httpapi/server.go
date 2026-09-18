@@ -56,6 +56,9 @@ func New(cfg config.Config, db *pgxpool.Pool) *Server {
 	go srv.outboxLoop()
 	go srv.automationLoop()
 	go srv.conversationWorkflowLoop()
+	go srv.quoteFollowupLoop()
+	go srv.transcriptionLoop()
+	go srv.taskDueLoop()
 	go srv.socialPublishLoop()
 	return srv
 }
@@ -107,9 +110,13 @@ func (s *Server) Router() http.Handler {
 		api.Post("/public/store/checkout", s.checkout)
 		api.Get("/public/orders/{token}", s.publicOrder)
 		api.Post("/public/orders/{token}/proof", s.publicOrderProof)
+		api.Get("/public/quotes/{token}", s.publicQuote)
+		api.Get("/public/quotes/{token}/pdf", s.publicQuotePDF)
+		api.Post("/public/quotes/{token}/decision", s.publicQuoteDecision)
 		api.Post("/internal/whatsapp/events", s.whatsappEvent)
 		api.Post("/internal/whatsapp/profile", s.whatsappProfile)
 		api.Post("/internal/whatsapp/receipts", s.whatsappReceipt)
+		api.Post("/internal/calls/events", s.callAdapterEvent)
 
 		api.Group(func(p chi.Router) {
 			p.Use(s.requireStoreAuth)
@@ -163,6 +170,13 @@ func (s *Server) Router() http.Handler {
 			p.Put("/automations/{id}", s.updateAutomationRule)
 			p.Delete("/automations/{id}", s.deleteAutomationRule)
 			p.Get("/automations/runs", s.listAutomationRuns)
+			p.Get("/flows", s.listFlows)
+			p.Post("/flows", s.createFlow)
+			p.Get("/flows/{id}", s.getFlow)
+			p.Put("/flows/{id}", s.updateFlow)
+			p.Delete("/flows/{id}", s.deleteFlow)
+			p.Post("/flows/{id}/test", s.testFlow)
+			p.Get("/flows/runs/history", s.listFlowRuns)
 			p.Get("/analytics", s.storeAnalytics)
 			p.Get("/social/providers", s.listSocialProviders)
 			p.Post("/social/connect/{provider}", s.socialOAuthStart)
@@ -194,6 +208,16 @@ func (s *Server) Router() http.Handler {
 			p.Put("/bank-accounts/{id}", s.updateStoreBankAccount)
 			p.Delete("/bank-accounts/{id}", s.deleteStoreBankAccount)
 			p.Get("/shipping", s.listShipping)
+			p.Get("/delivery/assignments", s.listDeliveryAssignments)
+			p.Post("/delivery/assignments", s.upsertDeliveryAssignment)
+			p.Patch("/delivery/assignments/{id}", s.updateDeliveryAssignment)
+			p.Get("/delivery/routes", s.listDeliveryRoutes)
+			p.Post("/delivery/routes", s.createDeliveryRoute)
+			p.Put("/delivery/routes/{id}", s.updateDeliveryRoute)
+			p.Post("/delivery/routes/{id}/optimize", s.optimizeDeliveryRoute)
+			p.Delete("/delivery/routes/{id}", s.deleteDeliveryRoute)
+			p.Post("/delivery/conversations/{id}/address", s.associateConversationLocation)
+			p.Post("/delivery/courier/location", s.recordCourierLocation)
 			p.Post("/shipping", s.createShipping)
 			p.Put("/shipping/{id}", s.updateShipping)
 			p.Delete("/shipping/{id}", s.deleteShipping)
@@ -226,6 +250,35 @@ func (s *Server) Router() http.Handler {
 			p.Post("/quick-replies", s.createQuickReply)
 			p.Put("/quick-replies/{id}", s.updateQuickReply)
 			p.Delete("/quick-replies/{id}", s.deleteQuickReply)
+			p.Get("/quotes", s.listQuotes)
+			p.Post("/quotes", s.createQuote)
+			p.Get("/quotes/settings", s.quoteSettings)
+			p.Put("/quotes/settings", s.quoteSettings)
+			p.Get("/quotes/{id}", s.getQuote)
+			p.Get("/quotes/{id}/pdf", s.quotePDF)
+			p.Put("/quotes/{id}", s.updateQuote)
+			p.Post("/quotes/{id}/share", s.shareQuote)
+			p.Post("/quotes/{id}/convert", s.convertQuoteToOrder)
+			p.Get("/crm/stages", s.listCRMStages)
+			p.Post("/crm/stages", s.createCRMStage)
+			p.Put("/crm/stages/{id}", s.updateCRMStage)
+			p.Get("/crm/opportunities", s.listCRMOpportunities)
+			p.Post("/crm/opportunities", s.createCRMOpportunity)
+			p.Put("/crm/opportunities/{id}", s.updateCRMOpportunity)
+			p.Delete("/crm/opportunities/{id}", s.deleteCRMOpportunity)
+			p.Get("/tasks", s.listCRMTasks)
+			p.Post("/tasks", s.createCRMTask)
+			p.Put("/tasks/{id}", s.updateCRMTask)
+			p.Delete("/tasks/{id}", s.deleteCRMTask)
+			p.Get("/voice/settings", s.getVoiceSettings)
+			p.Put("/voice/settings", s.updateVoiceSettings)
+			p.Get("/voice/transcripts", s.listVoiceTranscripts)
+			p.Post("/voice/transcripts/{messageID}", s.requestVoiceTranscript)
+			p.Get("/calls/settings", s.callSettings)
+			p.Put("/calls/settings", s.callSettings)
+			p.Get("/calls", s.listCalls)
+			p.Post("/calls", s.startCallRecord)
+			p.Patch("/calls/{id}", s.updateCallRecord)
 			p.Get("/orders", s.listOrders)
 			p.Get("/orders/{id}", s.getOrder)
 			p.Patch("/orders/{id}/status", s.updateOrderStatus)
@@ -1828,7 +1881,7 @@ func (s *Server) listShipping(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,name,charge,estimated_minutes,is_active,created_at FROM shipping_zones WHERE store_id=$1 ORDER BY name`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT id,name,charge,estimated_minutes,is_active,created_at,coverage_type,coalesce(province_code,''),coalesce(province,''),coalesce(municipality_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),center_latitude,center_longitude,radius_km,auto_created FROM shipping_zones WHERE store_id=$1 ORDER BY name`, sid)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
 		return
@@ -1836,22 +1889,33 @@ func (s *Server) listShipping(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, n string
+		var id, n, coverageType, provinceCode, province, municipalityID, municipality, neighborhoodID, neighborhood string
 		var charge float64
 		var min int
-		var a bool
+		var a, autoCreated bool
 		var cr time.Time
-		_ = rows.Scan(&id, &n, &charge, &min, &a, &cr)
-		out = append(out, map[string]any{"id": id, "name": n, "charge": charge, "estimated_minutes": min, "is_active": a, "created_at": cr})
+		var centerLat, centerLon, radius *float64
+		_ = rows.Scan(&id, &n, &charge, &min, &a, &cr, &coverageType, &provinceCode, &province, &municipalityID, &municipality, &neighborhoodID, &neighborhood, &centerLat, &centerLon, &radius, &autoCreated)
+		out = append(out, map[string]any{"id": id, "name": n, "charge": charge, "estimated_minutes": min, "is_active": a, "created_at": cr, "coverage_type": coverageType, "province_code": provinceCode, "province": province, "municipality_id": municipalityID, "municipality": municipality, "neighborhood_id": neighborhoodID, "neighborhood": neighborhood, "center_latitude": centerLat, "center_longitude": centerLon, "radius_km": radius, "auto_created": autoCreated})
 	}
 	jsonOut(w, 200, out)
 }
 func (s *Server) createShipping(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		StoreID          string  `json:"store_id"`
-		Name             string  `json:"name"`
-		Charge           float64 `json:"charge"`
-		EstimatedMinutes int     `json:"estimated_minutes"`
+		StoreID          string   `json:"store_id"`
+		Name             string   `json:"name"`
+		Charge           float64  `json:"charge"`
+		EstimatedMinutes int      `json:"estimated_minutes"`
+		CoverageType     string   `json:"coverage_type"`
+		ProvinceCode     string   `json:"province_code"`
+		Province         string   `json:"province"`
+		MunicipalityID   string   `json:"municipality_id"`
+		Municipality     string   `json:"municipality"`
+		NeighborhoodID   string   `json:"neighborhood_id"`
+		Neighborhood     string   `json:"neighborhood"`
+		CenterLatitude   *float64 `json:"center_latitude"`
+		CenterLongitude  *float64 `json:"center_longitude"`
+		RadiusKM         *float64 `json:"radius_km"`
 	}
 	if decode(r, &in) != nil || in.StoreID == "" || in.Name == "" {
 		jsonErr(w, 400, "Datos incompletos")
@@ -1866,7 +1930,10 @@ func (s *Server) createShipping(w http.ResponseWriter, r *http.Request) {
 		in.EstimatedMinutes = 30
 	}
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO shipping_zones(store_id,name,charge,estimated_minutes) VALUES($1,$2,$3,$4) RETURNING id`, in.StoreID, in.Name, in.Charge, in.EstimatedMinutes).Scan(&id)
+	if in.CoverageType != "territory" && in.CoverageType != "radius" {
+		in.CoverageType = "manual"
+	}
+	err := s.db.QueryRow(r.Context(), `INSERT INTO shipping_zones(store_id,name,charge,estimated_minutes,coverage_type,province_code,province,municipality_id,municipality,neighborhood_id,neighborhood,center_latitude,center_longitude,radius_km) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id`, in.StoreID, in.Name, in.Charge, in.EstimatedMinutes, in.CoverageType, in.ProvinceCode, in.Province, in.MunicipalityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.CenterLatitude, in.CenterLongitude, in.RadiusKM).Scan(&id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudo crear")
 		return
@@ -1876,11 +1943,21 @@ func (s *Server) createShipping(w http.ResponseWriter, r *http.Request) {
 func (s *Server) updateShipping(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var in struct {
-		StoreID          string  `json:"store_id"`
-		Name             string  `json:"name"`
-		Charge           float64 `json:"charge"`
-		EstimatedMinutes int     `json:"estimated_minutes"`
-		IsActive         bool    `json:"is_active"`
+		StoreID          string   `json:"store_id"`
+		Name             string   `json:"name"`
+		Charge           float64  `json:"charge"`
+		EstimatedMinutes int      `json:"estimated_minutes"`
+		IsActive         bool     `json:"is_active"`
+		CoverageType     string   `json:"coverage_type"`
+		ProvinceCode     string   `json:"province_code"`
+		Province         string   `json:"province"`
+		MunicipalityID   string   `json:"municipality_id"`
+		Municipality     string   `json:"municipality"`
+		NeighborhoodID   string   `json:"neighborhood_id"`
+		Neighborhood     string   `json:"neighborhood"`
+		CenterLatitude   *float64 `json:"center_latitude"`
+		CenterLongitude  *float64 `json:"center_longitude"`
+		RadiusKM         *float64 `json:"radius_km"`
 	}
 	if decode(r, &in) != nil {
 		jsonErr(w, 400, "Datos inválidos")
@@ -1891,7 +1968,10 @@ func (s *Server) updateShipping(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
-	_, _ = s.db.Exec(r.Context(), `UPDATE shipping_zones SET name=$1,charge=$2,estimated_minutes=$3,is_active=$4 WHERE id=$5 AND store_id=$6`, in.Name, in.Charge, in.EstimatedMinutes, in.IsActive, id, in.StoreID)
+	if in.CoverageType != "territory" && in.CoverageType != "radius" {
+		in.CoverageType = "manual"
+	}
+	_, _ = s.db.Exec(r.Context(), `UPDATE shipping_zones SET name=$1,charge=$2,estimated_minutes=$3,is_active=$4,coverage_type=$5,province_code=$6,province=$7,municipality_id=$8,municipality=$9,neighborhood_id=$10,neighborhood=$11,center_latitude=$12,center_longitude=$13,radius_km=$14,updated_at=now() WHERE id=$15 AND store_id=$16`, in.Name, in.Charge, in.EstimatedMinutes, in.IsActive, in.CoverageType, in.ProvinceCode, in.Province, in.MunicipalityID, in.Municipality, in.NeighborhoodID, in.Neighborhood, in.CenterLatitude, in.CenterLongitude, in.RadiusKM, id, in.StoreID)
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 func (s *Server) deleteShipping(w http.ResponseWriter, r *http.Request) {
@@ -2443,6 +2523,7 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 			go s.awardOrderLoyalty(context.Background(), id)
 		}
 	}
+	go s.triggerVisualFlows(context.Background(), sid, "order_status", id, "", map[string]string{"order_id": id, "telefono": phone, "cliente": customerName, "pedido": fmt.Sprint(num), "status": in.Status, "estado": spanishStatus(in.Status)})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -2626,7 +2707,7 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Conversación no encontrada")
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT id,coalesce(message_id,''),direction,type,coalesce(body,''),coalesce(status,''),coalesce(media_url,''),coalesce(mime_type,''),coalesce(file_name,''),coalesce(file_size,0),coalesce(caption,''),occurred_at FROM messages WHERE conversation_id=$1 ORDER BY occurred_at ASC LIMIT 1000`, id)
+	rows, err := s.db.Query(r.Context(), `SELECT m.id,coalesce(m.message_id,''),m.direction,m.type,coalesce(m.body,''),coalesce(m.status,''),coalesce(m.media_url,''),coalesce(m.mime_type,''),coalesce(m.file_name,''),coalesce(m.file_size,0),coalesce(m.caption,''),m.occurred_at,coalesce(m.structured_payload,'{}'::jsonb),m.latitude,m.longitude,coalesce(t.text,''),coalesce(t.status,''),coalesce(t.error,'') FROM messages m LEFT JOIN message_transcripts t ON t.message_id=m.id WHERE m.conversation_id=$1 ORDER BY m.occurred_at ASC LIMIT 1000`, id)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los mensajes")
 		return
@@ -2634,11 +2715,15 @@ func (s *Server) listMessages(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var mid, msgid, dir, typ, body, status, mediaURL, mimeType, fileName, caption string
+		var mid, msgid, dir, typ, body, status, mediaURL, mimeType, fileName, caption, transcript, transcriptStatus, transcriptError string
 		var fileSize int64
 		var at time.Time
-		_ = rows.Scan(&mid, &msgid, &dir, &typ, &body, &status, &mediaURL, &mimeType, &fileName, &fileSize, &caption, &at)
-		out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "media_url": mediaURL, "mime_type": mimeType, "file_name": fileName, "file_size": fileSize, "caption": caption, "occurred_at": at})
+		var structuredRaw []byte
+		var latitude, longitude *float64
+		_ = rows.Scan(&mid, &msgid, &dir, &typ, &body, &status, &mediaURL, &mimeType, &fileName, &fileSize, &caption, &at, &structuredRaw, &latitude, &longitude, &transcript, &transcriptStatus, &transcriptError)
+		var structured any = map[string]any{}
+		_ = json.Unmarshal(structuredRaw, &structured)
+		out = append(out, map[string]any{"id": mid, "message_id": msgid, "direction": dir, "type": typ, "body": body, "status": status, "media_url": mediaURL, "mime_type": mimeType, "file_name": fileName, "file_size": fileSize, "caption": caption, "occurred_at": at, "structured_payload": structured, "latitude": latitude, "longitude": longitude, "transcript": transcript, "transcript_status": transcriptStatus, "transcript_error": transcriptError})
 	}
 	jsonOut(w, 200, out)
 }
@@ -4569,23 +4654,26 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		StoreID             string    `json:"store_id"`
-		SessionKey          string    `json:"session_key"`
-		RemoteJID           string    `json:"remote_jid"`
-		MessageID           string    `json:"message_id"`
-		Body                string    `json:"body"`
-		Direction           string    `json:"direction"`
-		Type                string    `json:"type"`
-		DisplayName         string    `json:"display_name"`
-		Phone               string    `json:"phone"`
-		MediaURL            string    `json:"media_url"`
-		MimeType            string    `json:"mime_type"`
-		FileName            string    `json:"file_name"`
-		FileSize            int64     `json:"file_size"`
-		Caption             string    `json:"caption"`
-		PollMessageID       string    `json:"poll_message_id"`
-		PollSelectedOptions []string  `json:"poll_selected_options"`
-		OccurredAt          time.Time `json:"occurred_at"`
+		StoreID             string         `json:"store_id"`
+		SessionKey          string         `json:"session_key"`
+		RemoteJID           string         `json:"remote_jid"`
+		MessageID           string         `json:"message_id"`
+		Body                string         `json:"body"`
+		Direction           string         `json:"direction"`
+		Type                string         `json:"type"`
+		DisplayName         string         `json:"display_name"`
+		Phone               string         `json:"phone"`
+		MediaURL            string         `json:"media_url"`
+		MimeType            string         `json:"mime_type"`
+		FileName            string         `json:"file_name"`
+		FileSize            int64          `json:"file_size"`
+		Caption             string         `json:"caption"`
+		PollMessageID       string         `json:"poll_message_id"`
+		PollSelectedOptions []string       `json:"poll_selected_options"`
+		StructuredPayload   map[string]any `json:"structured_payload"`
+		Latitude            *float64       `json:"latitude"`
+		Longitude           *float64       `json:"longitude"`
+		OccurredAt          time.Time      `json:"occurred_at"`
 	}
 	if decode(r, &in) != nil || in.RemoteJID == "" {
 		jsonErr(w, 400, "Evento inválido")
@@ -4679,8 +4767,12 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 	if in.Direction == "out" {
 		status = "sent"
 	}
-	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,file_size,caption,occurred_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),messages.file_name),file_size=GREATEST(messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),messages.caption)`, convID, in.MessageID, in.Direction, in.Type, in.Body, status, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt)
+	structuredRaw, _ := json.Marshal(in.StructuredPayload)
+	_, _ = tx.Exec(r.Context(), `INSERT INTO messages(conversation_id,message_id,direction,type,body,status,media_url,mime_type,file_name,file_size,caption,occurred_at,structured_payload,latitude,longitude) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(conversation_id,message_id) DO UPDATE SET media_url=coalesce(nullif(EXCLUDED.media_url,''),messages.media_url),mime_type=coalesce(nullif(EXCLUDED.mime_type,''),messages.mime_type),file_name=coalesce(nullif(EXCLUDED.file_name,''),messages.file_name),file_size=GREATEST(messages.file_size,EXCLUDED.file_size),caption=coalesce(nullif(EXCLUDED.caption,''),messages.caption),structured_payload=CASE WHEN EXCLUDED.structured_payload='{}'::jsonb THEN messages.structured_payload ELSE EXCLUDED.structured_payload END,latitude=coalesce(EXCLUDED.latitude,messages.latitude),longitude=coalesce(EXCLUDED.longitude,messages.longitude)`, convID, in.MessageID, in.Direction, in.Type, in.Body, status, in.MediaURL, in.MimeType, in.FileName, in.FileSize, in.Caption, in.OccurredAt, structuredRaw, in.Latitude, in.Longitude)
 	_ = tx.Commit(r.Context())
+	if in.Direction != "out" && (in.Type == "audio" || in.Type == "ptt" || in.Type == "view_once_audio" || in.Type == "view_once_ptt") {
+		go s.enqueueAutomaticTranscript(context.Background(), in.StoreID, convID, in.MessageID)
+	}
 	if in.Direction != "out" {
 		s.cancelReplySensitiveFollowups(r.Context(), convID, in.OccurredAt)
 		go s.maybeAutoAssignIncomingConversation(context.Background(), in.StoreID, convID)
@@ -4689,6 +4781,10 @@ func (s *Server) whatsappEvent(w http.ResponseWriter, r *http.Request) {
 		} else {
 			go s.capturePendingEvaluation(context.Background(), in.StoreID, convID, in.Body)
 		}
+	}
+	if in.Direction != "out" {
+		go s.triggerVisualFlows(context.Background(), in.StoreID, "message_received", in.MessageID, convID, map[string]string{"message": in.Body, "telefono": phone, "cliente": displayName, "message_type": in.Type})
+		go s.triggerVisualFlows(context.Background(), in.StoreID, "keyword", in.MessageID, convID, map[string]string{"message": in.Body, "telefono": phone, "cliente": displayName, "message_type": in.Type})
 	}
 	s.publishStoreEvent(r.Context(), in.StoreID, "message", map[string]any{"conversation_id": convID, "direction": in.Direction, "type": in.Type})
 	jsonOut(w, 200, map[string]bool{"ok": true})
