@@ -1,6 +1,6 @@
-# WAMERCIO 2.9.1
+# WAMERCIO 2.9.2
 
-WAMERCIO 2.9.1 consolida el comercio conversacional con publicación social, Perfil de Empresa en Google, evaluaciones nativas por WhatsApp y pagos bancarios avanzados, manteniendo el modelo multi-tenant por tienda y el diseño actual de WAMERCIO.
+WAMERCIO 2.9.2 consolida el comercio conversacional con publicación social, Perfil de Empresa en Google, evaluaciones nativas por WhatsApp y pagos bancarios avanzados, manteniendo el modelo multi-tenant por tienda y el diseño actual de WAMERCIO.
 
 La experiencia pública conserva el flujo de catálogo, **Mi compra**, pedidos y cuenta del cliente.
 

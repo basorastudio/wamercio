@@ -1,5 +1,5 @@
 'use client'
-import {useEffect,useMemo,useState} from 'react'
+import {useEffect,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api} from '@/lib/api'
 import {Alert,Loading,PageEmpty} from '@/components/ui'
@@ -7,6 +7,7 @@ import {Banknote,Landmark,CreditCard,Save,Truck,Store as StoreIcon,UtensilsCross
 
 type PaymentMethod='cash'|'cash_on_delivery'|'bank_transfer'|'cheque'
 type Fulfillment='delivery'|'pickup'|'dine_in'
+type FulfillmentOption={key:Fulfillment;label:string;icon:typeof Truck}
 type Rules=Record<Fulfillment,Record<PaymentMethod,boolean>>
 const methods:PaymentMethod[]=['cash','cash_on_delivery','bank_transfer','cheque']
 const methodMeta:Record<PaymentMethod,{label:string;detail:string;icon:any}>={cash:{label:'Efectivo',detail:'Pagar al recibir o retirar.',icon:Banknote},cash_on_delivery:{label:'Tarjeta en terminal',detail:'Cobro mediante terminal física.',icon:CreditCard},bank_transfer:{label:'Transferencia bancaria',detail:'Muestra las cuentas activas para elegir.',icon:Landmark},cheque:{label:'Cheque',detail:'Disponible únicamente cuando el negocio lo autoriza.',icon:FileCheck2}}
@@ -18,8 +19,8 @@ export default function PaymentMethods(){
  const[store,setStore]=useState(''),[tab,setTab]=useState<'methods'|'accounts'>('methods'),[data,setData]=useState<any>(null),[banks,setBanks]=useState<any[]>([]),[accounts,setAccounts]=useState<any[]>([]),[loading,setLoading]=useState(false),[err,setErr]=useState(''),[saved,setSaved]=useState(false),[modal,setModal]=useState(false),[editing,setEditing]=useState<any>(null),[account,setAccount]=useState<any>({bank_id:'',bank_name:'',account_type:'Corriente',account_number:'',account_holder:'',is_active:true})
  const load=async()=>{if(!store){setData(null);return};setLoading(true);setErr('');try{const[settings,bankRows,accountRows]=await Promise.all([api(`/stores/${store}/settings`),api<any[]>('/banks'),api<any[]>(`/bank-accounts?store_id=${store}`)]);setData({...settings,payment_methods_by_fulfillment:normalizeRules(settings)});setBanks(bankRows);setAccounts(accountRows)}catch(e:any){setErr(e.message)}finally{setLoading(false)}}
  useEffect(()=>{void load()},[store])
- const globals=useMemo<any>(()=>({cash:!!data?.cash_enabled,cash_on_delivery:!!data?.cash_on_delivery_enabled,bank_transfer:!!data?.bank_transfer_enabled,cheque:!!data?.cheque_enabled}),[data])
- const fulfillments=useMemo(()=>data?([data.delivery_enabled?{key:'delivery' as Fulfillment,label:'Delivery',icon:Truck}:null,data.pickup_enabled?{key:'pickup' as Fulfillment,label:'Recoger',icon:StoreIcon}:null,data.dine_in_enabled?{key:'dine_in' as Fulfillment,label:'Mesa',icon:UtensilsCrossed}:null].filter(Boolean) as any[]):[],[data])
+ const globals:Record<PaymentMethod,boolean>={cash:!!data?.cash_enabled,cash_on_delivery:!!data?.cash_on_delivery_enabled,bank_transfer:!!data?.bank_transfer_enabled,cheque:!!data?.cheque_enabled}
+ const fulfillments:FulfillmentOption[]=[];if(data?.delivery_enabled)fulfillments.push({key:'delivery',label:'Delivery',icon:Truck});if(data?.pickup_enabled)fulfillments.push({key:'pickup',label:'Recoger',icon:StoreIcon});if(data?.dine_in_enabled)fulfillments.push({key:'dine_in',label:'Mesa',icon:UtensilsCrossed})
  const save=async()=>{setErr('');setSaved(false);try{await api(`/stores/${store}/settings`,{method:'PUT',body:JSON.stringify(data)});setSaved(true);await load();window.dispatchEvent(new CustomEvent('wamercio:store-settings-changed',{detail:{store_id:store}}))}catch(e:any){setErr(e.message)}}
  const toggleGlobal=(method:PaymentMethod,v:boolean)=>setData({...data,[method==='cash'?'cash_enabled':method==='cash_on_delivery'?'cash_on_delivery_enabled':method==='bank_transfer'?'bank_transfer_enabled':'cheque_enabled']:v})
  const setRule=(mode:Fulfillment,method:PaymentMethod,value:boolean)=>setData((current:any)=>({...current,payment_methods_by_fulfillment:{...normalizeRules(current),[mode]:{...normalizeRules(current)[mode],[method]:value}}}))

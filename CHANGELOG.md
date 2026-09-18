@@ -1,3 +1,10 @@
+# WAMERCIO 2.9.2 — Hotfix de compilación frontend
+
+- Sustituye `MessageSquareStar`, no exportado por `lucide-react` 0.468.0, por el icono soportado `MessageCircleMore` en Evaluaciones.
+- Corrige el tipado de modalidades de pago para conservar `Fulfillment`/`PaymentMethod` y evitar indexaciones `any` sobre `Rules` durante `next build`.
+- Añade una regresión específica para ambos errores detectados por el build real de Dokploy.
+- Mantiene intactas las migraciones `000038`–`000040` y no agrega variables de entorno.
+
 # WAMERCIO 2.9.1 — Hotfix de compilación de producción
 
 - Corrige el scope de `chequeEnabled` en el API: elimina una declaración no utilizada en el contexto de conversación y declara la variable donde se escanea en el listado de clientes.
