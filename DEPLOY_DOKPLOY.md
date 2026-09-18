@@ -1,6 +1,16 @@
-# WAMERCIO 4.1.6 — Calls Lifecycle & Media Recovery
+# WAMERCIO 4.1.7 — Softphone UI State Sync
 
-Esta versión corrige el ciclo de vida de Calls después de comparar el comportamiento del motor con Hierro del Norte. **No agrega migraciones ni variables obligatorias nuevas.**
+Esta versión mantiene las correcciones de ciclo de vida de V4.1.6 y unifica la experiencia del softphone manual, automático y Picture-in-Picture. **No agrega migraciones ni variables obligatorias nuevas.**
+
+## Validación visual obligatoria V4.1.7
+
+1. Abre manualmente **Abrir softphone** y verifica Directorio/Teclado.
+2. Recibe una llamada sin abrir manualmente el softphone: debe aparecer la misma superficie visual. Si el navegador permite Document PiP automático, se reutiliza; si lo bloquea por seguridad, el fallback dentro de la app debe verse igual.
+3. Mientras una entrante está **Timbrando**, solo deben aparecer **Contestar** y **Rechazar**.
+4. Mientras una saliente está **Timbrando**, solo debe aparecer **Cancelar llamada**.
+5. Al contestar, el contador debe comenzar en **00:00** y mostrar `MM:SS`; no debe heredar los segundos acumulados del timbrado.
+6. En llamada **Activa** deben aparecer únicamente controles válidos: Silenciar, Espera, Transferir y Colgar; si se pierde WebRTC, aparece Reconectar audio.
+
 
 ## Servicios que deben reconstruirse
 
@@ -35,7 +45,7 @@ El firewall del VPS/proveedor debe permitir el mismo rango UDP publicado por Doc
 
 ## Diagnóstico rápido
 
-Si una llamada no tiene audio, revisa primero HTTPS, permiso de micrófono, IP pública ICE y rango UDP. Si el teléfono ya colgó pero la UI siguiera mostrando una llamada no terminal, revisa los logs del servicio `whatsapp`: V4.1.6 publica snapshots del motor y el API reconcilia automáticamente la fila persistida contra ese estado.
+Si una llamada no tiene audio, revisa primero HTTPS, permiso de micrófono, IP pública ICE y rango UDP. Si el teléfono ya colgó pero la UI siguiera mostrando una llamada no terminal, revisa los logs del servicio `whatsapp`: V4.1.6+ publica snapshots del motor y el API reconcilia automáticamente la fila persistida contra ese estado.
 
 ---
 

@@ -2,9 +2,10 @@ from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 def text(rel): return (root/rel).read_text(encoding='utf-8')
 
-assert text('VERSION').strip()=='4.1.6'
-assert '"version": "4.1.6"' in text('apps/web/package.json')
-assert 'wamercio-store-v4.1.6' in text('apps/web/public/sw.js')
+version=text('VERSION').strip()
+assert version in {'4.1.6','4.1.7'}
+assert f'"version": "{version}"' in text('apps/web/package.json')
+assert f'wamercio-store-v{version}' in text('apps/web/public/sw.js')
 
 engine=text('services/whatsapp-bridge/internal/bridge/calls_engine.go')
 # Local lifecycle must be released before persistence/network callbacks can block.

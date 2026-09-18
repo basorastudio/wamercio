@@ -64,6 +64,11 @@ export default function CallsSoftphoneHost(){
         kind:'contact',
       })
       setOpen(true)
+      // Reutiliza exactamente el mismo softphone. Si el navegador permite abrir
+      // Document Picture-in-Picture sin una nueva interacción del usuario, se
+      // usa esa ventana; si el navegador lo bloquea por seguridad, queda el
+      // fallback embebido con el mismo contenido, controles y dimensiones.
+      void softphoneRef.current?.openPictureInPicture()
     }
 
     const onStorage=(event:StorageEvent)=>{

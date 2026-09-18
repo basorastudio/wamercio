@@ -1,3 +1,14 @@
+# WAMERCIO 4.1.7 — Softphone UI State Sync
+
+- Unifica la vista manual, automática y Picture-in-Picture sobre el mismo componente visual del softphone.
+- Las llamadas entrantes intentan reutilizar Document Picture-in-Picture; si el navegador lo impide por falta de interacción del usuario, el fallback embebido usa exactamente la misma superficie y dimensiones.
+- Corrige los controles por fase: entrante timbrando = Contestar/Rechazar; saliente timbrando = Cancelar llamada; conectando = estado + Colgar; activa/en espera = Silenciar, Espera/Reanudar, Transferir y Colgar.
+- Elimina botones incoherentes como Silenciar/Conectar audio durante el timbrado.
+- El contador ya no usa `started_at` durante timbrado. Sigue el patrón de Hierro del Norte: comienza al contestar (`answered_at`) y se muestra en `MM:SS`/`HH:MM:SS`.
+- Al contestar una entrante y conectar WebRTC, la UI se promueve inmediatamente a `Activa` para evitar que siga mostrando Contestar/Rechazar aunque el audio ya esté conectado.
+
+---
+
 # WAMERCIO 4.1.6 — Call Lifecycle & Media Recovery
 
 - Replica el patrón de lifecycle de Hierro del Norte: una llamada que entra a `Ended` se libera localmente de inmediato, sin esperar persistencia HTTP.

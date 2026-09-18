@@ -47,7 +47,7 @@ const waitForIceGathering = (pc: RTCPeerConnection, timeoutMs = 1800) =>
     timer = setTimeout(finish, timeoutMs)
   })
 
-export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: () => void): Promise<WamercioBrowserCall> {
+export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: () => void, onRemoteAudio?: () => void): Promise<WamercioBrowserCall> {
   if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('Este navegador no permite usar el micrófono para llamadas.')
   }
@@ -116,11 +116,18 @@ export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: 
   playbackNode.connect(fallbackSpeaker).connect(ctx.destination)
   await speaker.play().catch(() => { fallbackSpeaker.gain.value = 1 })
 
+  let remoteAudioConfirmed = false
   dc.onmessage = async (event: MessageEvent) => {
     let buf: ArrayBuffer | null = null
     if (event.data instanceof ArrayBuffer) buf = event.data
     else if (event.data instanceof Blob) buf = await event.data.arrayBuffer()
-    if (buf) playbackNode.port.postMessage(int16LEToFloat32(buf))
+    if (buf) {
+      playbackNode.port.postMessage(int16LEToFloat32(buf))
+      if (!remoteAudioConfirmed && buf.byteLength > 0) {
+        remoteAudioConfirmed = true
+        onRemoteAudio?.()
+      }
+    }
   }
 
   const close = () => {

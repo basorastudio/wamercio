@@ -1,5 +1,6 @@
-# WAMERCIO 4.1.6
+# WAMERCIO 4.1.7
 
+> **V4.1.7:** Unificación definitiva del softphone manual/automático/PiP, controles coherentes por estado y cronómetro desde `answered_at`, siguiendo el patrón operativo del softphone de Hierro del Norte. Consulta `HOTFIX_V4.1.7.md`.
 > **V4.1.6:** Ciclo de llamadas endurecido según el patrón de Hierro del Norte: liberación inmediata al terminar, reconciliación con el motor vivo, watchdog de salida, recuperación de relay/audio y promoción a Activa por media real. Consulta `HOTFIX_V4.1.6.md`.
 >
 > **V4.1.5:** Calls usa una sola interfaz de softphone para entrantes/salientes, corrige el bloqueo de llamadas salientes en PostgreSQL y evita que estados atrasados vuelvan a mostrar una llamada ya finalizada. Consulta `HOTFIX_V4.1.5.md`.
