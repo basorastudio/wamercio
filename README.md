@@ -1,6 +1,6 @@
-# WAMERCIO 4.1.4
+# WAMERCIO 4.1.5
 
-> **V4.1.4:** el softphone es global y persistente entre rutas. El launcher vive en la sidebar, las llamadas usan timeouts dedicados y el estado de una llamada entrante ya no debe reaparecer indefinidamente después de cerrar la interfaz. Consulta `HOTFIX_V4.1.4.md`.
+> **V4.1.5:** Calls usa una sola interfaz de softphone para entrantes/salientes, corrige el bloqueo de llamadas salientes en PostgreSQL y evita que estados atrasados vuelvan a mostrar una llamada ya finalizada. Consulta `HOTFIX_V4.1.5.md`.
 
 
 Esta entrega añade el **softphone global tipo Hierro del Norte**: launcher integrado en la sidebar, Picture-in-Picture con fallback modal, directorio interno de Contactos/Clientes/Usuarios y llamada directa desde Chat/Clientes/Contactos. El motor de llamadas continúa integrado dentro de WAMERCIO.

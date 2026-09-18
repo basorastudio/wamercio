@@ -1,3 +1,17 @@
+# WAMERCIO 4.1.5 — Softphone unificado + llamadas salientes
+
+- Unifica llamada entrante, llamada activa y marcador en el mismo softphone visual; elimina el modal blanco alternativo del runtime de Calls.
+- Las llamadas entrantes aparecen directamente en el softphone embebido cuando PiP no puede abrirse automáticamente.
+- Corrige la preparación de llamadas salientes: `requested_by` se tipa explícitamente como texto en PostgreSQL y las relaciones opcionales se adjuntan después del registro crítico.
+- Amplía la ventana de preparación de llamada saliente para permitir resolución PN→LID, USync y cifrado sin cortar prematuramente el motor.
+- Impide ofrecer `Conectar audio` durante una llamada entrante todavía en estado `ringing`; `Contestar` acepta la llamada y conecta el audio.
+- `hangup` y `reject` son idempotentes: aunque el peer ya haya terminado o el Bridge pierda la respuesta, el estado local queda terminal y el softphone no se congela.
+- Los estados terminales son monótonos: eventos tardíos `ringing/connecting` no pueden resucitar una llamada finalizada.
+- Al colgar/rechazar, el softphone vuelve limpiamente al Directorio/Teclado y elimina errores de la llamada anterior.
+- Cache PWA actualizado a `wamercio-store-v4.1.5`.
+
+---
+
 # WAMERCIO 4.1.4 — Calls runtime + UX estable
 
 - Reubica **Abrir softphone** desde el botón flotante inferior derecho a la sidebar, inmediatamente encima de la tarjeta del usuario.

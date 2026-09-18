@@ -126,3 +126,23 @@ Si ni siquiera timbra, revisa primero la sesión WhatsApp y los logs de señaliz
 
 No agrega migraciones. Reconstruye **api**, **whatsapp** y **web** porque la corrección toca las tres capas. El launcher del softphone ahora vive en la sidebar; no debe existir un botón flotante inferior derecho. Conserva `WAMERCIO_WEBRTC_EXTERNAL_IP`, el rango UDP y `WAMERCIO_CALLS_MAX_PER_STORE` de V4.1.0.
 
+
+## V4.1.5 — Softphone unificado y salientes
+
+Esta actualización no agrega migraciones. Reconstruye **web**, **api** y **whatsapp** porque los tres contienen correcciones de Calls.
+
+Cambios operativos relevantes:
+
+- las entrantes se muestran en la misma interfaz oscura del softphone; ya no usan el modal blanco alternativo;
+- durante `ringing` entrante no se ofrece `Conectar audio`: primero se pulsa **Contestar** y el audio se negocia automáticamente;
+- la preparación SQL de llamadas salientes fue corregida y los metadatos usan parámetros PostgreSQL explícitamente tipados;
+- la resolución PN→LID/señalización saliente dispone de hasta 55 s en el Bridge y 65 s desde el API;
+- `hangup/reject` son idempotentes y los estados terminales no pueden volver a `ringing/connecting` por callbacks retrasados.
+
+Después del despliegue prueba en este orden:
+
+1. Abre el softphone desde la sidebar y realiza una llamada saliente a un contacto conocido.
+2. Verifica que el teléfono remoto timbre y que WAMERCIO pase de **Preparando** → **Timbrando**.
+3. Realiza una llamada entrante: debe aparecer directamente dentro del softphone, con **Contestar** y **Rechazar**, sin el modal blanco.
+4. Pulsa **Contestar**. El audio debe conectarse automáticamente; si hace falta reconectar, el botón aparece después de la aceptación.
+5. Pulsa **Colgar**. El softphone debe volver al directorio y no reabrir la llamada finalizada.

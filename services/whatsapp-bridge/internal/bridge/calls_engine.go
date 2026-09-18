@@ -656,7 +656,7 @@ func (m *Manager) startEmbeddedCall(w http.ResponseWriter, r *http.Request) {
 	}
 	externalCallID := signaling.GenerateCallID()
 	cm := m.createCallManager(s, externalCallID, in.CallID)
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
 	defer cancel()
 	if err := cm.StartCall(ctx, externalCallID, peer, false); err != nil {
 		if ac, ok := s.callReg.remove(externalCallID); ok {
@@ -696,6 +696,18 @@ func (m *Manager) controlEmbeddedCall(w http.ResponseWriter, r *http.Request, ca
 	}
 	_, ac, ok := m.locateActiveCall(in.StoreID, callID)
 	if !ok || ac == nil || ac.cm == nil {
+		// Hangup/reject are idempotent from the operator's perspective. If the
+		// engine already removed the call after a peer-side terminate, returning a
+		// terminal success prevents the UI from getting stuck on an obsolete
+		// ringing/active record. Other actions still require a live call.
+		if action == "hangup" {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "completed", "external_call_id": callID, "engine": "wamercio_embedded", "idempotent": true})
+			return
+		}
+		if action == "reject" {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "rejected", "external_call_id": callID, "engine": "wamercio_embedded", "idempotent": true})
+			return
+		}
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "Llamada activa no encontrada"})
 		return
 	}

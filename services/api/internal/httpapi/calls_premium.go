@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -156,15 +157,27 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 		remoteJID = in.Phone + "@s.whatsapp.net"
 	}
 	var id string
-	err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,conversation_id,remote_jid,phone,display_name,direction,status,assigned_staff_id,metadata) VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,'out','connecting',NULLIF($6,'')::uuid,jsonb_build_object('requested_by',$7)) RETURNING id::text`, in.StoreID, in.ConversationID, remoteJID, in.Phone, strings.TrimSpace(in.DisplayName), in.AssignedStaffID, c.UserID).Scan(&id)
+	// Keep the critical insert intentionally small and explicitly typed. The old
+	// jsonb_build_object('requested_by',$7) left $7 untyped, which pgx/PostgreSQL
+	// can reject while preparing the statement. Optional relations are attached
+	// immediately afterwards so a stale conversation/staff reference never stops
+	// a valid WhatsApp call from reaching the embedded engine.
+	err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,remote_jid,phone,display_name,direction,status,metadata) VALUES($1,$2,$3,$4,'out','connecting',jsonb_build_object('requested_by',$5::text)) RETURNING id::text`, in.StoreID, remoteJID, in.Phone, strings.TrimSpace(in.DisplayName), c.UserID).Scan(&id)
 	if err != nil {
+		log.Printf("wamercio calls: prepare outgoing call failed store=%s phone=%s err=%v", in.StoreID, in.Phone, err)
 		jsonErr(w, 500, "No se pudo preparar la llamada")
 		return
 	}
+	if strings.TrimSpace(in.ConversationID) != "" {
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET conversation_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.ConversationID, id, in.StoreID)
+	}
+	if strings.TrimSpace(in.AssignedStaffID) != "" {
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET assigned_staff_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.AssignedStaffID, id, in.StoreID)
+	}
 	payload := map[string]any{"call_id": id, "store_id": in.StoreID, "conversation_id": in.ConversationID, "remote_jid": remoteJID, "phone": in.Phone, "display_name": in.DisplayName, "assigned_staff_id": in.AssignedStaffID}
-	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls", payload, 40*time.Second)
+	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls", payload, 65*time.Second)
 	if err != nil {
-		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=now(),metadata=metadata||jsonb_build_object('engine_error',$1),updated_at=now() WHERE id=$2`, err.Error(), id)
+		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status='failed',ended_at=now(),metadata=metadata||jsonb_build_object('engine_error',$1::text),updated_at=now() WHERE id=$2`, err.Error(), id)
 		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo iniciar la llamada: "+err.Error())
 		return
 	}
@@ -208,6 +221,21 @@ func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 	}
 	response, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/"+action, map[string]any{"store_id": storeID, "assigned_staff_id": in.AssignedStaffID}, 30*time.Second)
 	if err != nil {
+		// Ending a call must be locally final even if the peer already terminated it
+		// or the bridge response is lost. Otherwise the same stale ringing record
+		// keeps reopening the softphone on every poll/navigation. Keep the transport
+		// error in call_events for diagnostics, but make hangup/reject idempotent.
+		if action == "hangup" || action == "reject" {
+			terminalStatus := "completed"
+			if action == "reject" {
+				terminalStatus = "rejected"
+			}
+			_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status=$1,ended_at=coalesce(ended_at,now()),updated_at=now(),metadata=metadata||jsonb_build_object('control_warning',$2::text) WHERE id=$3 AND store_id=$4`, terminalStatus, err.Error(), id, storeID)
+			_, _ = s.db.Exec(r.Context(), `INSERT INTO call_events(call_id,event_type,metadata) VALUES($1,$2,$3::jsonb)`, id, action+"_local", mustJSON(map[string]any{"engine_error": err.Error()}))
+			s.publishStoreEvent(r.Context(), storeID, "call", map[string]any{"call_id": id, "status": terminalStatus, "action": action})
+			jsonOut(w, 200, map[string]any{"ok": true, "status": terminalStatus, "warning": err.Error(), "engine": map[string]any{"degraded": true}})
+			return
+		}
 		jsonErr(w, 502, "El motor integrado de WAMERCIO no pudo ejecutar la acción: "+err.Error())
 		return
 	}
@@ -293,6 +321,16 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 			jsonErr(w, 500, "No se pudo registrar la llamada")
 			return
 		}
+	}
+	// Terminal states are monotonic. A delayed bridge callback from an older
+	// ringing/connecting transition must never resurrect a call after the agent
+	// already hung up, rejected it or the peer ended it.
+	var persistedStatus string
+	_ = s.db.QueryRow(r.Context(), `SELECT status FROM whatsapp_calls WHERE id=$1 AND store_id=$2`, in.CallID, in.StoreID).Scan(&persistedStatus)
+	persistedTerminal := persistedStatus == "completed" || persistedStatus == "missed" || persistedStatus == "rejected" || persistedStatus == "failed"
+	incomingTerminal := in.Status == "completed" || in.Status == "missed" || in.Status == "rejected" || in.Status == "failed"
+	if persistedTerminal && !incomingTerminal {
+		in.Status = persistedStatus
 	}
 	answeredSQL := "answered_at"
 	ended := in.Status == "completed" || in.Status == "missed" || in.Status == "rejected" || in.Status == "failed"
