@@ -12,8 +12,8 @@ import (
 	waBinary "go.mau.fi/whatsmeow/binary"
 	"go.mau.fi/whatsmeow/types"
 	"wamercio/services/whatsapp-bridge/internal/voip/signaling"
-	"wamercio/services/whatsapp-bridge/internal/voip/wacall"
 	"wamercio/services/whatsapp-bridge/internal/voip/wanode"
+	"wamercio/services/whatsapp-bridge/internal/wacall"
 )
 
 // installVideoRawCallHook intercepts standalone <call><video/></call> stanzas
