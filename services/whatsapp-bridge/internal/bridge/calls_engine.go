@@ -34,9 +34,8 @@ import (
 // is required.
 
 const (
-	pcmChannelLabel  = "pcm"
-	h264ChannelLabel = "h264"
-	defaultMaxCalls  = 8
+	pcmChannelLabel = "pcm"
+	defaultMaxCalls = 8
 )
 
 type activeCall struct {
@@ -91,10 +90,6 @@ type engineCallSnapshot struct {
 	Direction      string    `json:"direction"`
 	CreatedAt      time.Time `json:"created_at"`
 	MediaReady     bool      `json:"media_ready"`
-	VideoActive    bool      `json:"video_active"`
-	VideoPending   bool      `json:"video_pending"`
-	VideoLocal     bool      `json:"video_local"`
-	VideoRemote    bool      `json:"video_remote"`
 }
 
 func (r *callRegistry) snapshots() []engineCallSnapshot {
@@ -123,8 +118,7 @@ func (r *callRegistry) snapshots() []engineCallSnapshot {
 		recordID := item.ac.recordID
 		createdAt := item.ac.createdAt
 		item.ac.mu.RUnlock()
-		videoActive, videoPending, videoLocal, videoRemote := item.ac.cm.VideoState()
-		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady(), VideoActive: videoActive, VideoPending: videoPending, VideoLocal: videoLocal, VideoRemote: videoRemote})
+		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady()})
 	}
 	return out
 }
@@ -181,13 +175,11 @@ func (r *callRegistry) isHeld(id string) bool {
 // intentionally simple: the WhatsApp side keeps MLow/SRTP details isolated in
 // CallManager while the browser only sees PCM.
 type browserCallBridge struct {
-	pc      *webrtc.PeerConnection
-	dc      atomic.Pointer[webrtc.DataChannel]
-	videoDC atomic.Pointer[webrtc.DataChannel]
+	pc *webrtc.PeerConnection
+	dc atomic.Pointer[webrtc.DataChannel]
 
-	OnBrowserPCM   func([]float32)
-	OnBrowserVideo func([]byte)
-	OnTerminal     func()
+	OnBrowserPCM func([]float32)
+	OnTerminal   func()
 }
 
 func newBrowserPeerConnection() (*webrtc.PeerConnection, error) {
@@ -260,22 +252,15 @@ func newBrowserCallBridge(offerSDP string) (*browserCallBridge, string, error) {
 	}
 	b := &browserCallBridge{pc: pc}
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
-		switch dc.Label() {
-		case pcmChannelLabel:
-			b.dc.Store(dc)
-			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-				if cb := b.OnBrowserPCM; cb != nil && len(msg.Data) > 0 {
-					cb(media.PCMInt16LEToFloat32(msg.Data))
-				}
-			})
-		case h264ChannelLabel:
-			b.videoDC.Store(dc)
-			dc.OnMessage(func(msg webrtc.DataChannelMessage) {
-				if cb := b.OnBrowserVideo; cb != nil && len(msg.Data) > 0 {
-					cb(msg.Data)
-				}
-			})
+		if dc.Label() != pcmChannelLabel {
+			return
 		}
+		b.dc.Store(dc)
+		dc.OnMessage(func(msg webrtc.DataChannelMessage) {
+			if cb := b.OnBrowserPCM; cb != nil && len(msg.Data) > 0 {
+				cb(media.PCMInt16LEToFloat32(msg.Data))
+			}
+		})
 	})
 	pc.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
 		if state == webrtc.ICEConnectionStateFailed || state == webrtc.ICEConnectionStateClosed {
@@ -327,14 +312,6 @@ func (b *browserCallBridge) WritePCM(pcm []float32) error {
 		return nil
 	}
 	return dc.Send(media.PCMFloat32ToInt16LE(pcm))
-}
-
-func (b *browserCallBridge) WriteVideo(au []byte) error {
-	dc := b.videoDC.Load()
-	if dc == nil || dc.ReadyState() != webrtc.DataChannelStateOpen || len(au) == 0 {
-		return nil
-	}
-	return dc.Send(au)
 }
 func (b *browserCallBridge) Close() {
 	if b != nil && b.pc != nil {
@@ -460,14 +437,10 @@ func (m *Manager) emitCallState(s *Session, c *call.CallInfo, recordID string, e
 		"direction":        callDirection(c),
 		"status":           mapEngineStatus(c),
 		"metadata": map[string]any{
-			"engine":        "wamercio_embedded",
-			"media_type":    string(c.MediaType),
-			"video_active":  !c.StateData.VideoOff && (c.LocalVideo || c.RemoteVideo),
-			"video_pending": c.VideoUpgradePending,
-			"video_local":   c.LocalVideo,
-			"video_remote":  c.RemoteVideo,
-			"event":         event,
-			"end_reason":    string(c.StateData.EndReason),
+			"engine":     "wamercio_embedded",
+			"media_type": string(c.MediaType),
+			"event":      event,
+			"end_reason": string(c.StateData.EndReason),
 		},
 	}
 	m.postCore("/api/v1/internal/calls/events", payload)
@@ -594,22 +567,6 @@ func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.C
 			_ = b.WritePCM(pcm)
 		}
 	}
-	cm.OnPeerVideo = func(au []byte) {
-		if s.callReg.isHeld(callID) || len(au) == 0 {
-			return
-		}
-		cur, ok := s.callReg.get(callID)
-		if !ok {
-			return
-		}
-		cur.mu.Lock()
-		cur.lastActivity = time.Now()
-		b := cur.bridge
-		cur.mu.Unlock()
-		if b != nil {
-			_ = b.WriteVideo(au)
-		}
-	}
 	return cm
 }
 
@@ -634,35 +591,6 @@ func (m *Manager) watchEmbeddedCallSetup(s *Session, callID string, timeout time
 		defer cancel()
 		_ = ac.cm.EndCall(ctx, core.EndCallReasonTimeout)
 	}()
-}
-
-func (m *Manager) watchVideoUpgrade(storeID, callID string, timeout time.Duration) {
-	go func() {
-		timer := time.NewTimer(timeout)
-		defer timer.Stop()
-		<-timer.C
-		_, ac, ok := m.locateActiveCall(storeID, callID)
-		if !ok || ac == nil || ac.cm == nil {
-			return
-		}
-		active, pending, _, _ := ac.cm.VideoState()
-		if active || !pending {
-			return
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = ac.cm.StopVideo(ctx)
-		if ci := ac.cm.CurrentCall(); ci != nil {
-			m.emitCallState(m.sessionByStore(storeID), ci, ac.recordID, "video_upgrade_timeout")
-		}
-	}()
-}
-
-func (m *Manager) sessionByStore(storeID string) *Session {
-	m.mu.RLock()
-	s := m.sessions[storeID]
-	m.mu.RUnlock()
-	return s
 }
 
 func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
@@ -703,15 +631,6 @@ func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
 			_ = ac.cm.RejectCall(context.Background(), callID, core.EndCallReasonTimeout)
 		}
 	}()
-}
-
-func (m *Manager) handleUnknownCallEvent(s *Session, evt *events.UnknownCallEvent) {
-	if s == nil || evt == nil || evt.Node == nil {
-		return
-	}
-	// Compatibility fallback only. In normal operation the raw call hook handles
-	// <video> before whatsmeow's generic typeless call ACK can be emitted.
-	_ = m.processVideoCallNode(s, evt.Node)
 }
 
 func (m *Manager) handleCallAccept(s *Session, evt *events.CallAccept) {
@@ -953,13 +872,6 @@ func (m *Manager) controlEmbeddedCall(w http.ResponseWriter, r *http.Request, ca
 		if strings.TrimSpace(in.AssignedStaffID) == "" {
 			err = errors.New("selecciona el agente destino")
 		}
-	case "video_start":
-		err = ac.cm.RequestVideoUpgrade(ctx)
-		if err == nil {
-			go m.watchVideoUpgrade(in.StoreID, callID, 15*time.Second)
-		}
-	case "video_stop":
-		err = ac.cm.StopVideo(ctx)
 	default:
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "Acción de llamada no soportada"})
 		return
@@ -973,8 +885,7 @@ func (m *Manager) controlEmbeddedCall(w http.ResponseWriter, r *http.Request, ca
 	if action == "transfer" && status == "held" {
 		status = "held"
 	}
-	videoActive, videoPending, videoLocal, videoRemote := ac.cm.VideoState()
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status, "external_call_id": callID, "engine": "wamercio_embedded", "video_active": videoActive, "video_pending": videoPending, "video_local": videoLocal, "video_remote": videoRemote})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": status, "external_call_id": callID, "engine": "wamercio_embedded"})
 }
 
 func (m *Manager) attachEmbeddedWebRTC(w http.ResponseWriter, r *http.Request, callID string) {
@@ -1008,16 +919,6 @@ func (m *Manager) attachEmbeddedWebRTC(w http.ResponseWriter, r *http.Request, c
 				rec.writeMic(pcm)
 			}
 			ac.cm.FeedCapturedPCM(pcm)
-		}
-	}
-	b.OnBrowserVideo = func(au []byte) {
-		ac.mu.RLock()
-		held := ac.held
-		ac.mu.RUnlock()
-		ci := ac.cm.CurrentCall()
-		videoActive, _, localVideo, _ := ac.cm.VideoState()
-		if !held && ci != nil && ci.StateData.State == core.CallStateActive && videoActive && localVideo {
-			ac.cm.FeedCapturedVideo(au)
 		}
 	}
 	b.OnTerminal = func() {

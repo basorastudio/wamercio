@@ -138,8 +138,6 @@ func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
 	}
 	activeByExternal := map[string]string{}
 	activeByRecord := map[string]string{}
-	videoByExternal := map[string]map[string]any{}
-	videoByRecord := map[string]map[string]any{}
 	if raw, ok := engine["active_call_snapshots"].([]any); ok {
 		for _, item := range raw {
 			m, _ := item.(map[string]any)
@@ -152,19 +150,11 @@ func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
 			if !callStatuses[status] || callStatusTerminal(status) {
 				continue
 			}
-			videoMeta := map[string]any{
-				"video_active":  m["video_active"],
-				"video_pending": m["video_pending"],
-				"video_local":   m["video_local"],
-				"video_remote":  m["video_remote"],
-			}
 			if externalID != "" {
 				activeByExternal[externalID] = status
-				videoByExternal[externalID] = videoMeta
 			}
 			if recordID != "" {
 				activeByRecord[recordID] = status
-				videoByRecord[recordID] = videoMeta
 			}
 		}
 	}
@@ -196,14 +186,9 @@ func (s *Server) reconcileCallsWithEngine(ctx context.Context, storeID string) {
 		}
 		if engineStatus != "" {
 			next := preserveCallProgress(c.status, engineStatus)
-			videoMeta := videoByRecord[c.id]
-			if videoMeta == nil && c.externalID != "" {
-				videoMeta = videoByExternal[c.externalID]
+			if next != c.status {
+				_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET status=$1,answered_at=CASE WHEN $1='active' THEN coalesce(answered_at,now()) ELSE answered_at END,updated_at=now(),metadata=metadata||jsonb_build_object('reconciled','engine_snapshot') WHERE id=$2 AND store_id=$3`, next, c.id, storeID)
 			}
-			if videoMeta == nil {
-				videoMeta = map[string]any{}
-			}
-			_, _ = s.db.Exec(ctx, `UPDATE whatsapp_calls SET status=$1,answered_at=CASE WHEN $1='active' THEN coalesce(answered_at,now()) ELSE answered_at END,updated_at=now(),metadata=metadata||jsonb_build_object('reconciled','engine_snapshot')||$2::jsonb WHERE id=$3 AND store_id=$4`, next, mustJSON(videoMeta), c.id, storeID)
 			continue
 		}
 		// The embedded engine is authoritative for live calls. A record may be
@@ -465,7 +450,7 @@ func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	action := strings.ToLower(strings.TrimSpace(in.Action))
-	allowed := map[string]bool{"answer": true, "reject": true, "hangup": true, "hold": true, "resume": true, "transfer": true, "video_start": true, "video_stop": true}
+	allowed := map[string]bool{"answer": true, "reject": true, "hangup": true, "hold": true, "resume": true, "transfer": true}
 	if !allowed[action] {
 		jsonErr(w, 400, "Acción de llamada no soportada")
 		return
@@ -499,15 +484,6 @@ func (s *Server) updateCallRecord(w http.ResponseWriter, r *http.Request) {
 		terminal := status == "completed" || status == "missed" || status == "rejected" || status == "failed"
 		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET status=$1,answered_at=CASE WHEN $1='active' THEN coalesce(answered_at,now()) ELSE answered_at END,ended_at=CASE WHEN $2 THEN coalesce(ended_at,now()) ELSE ended_at END,updated_at=now() WHERE id=$3 AND store_id=$4`, status, terminal, id, storeID)
 	}
-	videoMeta := map[string]any{}
-	for _, key := range []string{"video_active", "video_pending", "video_local", "video_remote"} {
-		if value, ok := response[key]; ok {
-			videoMeta[key] = value
-		}
-	}
-	if len(videoMeta) > 0 {
-		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET metadata=metadata||$1::jsonb,updated_at=now() WHERE id=$2 AND store_id=$3`, mustJSON(videoMeta), id, storeID)
-	}
 	if action == "transfer" && strings.TrimSpace(in.AssignedStaffID) != "" {
 		_, _ = s.db.Exec(r.Context(), `UPDATE whatsapp_calls SET assigned_staff_id=$1::uuid,updated_at=now() WHERE id=$2 AND store_id=$3`, in.AssignedStaffID, id, storeID)
 	}
@@ -535,7 +511,7 @@ func (s *Server) callWebRTC(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.bridgeReqWithTimeout(r.Context(), http.MethodPost, "/calls/"+externalCallID+"/webrtc", map[string]any{"store_id": storeID, "sdp_offer": in.SDPOffer}, 15*time.Second)
 	if err != nil {
-		jsonErr(w, 502, "No se pudo conectar WebRTC de audio/video con el motor integrado: "+err.Error())
+		jsonErr(w, 502, "No se pudo conectar el audio WebRTC con el motor integrado: "+err.Error())
 		return
 	}
 	jsonOut(w, 200, out)

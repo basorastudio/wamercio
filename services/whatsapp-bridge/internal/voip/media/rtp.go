@@ -11,13 +11,6 @@ import (
 const (
 	rtpVersion       = 2
 	rtpMinHeaderSize = 12
-
-	// WhatsApp video uses the 0xdebe one-byte RTP extension profile. The
-	// media-frame-info values below match the native client/Web caller wire
-	// format and are required for the peer to classify IDR vs delta frames.
-	WhatsappVideoRtpExtensionProfile uint16 = 0xdebe
-	VideoMediaFrameInfoIDR           uint8  = 0x08
-	VideoMediaFrameInfoDelta         uint8  = 0x20
 )
 
 type RtpHeader struct {
@@ -165,14 +158,6 @@ type RtpSession struct {
 	sampleRate       int
 	timestamp        uint32
 	samplesPerPacket int
-
-	// Video-only counters. Audio sessions ignore these fields. WhatsApp's H.264
-	// RTP carries a 0xdebe extension with a frame number and a transport
-	// sequence. Without it recent Android/iOS clients may accept the video
-	// upgrade UI but discard every PT-97 packet.
-	videoTransportSequence uint16
-	videoFrameNumber       uint16
-	videoFirstPacket       bool
 }
 
 func NewRtpSession(ssrc uint32, payloadType uint8, sampleRate, samplesPerPacket int) *RtpSession {
@@ -183,8 +168,6 @@ func NewRtpSession(ssrc uint32, payloadType uint8, sampleRate, samplesPerPacket 
 		sampleRate:       sampleRate,
 		timestamp:        uint32(randUint(1 << 32)),
 		samplesPerPacket: samplesPerPacket,
-		videoFrameNumber: 1,
-		videoFirstPacket: true,
 	}
 }
 
@@ -210,50 +193,6 @@ func (s *RtpSession) CreatePacketWithDuration(payload []byte, durationSamples in
 
 	s.sequenceNumber++
 	s.timestamp += uint32(durationSamples)
-
-	return &RtpPacket{Header: header, Payload: payload}
-}
-
-// CreateH264Packet builds the WhatsApp PT-97 RTP header used by video calls.
-// The 0xdebe extension shape mirrors the current native/Web caller: id=3
-// media-frame-info (+ frame number on the first packet), id=5 initial bandwidth,
-// id=6 short offset and id=9 transport sequence. The timestamp is advanced once
-// per access unit by the caller through AdvanceTimestamp.
-func (s *RtpSession) CreateH264Packet(payload []byte, marker bool, mediaFrameInfo uint8) *RtpPacket {
-	header := NewRtpHeader(s.payloadType, s.sequenceNumber, s.timestamp, s.ssrc)
-	header.Marker = marker
-	header.Extension = true
-	header.ExtensionProfile = WhatsappVideoRtpExtensionProfile
-
-	ext := make([]byte, 0, 16)
-	if s.videoFirstPacket {
-		// One-byte extension header: ID=3, length=3 bytes.
-		ext = append(ext, 0x32, mediaFrameInfo)
-		ext = binary.BigEndian.AppendUint16(ext, s.videoFrameNumber)
-	} else {
-		// ID=3, length=1 byte.
-		ext = append(ext, 0x30, mediaFrameInfo)
-	}
-	// ID=5 initial bandwidth (2 bytes), ID=6 short offset (2 bytes),
-	// ID=9 transport sequence (2 bytes). Zero is a valid baseline value for
-	// the first two fields and matches the proven meowcaller sender shape.
-	ext = append(ext, 0x51, 0x00, 0x00)
-	ext = append(ext, 0x61, 0x00, 0x00)
-	ext = append(ext, 0x91)
-	ext = binary.BigEndian.AppendUint16(ext, s.videoTransportSequence)
-	for len(ext)%4 != 0 {
-		ext = append(ext, 0)
-	}
-	header.ExtensionData = ext
-
-	s.sequenceNumber++
-	s.videoTransportSequence++
-	if marker {
-		s.videoFrameNumber++
-		s.videoFirstPacket = true
-	} else {
-		s.videoFirstPacket = false
-	}
 
 	return &RtpPacket{Header: header, Payload: payload}
 }

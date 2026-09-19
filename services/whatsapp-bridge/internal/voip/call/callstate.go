@@ -19,23 +19,20 @@ type CallStateData struct {
 }
 
 type CallInfo struct {
-	CallID              string
-	PeerJid             string
-	CallCreator         string
-	Direction           core.CallDirection
-	MediaType           core.CallMediaType
-	StateData           CallStateData
-	CreatedAt           time.Time
-	GroupJid            string
-	IsOffline           bool
-	CallerPn            string
-	PeerName            string
-	EncryptionKey       []byte
-	VideoUpgradePending bool
-	LocalVideo          bool
-	RemoteVideo         bool
-	RelayData           *core.RelayData
-	ElectedRelayIdx     *int
+	CallID          string
+	PeerJid         string
+	CallCreator     string
+	Direction       core.CallDirection
+	MediaType       core.CallMediaType
+	StateData       CallStateData
+	CreatedAt       time.Time
+	GroupJid        string
+	IsOffline       bool
+	CallerPn        string
+	PeerName        string
+	EncryptionKey   []byte
+	RelayData       *core.RelayData
+	ElectedRelayIdx *int
 }
 
 func NewOutgoingCall(callID, peerJid, ourJid string, mediaType core.CallMediaType) *CallInfo {
@@ -46,8 +43,6 @@ func NewOutgoingCall(callID, peerJid, ourJid string, mediaType core.CallMediaTyp
 		Direction:   core.CallDirectionOutgoing,
 		MediaType:   mediaType,
 		CreatedAt:   time.Now(),
-		LocalVideo:  mediaType == core.CallMediaTypeVideo,
-		RemoteVideo: mediaType == core.CallMediaTypeVideo,
 		StateData: CallStateData{
 			State:      core.CallStateInitiating,
 			AudioMuted: false,
@@ -65,8 +60,6 @@ func NewIncomingCall(callID, peerJid, callCreator, callerPn string, mediaType co
 		MediaType:   mediaType,
 		CreatedAt:   time.Now(),
 		CallerPn:    callerPn,
-		LocalVideo:  mediaType == core.CallMediaTypeVideo,
-		RemoteVideo: mediaType == core.CallMediaTypeVideo,
 		StateData: CallStateData{
 			State:      core.CallStateIncomingRinging,
 			AudioMuted: false,

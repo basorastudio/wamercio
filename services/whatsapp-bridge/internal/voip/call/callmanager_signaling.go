@@ -23,10 +23,7 @@ func (m *CallManager) HandleCallOffer(ctx context.Context, node *waBinary.Node, 
 		creator = peerJid.String()
 	}
 	peerName := incomingCallPeerName(node, info.InnerNode)
-	offeredVideo := hasChildTag(info.InnerNode, "video")
-	// Política WAMERCIO: todas las llamadas entran inicialmente en voz. El video
-	// solo puede activarlo el agente desde el softphone una vez conectada.
-	isVideo := false
+	isVideo := hasChildTag(info.InnerNode, "video")
 
 	callKey, err := signaling.DecryptCallKeyInNode(ctx, m.sock, info.InnerNode, peerJid)
 	if err != nil {
@@ -97,7 +94,7 @@ func (m *CallManager) HandleCallOffer(ctx context.Context, node *waBinary.Node, 
 	m.mu.Lock()
 	m.emitState()
 	m.mu.Unlock()
-	m.log.Info("incoming call", "call_id", callID, "peer", peerJid.String(), "video", isVideo, "offered_video", offeredVideo, "relays", len(relays))
+	m.log.Info("incoming call", "call_id", callID, "peer", peerJid.String(), "video", isVideo, "relays", len(relays))
 }
 
 func (m *CallManager) HandleCallAccept(ctx context.Context, node *waBinary.Node, peerJid types.JID) {

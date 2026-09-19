@@ -115,18 +115,6 @@ func SplitAnnexB(data []byte) [][]byte {
 	return nalus
 }
 
-// AUHasIDR reports whether an Annex-B access unit contains an IDR NAL.
-// It is used to gate the first outbound video frame after a voice→video upgrade
-// so the WhatsApp peer always starts from a decodable keyframe.
-func AUHasIDR(data []byte) bool {
-	for _, nalu := range SplitAnnexB(data) {
-		if len(nalu) > 0 && nalu[0]&0x1f == 5 {
-			return true
-		}
-	}
-	return false
-}
-
 func annexBStartCodeLen(data []byte, offset int) int {
 	if offset+3 < len(data) &&
 		data[offset] == 0 && data[offset+1] == 0 &&
