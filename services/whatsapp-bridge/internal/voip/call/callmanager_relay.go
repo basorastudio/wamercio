@@ -159,6 +159,12 @@ func (m *CallManager) cleanupMedia() {
 	m.videoSelfSsrc = 0
 	m.videoDepacketizer = nil
 	m.videoFrameBuf = nil
+	m.videoFrameNumber = 0
+	m.videoTransportSequence = 0
+	m.videoOutboundFrames = 0
+	m.videoInboundFrames = 0
+	m.lastInboundVideoAt = time.Time{}
+	m.lastVideoAUAt = time.Time{}
 	m.firstPacketSent = false
 	m.initialTransportSent = false
 	m.outgoingPreacceptSent = false

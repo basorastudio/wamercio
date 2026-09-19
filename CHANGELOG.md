@@ -1,3 +1,18 @@
+# WAMERCIO 4.1.15 — Video bidireccional en vivo
+
+- Corrige la ruta de medios H.264 después de que la negociación voz→video ya fue aceptada por WhatsApp.
+- Añade al RTP PT-97 las extensiones de video WhatsApp `0xDEBE` (MediaFrameInfo, frame number y transport sequence), necesarias para que clientes móviles modernos consuman el stream remoto.
+- Alinea el anuncio `state=1` del upgrade con el formato observado en clientes WhatsApp actuales, sin volver a enviar una oferta de códecs en esa transición.
+- Normaliza en el navegador H.264 AVCC → Annex-B cuando el encoder por hardware de Chromium ignora `avc.format=annexb`.
+- Reinyecta SPS/PPS desde `decoderConfig.description` cuando un keyframe del encoder no los incluye en banda.
+- El decodificador del softphone deriva dinámicamente el perfil AVC desde el SPS remoto en lugar de asumir siempre `avc1.42E01F`.
+- Espera la apertura real del DataChannel `h264` antes de comenzar la captura de cámara.
+- Añade contadores/logs de access units de video entrantes y salientes para diagnosticar cada dirección sin afectar el audio.
+- Mantiene todas las llamadas iniciando en voz y conserva el cambio a video exclusivamente desde el softphone de WAMERCIO.
+- No agrega migraciones.
+
+---
+
 # WAMERCIO 4.1.14 — Hotfix TypeScript de Video
 
 - Corrige dos accesos a `WamercioBrowserCall | null` en `calls-softphone.tsx` que Next.js rechazaba durante `Linting and checking validity of types`.

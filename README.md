@@ -1,4 +1,6 @@
-# WAMERCIO 4.1.14
+# WAMERCIO 4.1.15
+
+> **V4.1.15:** Corrige la ruta de media H.264 bidireccional del upgrade voz→video: RTP PT-97 con extensión WhatsApp `0xDEBE`, normalización AVCC→Annex-B, SPS/PPS en keyframes y decoder AVC dinámico. Consulta `HOTFIX_V4.1.15.md`.
 
 > **V4.1.14:** Hotfix de compilación para el módulo voz→video. Corrige el estrechamiento nulo de `WamercioBrowserCall` detectado por `next build` sin alterar la funcionalidad de video de V4.1.13.
 >

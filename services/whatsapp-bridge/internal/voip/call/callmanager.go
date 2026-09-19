@@ -31,12 +31,17 @@ type CallManager struct {
 	peerSsrcs     []uint32
 	actualPeerSet bool
 
-	videoRtpSession   *media.RtpSession
-	videoSrtpSession  *media.SrtpSession
-	videoSelfSsrc     uint32
-	videoDepacketizer *transport.H264Depacketizer
-	videoFrameBuf     []byte
-	lastVideoAUAt     time.Time
+	videoRtpSession        *media.RtpSession
+	videoSrtpSession       *media.SrtpSession
+	videoSelfSsrc          uint32
+	videoDepacketizer      *transport.H264Depacketizer
+	videoFrameBuf          []byte
+	lastVideoAUAt          time.Time
+	videoFrameNumber       uint16
+	videoTransportSequence uint16
+	videoOutboundFrames    uint64
+	videoInboundFrames     uint64
+	lastInboundVideoAt     time.Time
 
 	firstPacketSent       bool
 	initialTransportSent  bool

@@ -278,3 +278,17 @@ Prueba recomendada después del deploy:
 V4.1.14 no añade migraciones ni cambia el protocolo de Calls. Corrige el chequeo estricto de TypeScript en `apps/web/components/calls-softphone.tsx` detectado por `next build` de Dokploy.
 
 Si vienes de V4.1.13, basta con reconstruir **Web**. API y WhatsApp Bridge no requieren cambios funcionales para este hotfix.
+
+
+## V4.1.15 — Video bidireccional en vivo
+
+V4.1.15 corrige el transporte H.264 posterior al upgrade voz→video. No agrega servicios, puertos ni migraciones.
+
+Si vienes de V4.1.14:
+
+1. reconstruye **Web**;
+2. reconstruye **WhatsApp Bridge**;
+3. conserva las variables/rango UDP de Calls existentes;
+4. prueba una llamada de voz, pulsa **Video**, acepta en el teléfono y verifica imagen en ambas direcciones.
+
+Para diagnóstico, en los logs del Bridge deben aparecer `video outbound access unit` al enviar la cámara del agente y `video inbound access unit` al recibir la cámara del contacto. Si solo aparece uno, ya puedes identificar qué sentido de media falta.
