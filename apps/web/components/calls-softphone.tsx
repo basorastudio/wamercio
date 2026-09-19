@@ -68,6 +68,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const[audioCallId,setAudioCallId]=useState('')
   const[audioBusy,setAudioBusy]=useState('')
   const[mediaActiveCallId,setMediaActiveCallId]=useState('')
+  const[mediaRemoteVideoCallId,setMediaRemoteVideoCallId]=useState('')
   const[muted,setMuted]=useState(false)
   const[videoBusy,setVideoBusy]=useState('')
   const[videoSupported,setVideoSupported]=useState(true)
@@ -94,6 +95,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     browserCall.current?.close()
     browserCall.current=null
     setAudioCallId('')
+    setMediaRemoteVideoCallId('')
     setMuted(false)
     setVideoBusy('')
     setVideoSupported(true)
@@ -158,6 +160,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const videoPending=Boolean(currentCall&&asBool(currentVideoMeta.video_pending))
   const videoLocal=Boolean(currentCall&&asBool(currentVideoMeta.video_local))
   const videoRemote=Boolean(currentCall&&asBool(currentVideoMeta.video_remote))
+  const remoteVideoVisible=Boolean(currentCall&&(videoRemote||mediaRemoteVideoCallId===currentCall.id))
   useEffect(()=>{
     if(!currentCall||!['active','held','transferred'].includes(visualStatus)){activeAnchorRef.current={callId:'',at:0};return}
     if(activeAnchorRef.current.callId===currentCall.id&&activeAnchorRef.current.at>0)return
@@ -171,6 +174,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       const endedId=previousCallId.current
       previousCallId.current=''
       setMediaActiveCallId('')
+      setMediaRemoteVideoCallId('')
       setError('')
       setPipTransfer(false)
       setVideoBusy('')
@@ -213,6 +217,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
         const active=browserCall.current
         if(active?.id===id)browserCall.current=null
         setAudioCallId(v=>v===id?'':v)
+        setMediaRemoteVideoCallId(v=>v===id?'':v)
         setMuted(false)
         const row=rowsRef.current.find(x=>x.id===id)
         if(row&&['active','held','connecting'].includes(row.status))setError('Se perdió el audio del navegador. Pulsa “Reconectar audio” para continuar escuchando; la llamada de WhatsApp sigue activa mientras el motor la conserve.')
@@ -220,6 +225,9 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
         const answeredAt=new Date().toISOString()
         setMediaActiveCallId(id)
         setRows(v=>v.map(row=>row.id===id&&['ringing','connecting'].includes(row.status)?{...row,status:'active',answered_at:row.answered_at||answeredAt}:row))
+      },()=>{
+        setMediaRemoteVideoCallId(id)
+        setRows(v=>v.map(row=>row.id===id?{...row,metadata:{...(row.metadata||{}),video_pending:false,video_active:true,video_remote:true}}:row))
       })
       browserCall.current=bc
       setVideoSupported(bc.videoSupported)
@@ -293,6 +301,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     }catch(e:any){
       const bc=browserCall.current
       if(bc && bc.id===x.id)await bc.stopVideo().catch(()=>{})
+      setMediaRemoteVideoCallId(v=>v===x.id?'':v)
       setRows(v=>v.map(row=>row.id===x.id?{...row,metadata:{...(row.metadata||{}),video_pending:false,video_active:false,video_local:false,video_remote:false}}:row))
       setError(e.message||'No se pudo solicitar el cambio a video.')
     }finally{setVideoBusy('')}
@@ -307,6 +316,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       mergeVideoResult(x.id,result)
       const bc=browserCall.current
       if(bc && bc.id===x.id)await bc.stopVideo()
+      setMediaRemoteVideoCallId(v=>v===x.id?'':v)
       setRows(v=>v.map(row=>row.id===x.id?{...row,metadata:{...(row.metadata||{}),video_pending:false,video_active:false,video_local:false,video_remote:false}}:row))
       window.setTimeout(()=>{void load(true)},250)
     }catch(e:any){setError(e.message||'No se pudo volver al modo voz.')}
@@ -434,7 +444,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     return <>
       {videoActive||videoPending?<div className="wam-video-stage">
         <canvas ref={remoteVideoRef} className="wam-remote-video"/>
-        {(!videoActive||!videoRemote)&&<div className="wam-video-overlay">
+        {(!videoActive||!remoteVideoVisible)&&<div className="wam-video-overlay">
           {callAvatar?<img src={callAvatar} alt=""/>:<div className="avatar">{(currentCall.display_name||currentCall.phone||'?').slice(0,2).toUpperCase()}</div>}
           <strong>{currentCall.display_name||currentCall.phone||'Contacto WhatsApp'}</strong>
           <small>{videoPending?'Esperando que el contacto acepte el video…':'Video conectado'}</small>

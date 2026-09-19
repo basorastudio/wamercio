@@ -146,11 +146,7 @@ func (m *CallManager) HandleVideoState(ctx context.Context, node *waBinary.Node,
 		m.emitState()
 		m.mu.Unlock()
 
-		// A state=1 announcement is a media-state transition, not a codec offer.
-		// Real WhatsApp clients send it without a dec attribute after accepting the
-		// upgrade; keeping H264,AV1 here can leave Android in video UI while it
-		// never subscribes to our PT-97 stream.
-		enabled := signaling.BuildVideoStateStanza(callID, peer, creator, signaling.VideoStateEnabled, "", &orientation)
+		enabled := signaling.BuildVideoStateStanza(callID, peer, creator, signaling.VideoStateEnabled, signaling.VideoDecAccept, &orientation)
 		if err := m.sock.SendNode(ctx, enabled); err != nil {
 			return err
 		}
@@ -242,11 +238,8 @@ func (m *CallManager) resetVideoMediaLocked() {
 	m.videoDepacketizer = nil
 	m.videoFrameBuf = nil
 	m.lastVideoAUAt = time.Time{}
-	m.videoFrameNumber = 0
-	m.videoTransportSequence = 0
-	m.videoOutboundFrames = 0
-	m.videoInboundFrames = 0
-	m.lastInboundVideoAt = time.Time{}
+	m.videoKeyframeRequired = false
+	m.videoRemoteFrameSeen = false
 	if m.relay != nil {
 		self := []uint32{}
 		if m.selfSsrc != 0 {

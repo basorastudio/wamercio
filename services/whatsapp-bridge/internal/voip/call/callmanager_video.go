@@ -1,7 +1,6 @@
 package call
 
 import (
-	"encoding/binary"
 	"time"
 	"wamercio/services/whatsapp-bridge/internal/voip/core"
 	"wamercio/services/whatsapp-bridge/internal/voip/media"
@@ -12,14 +11,6 @@ const (
 	videoRtpStepSamples      = 90000 / 15
 	videoCongestionDropBytes = 48 * 1024
 	videoSlotWord            = 2
-
-	// WhatsApp Web video uses the one-byte RTP header extension profile 0xDEBE.
-	// Modern Android/iOS clients use MediaFrameInfo to classify IDR vs delta
-	// frames. Sending plain PT-97 RTP without this extension can negotiate video
-	// successfully while the peer still renders no remote frames.
-	whatsAppVideoExtensionProfile = 0xDEBE
-	videoMediaFrameInfoIDR        = 0x08
-	videoMediaFrameInfoDelta      = 0x20
 )
 
 var (
@@ -40,11 +31,8 @@ func (m *CallManager) setupVideoMediaLocked(sendKM, recvKM core.SrtpKeyingMateri
 	m.videoSrtpSession = vsess
 	m.videoSelfSsrc = media.GenerateSecureSsrc(call.CallID, ourDeviceJid, videoSlotWord)
 	m.videoRtpSession = media.NewH264Session(m.videoSelfSsrc)
-	m.videoFrameNumber = 1
-	m.videoTransportSequence = 1
-	m.videoOutboundFrames = 0
-	m.videoInboundFrames = 0
-	m.lastInboundVideoAt = time.Time{}
+	m.videoKeyframeRequired = true
+	m.videoRemoteFrameSeen = false
 	m.lastVideoAUAt = time.Time{}
 	m.videoFrameBuf = nil
 	if m.videoDepacketizer == nil {
@@ -59,132 +47,103 @@ func (m *CallManager) setupVideoMediaLocked(sendKM, recvKM core.SrtpKeyingMateri
 	}
 	m.relay.SetStreamSsrcs(selfSsrcs, peerSsrcs)
 	// Mid-call video is enabled after the relay was already registered for audio.
-	// Re-advertise the stream descriptor set. SctpRelayManager deliberately sends
-	// the registration repeatedly (immediate + 50/150/500/3000 ms) so mobile
-	// clients that switch their video SSRC a few milliseconds after state=1 are
-	// still picked up.
+	// Re-advertise the SSRC set so the relay starts forwarding the H.264 streams.
 	go m.relay.ResendSubscriptions()
-	m.log.Info("video media set up", "self_video_ssrc", m.videoSelfSsrc,
-		"self_device", ourDeviceJid, "peer_device", peerDeviceJid,
+	m.log.Info("video media ready", "call_id", call.CallID, "self_video_ssrc", m.videoSelfSsrc,
 		"stream_ssrcs", len(selfSsrcs)+len(peerSsrcs))
 }
 
-// buildWhatsAppVideoExtension returns the 0xDEBE one-byte-header extension body
-// used by WhatsApp video RTP. The first packet of every access unit carries a
-// frame number; every packet carries MediaFrameInfo, short-offset and transport
-// sequence. This mirrors the current WhatsApp Web/WASM media shape and fixes the
-// negotiated-but-black-video failure seen with extension-less PT-97 packets.
-func buildWhatsAppVideoExtension(mediaFrameInfo byte, frameNumber *uint16, transportSequence uint16) []byte {
-	frameInfoLen := 1
-	if frameNumber != nil {
-		frameInfoLen = 3
-	}
-	out := make([]byte, 0, 16)
-	out = append(out, 0x30|byte(frameInfoLen-1), mediaFrameInfo)
-	if frameNumber != nil {
-		out = binary.BigEndian.AppendUint16(out, *frameNumber)
-	}
-	// id=5 initial bandwidth (2 bytes), id=6 short offset (2 bytes),
-	// id=9 transport sequence (2 bytes).
-	out = append(out, 0x51, 0x00, 0x00)
-	out = append(out, 0x61, 0x00, 0x00)
-	out = append(out, 0x91)
-	out = binary.BigEndian.AppendUint16(out, transportSequence)
-	for len(out)%4 != 0 {
-		out = append(out, 0)
-	}
-	return out
-}
-
-func videoAccessUnitHasIDR(au []byte) bool {
-	for _, nalu := range transport.SplitAnnexB(au) {
-		if len(nalu) == 0 {
-			continue
-		}
-		switch nalu[0] & 0x1f {
-		case 5, 7: // IDR or SPS: both belong to a recovery access unit.
-			return true
-		}
-	}
-	return false
-}
-
+// FeedCapturedVideo accepts one Annex-B access unit produced by WebCodecs. Recent
+// WhatsApp clients expect the complete access unit to be packetized as one logical
+// video NAL stream (with embedded Annex-B start codes), plus the 0xdebe video RTP
+// metadata extension. Sending every SPS/PPS/IDR NAL as an unrelated RTP unit can make
+// the peer enter video mode but render only the avatar/black frame.
 func (m *CallManager) FeedCapturedVideo(au []byte) {
-	if len(au) == 0 {
-		return
-	}
-	nalus := transport.SplitAnnexB(au)
-	if len(nalus) == 0 {
-		m.log.Debug("browser video frame ignored: not Annex-B", "bytes", len(au))
-		return
-	}
-
 	m.mu.Lock()
 	rtpSess, srtpSess, relay := m.videoRtpSession, m.videoSrtpSession, m.relay
-	if rtpSess == nil || srtpSess == nil || relay == nil || !relay.HasConnection() {
-		m.mu.Unlock()
+	keyframeRequired := m.videoKeyframeRequired
+	m.mu.Unlock()
+	if rtpSess == nil || srtpSess == nil || !relay.HasConnection() || len(au) == 0 {
 		return
 	}
 	if relay.BufferedAmount() > videoCongestionDropBytes {
-		m.mu.Unlock()
 		return
 	}
 
-	firstAU := m.lastVideoAUAt.IsZero()
-	m.lastVideoAUAt = time.Now()
-	if !firstAU {
-		rtpSess.AdvanceTimestamp(videoRtpStepSamples)
+	nalus := transport.SplitAnnexB(au)
+	if len(nalus) == 0 {
+		return
 	}
-	frameNumber := m.videoFrameNumber
-	m.videoFrameNumber++
-	transportSequence := m.videoTransportSequence
-	idr := videoAccessUnitHasIDR(au)
+	idr := transport.AUHasIDR(au)
+	if keyframeRequired && !idr {
+		return
+	}
 
-	var payloads [][]byte
+	// Match the current WhatsApp Web/meowcaller wire shape: the complete access
+	// unit is fragmented as a single RTP NAL stream. AUD NALs are transport noise
+	// and are deliberately omitted.
+	packed := make([]byte, 0, len(au))
 	for _, nalu := range nalus {
-		// Keep RFC6184 NAL/FU-A packetization from WaCalls, but add WhatsApp's
-		// video RTP metadata extension to every generated packet below.
-		payloads = append(payloads, transport.PackageH264NALU(nalu)...)
-	}
-	if len(payloads) == 0 {
-		m.mu.Unlock()
-		return
-	}
-	for i, p := range payloads {
-		last := i == len(payloads)-1
-		pkt := rtpSess.CreatePacketWithDuration(p, 0, last)
-		pkt.Header.Extension = true
-		pkt.Header.ExtensionProfile = whatsAppVideoExtensionProfile
-		mediaFrameInfo := byte(videoMediaFrameInfoDelta)
-		if idr {
-			mediaFrameInfo = videoMediaFrameInfoIDR
-		}
-		var framePtr *uint16
-		if i == 0 {
-			frameCopy := frameNumber
-			framePtr = &frameCopy
-		}
-		pkt.Header.ExtensionData = buildWhatsAppVideoExtension(mediaFrameInfo, framePtr, transportSequence)
-		transportSequence++
-		srtp, err := srtpSess.Protect(pkt)
-		if err != nil {
-			m.log.Debug("video srtp protect error", "err", err)
+		if len(nalu) == 0 || nalu[0]&0x1f == 9 {
 			continue
 		}
-		relay.Broadcast(srtp)
+		if len(packed) > 0 {
+			packed = append(packed, annexBStartCode...)
+		}
+		packed = append(packed, nalu...)
 	}
-	m.videoTransportSequence = transportSequence
-	m.videoOutboundFrames++
-	if m.videoOutboundFrames == 1 || m.videoOutboundFrames%30 == 0 {
-		m.log.Info("video outbound access unit", "frame", m.videoOutboundFrames,
-			"bytes", len(au), "nalus", len(nalus), "idr", idr,
-			"video_ssrc", m.videoSelfSsrc)
+	if len(packed) == 0 {
+		return
+	}
+	payloads := transport.PackageH264NALU(packed)
+	if len(payloads) == 0 {
+		return
+	}
+
+	m.mu.Lock()
+	first := m.lastVideoAUAt.IsZero()
+	m.lastVideoAUAt = time.Now()
+	if idr {
+		m.videoKeyframeRequired = false
 	}
 	m.mu.Unlock()
+	if !first {
+		rtpSess.AdvanceTimestamp(videoRtpStepSamples)
+	}
+	frameInfo := media.VideoMediaFrameInfoDelta
+	if idr {
+		frameInfo = media.VideoMediaFrameInfoIDR
+	}
+	for i, payload := range payloads {
+		last := i == len(payloads)-1
+		pkt := rtpSess.CreateH264Packet(payload, last, frameInfo)
+		protected, err := srtpSess.Protect(pkt)
+		if err != nil {
+			continue
+		}
+		relay.Broadcast(protected)
+	}
 }
 
 func (m *CallManager) handleVideoRelayData(data []byte) {
+	if len(data) < 12 {
+		return
+	}
+
 	m.mu.Lock()
+	// Media is authoritative. If signaling state=4/1 was delayed but PT-97 is
+	// already arriving after an agent-initiated upgrade, recover the video state
+	// and keying rather than dropping the first remote frames forever.
+	if m.videoSrtpSession == nil && m.currentCall != nil && !m.currentCall.IsEnded() &&
+		m.currentCall.StateData.State == core.CallStateActive && m.currentCall.VideoUpgradePending {
+		m.currentCall.VideoUpgradePending = false
+		m.currentCall.LocalVideo = true
+		m.currentCall.RemoteVideo = true
+		m.currentCall.MediaType = core.CallMediaTypeVideo
+		m.currentCall.StateData.VideoOff = false
+		m.initVideoKeysLocked()
+		m.emitState()
+	}
 	if m.videoSrtpSession == nil || m.videoDepacketizer == nil {
 		m.mu.Unlock()
 		return
@@ -199,7 +158,7 @@ func (m *CallManager) handleVideoRelayData(data []byte) {
 
 	pkt, err := srtp.Unprotect(data)
 	if err != nil {
-		m.log.Debug("video srtp unprotect error", "err", err, "ssrc", readRtpSsrc(data))
+		m.log.Debug("video srtp unprotect error", "err", err)
 		return
 	}
 	if len(pkt.Payload) == 0 {
@@ -213,17 +172,23 @@ func (m *CallManager) handleVideoRelayData(data []byte) {
 		m.videoFrameBuf = append(m.videoFrameBuf, nalu...)
 	}
 	var frame []byte
+	stateChanged := false
 	if pkt.Header.Marker && len(m.videoFrameBuf) > 0 {
 		frame = append([]byte(nil), m.videoFrameBuf...)
-		m.videoFrameBuf = m.videoFrameBuf[:0]
-		m.videoInboundFrames++
-		m.lastInboundVideoAt = time.Now()
-		if m.videoInboundFrames == 1 || m.videoInboundFrames%30 == 0 {
-			m.log.Info("video inbound access unit", "frame", m.videoInboundFrames,
-				"bytes", len(frame), "ssrc", pkt.Header.Ssrc)
+		m.videoFrameBuf = nil
+		if !m.videoRemoteFrameSeen && m.currentCall != nil && !m.currentCall.IsEnded() {
+			m.videoRemoteFrameSeen = true
+			m.currentCall.VideoUpgradePending = false
+			m.currentCall.RemoteVideo = true
+			m.currentCall.MediaType = core.CallMediaTypeVideo
+			m.currentCall.StateData.VideoOff = false
+			stateChanged = true
 		}
 	}
 	cb := m.OnPeerVideo
+	if stateChanged {
+		m.emitState()
+	}
 	m.mu.Unlock()
 
 	if frame != nil && cb != nil {
@@ -232,5 +197,8 @@ func (m *CallManager) handleVideoRelayData(data []byte) {
 }
 
 func readRtpSsrc(data []byte) uint32 {
+	if len(data) < 12 {
+		return 0
+	}
 	return uint32(data[8])<<24 | uint32(data[9])<<16 | uint32(data[10])<<8 | uint32(data[11])
 }

@@ -33,7 +33,8 @@ for token in ['VideoStateEnabled','VideoStateUpgradeAccept','VideoStateUpgradeRe
     assert token in signal or token in upgrade
 assert 'type": "video"' in signal
 assert 'events.UnknownCallEvent' in bridge_events
-assert 'handleUnknownCallEvent' in bridge and 'BuildVideoAck' in bridge
+raw_hook=(root/'services/whatsapp-bridge/internal/bridge/video_raw_hook.go').read_text() if (root/'services/whatsapp-bridge/internal/bridge/video_raw_hook.go').exists() else ''
+assert 'handleUnknownCallEvent' in bridge and ('BuildVideoAck' in bridge or ('BuildVideoAck' in raw_hook and 'installVideoRawCallHook' in raw_hook))
 
 # Browser H264 bridge uses same WebRTC leg as PCM.
 for token in ["H264_CHANNEL_LABEL = 'h264'",'VideoEncoder','VideoDecoder','MediaStreamTrackProcessor',"codec: 'avc1.42E01F'",'cameraStream','startVideo','stopVideo']:

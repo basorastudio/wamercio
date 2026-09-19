@@ -400,6 +400,12 @@ func (m *Manager) connect(w http.ResponseWriter, r *http.Request, sessionKey str
 }
 
 func (m *Manager) installHandler(s *Session) {
+	// Mid-call video needs a typed type="video" ACK before whatsmeow emits
+	// its generic call ACK. Install the raw hook before Connect; if upstream
+	// internals ever change, UnknownCallEvent remains a compatibility fallback.
+	if err := m.installVideoRawCallHook(s); err != nil {
+		log.Printf("whatsapp %s video raw hook: %v", s.StoreID, err)
+	}
 	s.Client.AddEventHandler(func(evt any) {
 		switch v := evt.(type) {
 		case *events.Connected:

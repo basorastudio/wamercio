@@ -282,13 +282,6 @@ Si vienes de V4.1.13, basta con reconstruir **Web**. API y WhatsApp Bridge no re
 
 ## V4.1.15 — Video bidireccional en vivo
 
-V4.1.15 corrige el transporte H.264 posterior al upgrade voz→video. No agrega servicios, puertos ni migraciones.
+V4.1.15 corrige el media path H.264 del upgrade de voz a video. No agrega servicios, puertos ni migraciones. Si vienes de V4.1.14, reconstruye **Web** y **WhatsApp Bridge**. Mantén HTTPS y el mismo rango UDP/WebRTC configurado para Calls.
 
-Si vienes de V4.1.14:
-
-1. reconstruye **Web**;
-2. reconstruye **WhatsApp Bridge**;
-3. conserva las variables/rango UDP de Calls existentes;
-4. prueba una llamada de voz, pulsa **Video**, acepta en el teléfono y verifica imagen en ambas direcciones.
-
-Para diagnóstico, en los logs del Bridge deben aparecer `video outbound access unit` al enviar la cámara del agente y `video inbound access unit` al recibir la cámara del contacto. Si solo aparece uno, ya puedes identificar qué sentido de media falta.
+Prueba recomendada tras desplegar: inicia una llamada de voz, espera `Activa`, pulsa **Video**, acepta desde WhatsApp, confirma que la cámara de WAMERCIO se vea en el teléfono y que la cámara del contacto se vea en el canvas del softphone; luego usa **Volver a voz** y confirma que el audio continúe.

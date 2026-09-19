@@ -706,42 +706,12 @@ func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
 }
 
 func (m *Manager) handleUnknownCallEvent(s *Session, evt *events.UnknownCallEvent) {
-	if s == nil || evt == nil || evt.Node == nil || s.callReg == nil {
+	if s == nil || evt == nil || evt.Node == nil {
 		return
 	}
-	children := evt.Node.GetChildren()
-	if len(children) != 1 || children[0].Tag != "video" {
-		return
-	}
-	video := children[0]
-	callID := wanode.AttrString(video.Attrs, "call-id")
-	if callID == "" {
-		return
-	}
-	ac, ok := s.callReg.get(callID)
-	if !ok || ac == nil || ac.cm == nil {
-		return
-	}
-	// WhatsApp expects a typed call/video acknowledgement. A generic call ack is
-	// not sufficient for mid-call audio-to-video negotiation.
-	if ack, ok := signaling.BuildVideoAck(evt.Node); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = wacall.NewSocket(s.Client).SendNode(ctx, ack)
-		cancel()
-	}
-	var from types.JID
-	if raw := wanode.AttrString(evt.Node.Attrs, "from"); raw != "" {
-		from, _ = types.ParseJID(raw)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	err := ac.cm.HandleVideoState(ctx, &video, from)
-	cancel()
-	if err != nil {
-		slog.Warn("wamercio calls: video state failed", "store_id", s.StoreID, "call_id", callID, "err", err)
-	}
-	if ci := ac.cm.CurrentCall(); ci != nil {
-		go m.emitCallState(s, ci, ac.recordID, "video_state")
-	}
+	// Compatibility fallback only. In normal operation the raw call hook handles
+	// <video> before whatsmeow's generic typeless call ACK can be emitted.
+	_ = m.processVideoCallNode(s, evt.Node)
 }
 
 func (m *Manager) handleCallAccept(s *Session, evt *events.CallAccept) {

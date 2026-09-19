@@ -1,15 +1,14 @@
 # WAMERCIO 4.1.15 — Video bidireccional en vivo
 
-- Corrige la ruta de medios H.264 después de que la negociación voz→video ya fue aceptada por WhatsApp.
-- Añade al RTP PT-97 las extensiones de video WhatsApp `0xDEBE` (MediaFrameInfo, frame number y transport sequence), necesarias para que clientes móviles modernos consuman el stream remoto.
-- Alinea el anuncio `state=1` del upgrade con el formato observado en clientes WhatsApp actuales, sin volver a enviar una oferta de códecs en esa transición.
-- Normaliza en el navegador H.264 AVCC → Annex-B cuando el encoder por hardware de Chromium ignora `avc.format=annexb`.
-- Reinyecta SPS/PPS desde `decoderConfig.description` cuando un keyframe del encoder no los incluye en banda.
-- El decodificador del softphone deriva dinámicamente el perfil AVC desde el SPS remoto en lugar de asumir siempre `avc1.42E01F`.
-- Espera la apertura real del DataChannel `h264` antes de comenzar la captura de cámara.
-- Añade contadores/logs de access units de video entrantes y salientes para diagnosticar cada dirección sin afectar el audio.
-- Mantiene todas las llamadas iniciando en voz y conserva el cambio a video exclusivamente desde el softphone de WAMERCIO.
-- No agrega migraciones.
+- Corrige la negociación mid-call para que los `<video>` reciban el ACK tipado `class="call" type="video"` antes de que WhatsMeow pueda emitir el ACK genérico.
+- Añade al RTP H.264 PT-97 la extensión WhatsApp `0xdebe` con media-frame-info, frame number, short offset y transport sequence.
+- Empaqueta el access unit Annex-B y exige un IDR de recuperación antes de iniciar el envío de video al relay.
+- Reanuncia las suscripciones/SSRC de video al relay al activar video en una llamada de voz ya establecida.
+- Hace fiable y ordenado el DataChannel H.264 entre navegador y Bridge para no perder SPS/PPS/IDR antes de entrar al relay de WhatsApp.
+- Detecta el perfil AVC real a partir del SPS recibido antes de configurar `VideoDecoder`, en lugar de depender siempre de `avc1.42E01F`.
+- Un frame remoto realmente decodificado pasa a ser evidencia autoritativa de video recibido y descubre inmediatamente el canvas del contacto aunque la metadata del API llegue con retraso.
+- Mantiene voz como modo inicial y la política de que solo el agente WAMERCIO puede solicitar el cambio voz→video.
+- No agrega migraciones ni modifica el esquema de PostgreSQL.
 
 ---
 

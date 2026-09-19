@@ -4,7 +4,7 @@ fail(){ echo "FAIL: $1" >&2; exit 1; }
 [ "$(cat VERSION)" = "4.1.15" ] || fail VERSION
 grep -q '"version": "4.1.15"' apps/web/package.json || fail 'web version'
 grep -q 'wamercio-store-v4.1.15' apps/web/public/sw.js || fail 'PWA cache'
-python3 scripts/test_4_1_15_bidirectional_video_media.py
+python3 scripts/test_4_1_15_bidirectional_video.py
 python3 scripts/test_4_1_14_typescript_video_null.py
 python3 scripts/test_4_1_13_voice_video_upgrade.py
 python3 scripts/test_4_1_12_customer_contact_pin.py
@@ -14,8 +14,7 @@ python3 scripts/test_4_1_7_softphone_sync.py
 python3 scripts/test_4_1_6_call_lifecycle.py
 python3 scripts/test_4_1_3_build_scope.py
 python3 scripts/test_3_0_0_conversation_center_pro.py
-ROOT=$(pwd)
-(cd /tmp && GOTOOLCHAIN=local go run "$ROOT/scripts/check_go_scope.go" "$ROOT/services/api/internal/httpapi" "$ROOT/services/whatsapp-bridge/internal/bridge" "$ROOT/services/whatsapp-bridge/internal/voip/call" "$ROOT/services/whatsapp-bridge/internal/voip/signaling" "$ROOT/services/whatsapp-bridge/internal/voip/transport" "$ROOT/services/whatsapp-bridge/internal/wacall")
+go run scripts/check_go_scope.go services/api/internal/httpapi services/whatsapp-bridge/internal/bridge services/whatsapp-bridge/internal/voip/call services/whatsapp-bridge/internal/voip/media services/whatsapp-bridge/internal/voip/signaling services/whatsapp-bridge/internal/voip/transport services/whatsapp-bridge/internal/wacall
 python3 - <<'PY2'
 from pathlib import Path
 import json,re
@@ -34,13 +33,15 @@ print(f'Migration pairs: {len(ups)}/{len(downs)}')
 print(f'HTTP handlers: {len(registered)} registered, 0 missing')
 print('JSON: OK')
 PY2
-NODE_PATH=/opt/nvm/versions/node/v22.16.0/lib/node_modules node - <<'JS'
+node - <<'JS'
 const fs=require('fs'),path=require('path'),ts=require('typescript');let count=0,bad=[];function walk(d){for(const e of fs.readdirSync(d,{withFileTypes:true})){if(e.name==='node_modules'||e.name==='.next')continue;const p=path.join(d,e.name);if(e.isDirectory())walk(p);else if(/\.tsx?$/.test(e.name)){count++;const sf=ts.createSourceFile(p,fs.readFileSync(p,'utf8'),ts.ScriptTarget.Latest,true,e.name.endsWith('.tsx')?ts.ScriptKind.TSX:ts.ScriptKind.TS);for(const x of sf.parseDiagnostics)bad.push(p+': TS'+x.code+' '+ts.flattenDiagnosticMessageText(x.messageText,' '));}}}walk('apps/web');console.log(`TypeScript syntax: ${count} files, ${bad.length} errors`);if(bad.length){console.error(bad.join('\n'));process.exit(1)}
 JS
+# Semantic-check the standalone browser media bridge with DOM types. It has no React/module dependencies.
+tsc --noEmit --target es2022 --lib dom,dom.iterable,es2022 apps/web/lib/calls-webrtc.ts --pretty false
 [ -z "$(gofmt -l services/api services/whatsapp-bridge services/domain-router)" ] || fail gofmt
 for f in scripts/*.sh; do sh -n "$f"; done
 python3 - <<'PY3'
 import yaml
 yaml.safe_load(open('docker-compose.yml',encoding='utf-8')); print('Docker Compose YAML: OK')
 PY3
-echo 'gofmt: OK'; echo 'Shell syntax: OK'; echo 'PASS: WAMERCIO 4.1.15 release verification'
+echo 'calls-webrtc semantic TypeScript: OK'; echo 'gofmt: OK'; echo 'Shell syntax: OK'; echo 'PASS: WAMERCIO 4.1.15 release verification'
