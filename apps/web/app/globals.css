@@ -124,7 +124,7 @@ button,a,input,select,textarea { touch-action:manipulation; }
 .marketing-shell :focus-visible{outline:2px solid rgba(11,93,59,.45);}
 
 /* =====================================================================
-   SuperAdmin 4.2.1 — WACatelog-inspired operating surface
+   SuperAdmin 4.2.2 — WACatelog-inspired operating surface
    Scoped to .admin-ui so merchant/customer interfaces keep their themes.
    ===================================================================== */
 .admin-ui{

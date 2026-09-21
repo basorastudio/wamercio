@@ -4,7 +4,7 @@ import {useEffect,useMemo,useState,type ReactNode} from 'react'
 import SuperAdminShell from '@/components/superadmin-shell'
 import {api} from '@/lib/api'
 import {Alert,Loading} from '@/components/ui'
-import {Check,Copy,Eye,Globe2,RotateCcw,Save,ShieldCheck,Storefront} from 'lucide-react'
+import {Check,Copy,Eye,Globe2,RotateCcw,Save,ShieldCheck,Store} from 'lucide-react'
 
 const landingDefaults={
  brand_name:'WAMERCIO',brand_subtitle:'Comercio conversacional',nav_features_label:'Cómo funciona',nav_product_label:'Funciones',nav_prices_label:'Precios',nav_demo_label:'Demo',nav_access_label:'Acceso',
@@ -43,7 +43,7 @@ export default function LandingSettings(){
   {err&&<Alert text={err}/>} {saved&&<Alert type="success" text="Cambios guardados y publicados correctamente."/>}
 
   <div className="admin-live-strip mb-4" data-live={!data.maintenance_mode}>
-   <div className="flex items-start gap-3"><span className={`grid h-11 w-11 place-items-center rounded-xl ${data.maintenance_mode?'bg-[#e7e1d8] text-[#718078]':'bg-[#dff4e7] text-[#0b5d3b]'}`}><Storefront className="h-5 w-5"/></span><div><div className="font-[Bricolage_Grotesque] text-base font-bold text-[#0a3f2a]">{data.maintenance_mode?'Página comercial en mantenimiento':'Página comercial publicada'}</div><p className="mt-1 text-[13px] text-[#718078]">{data.maintenance_mode?'Los paneles y tiendas continúan operando; solo se pausa la portada principal.':'Los visitantes pueden abrir la página pública y comenzar el registro comercial.'}</p></div></div>
+   <div className="flex items-start gap-3"><span className={`grid h-11 w-11 place-items-center rounded-xl ${data.maintenance_mode?'bg-[#e7e1d8] text-[#718078]':'bg-[#dff4e7] text-[#0b5d3b]'}`}><Store className="h-5 w-5"/></span><div><div className="font-[Bricolage_Grotesque] text-base font-bold text-[#0a3f2a]">{data.maintenance_mode?'Página comercial en mantenimiento':'Página comercial publicada'}</div><p className="mt-1 text-[13px] text-[#718078]">{data.maintenance_mode?'Los paneles y tiendas continúan operando; solo se pausa la portada principal.':'Los visitantes pueden abrir la página pública y comenzar el registro comercial.'}</p></div></div>
    <label className="flex cursor-pointer items-center gap-3"><span className="text-sm font-semibold text-[#0a3f2a]">Publicada</span><button type="button" className="admin-switch" data-on={!data.maintenance_mode} onClick={()=>update('maintenance_mode',!data.maintenance_mode)} aria-label="Cambiar estado de publicación" aria-pressed={!data.maintenance_mode}/></label>
   </div>
 

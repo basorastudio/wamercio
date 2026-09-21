@@ -1,4 +1,6 @@
-# WAMERCIO 4.2.1
+# WAMERCIO 4.2.2
+
+> **V4.2.2 HOTFIX:** corrige el fallo de compilación de producción de la página comercial del SuperAdmin causado por un icono inexistente de `lucide-react` (`Storefront`). Se reemplaza por el icono soportado `Store`, manteniendo intacta la funcionalidad y el backend de V4.2.1. Consulta `HOTFIX_V4.2.2.md`.
 
 > **V4.2.1:** refina el SuperAdmin con el patrón visual operativo de WACatelog y convierte los controles principales en funciones reales conectadas al backend: sidebar verde, topbar interactiva, búsqueda, menú de cuenta, selector de periodo del dashboard, gráficos alimentados por `/admin/dashboard`, activación/desactivación de negocios y planes, y editor de la página comercial con estado de publicación, copia de URL, vista previa y guardado persistente. Consulta `IMPLEMENTACION_V4.2.1_ADMIN_FUNCIONAL.md`.
 

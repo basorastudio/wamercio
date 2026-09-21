@@ -1,3 +1,14 @@
+# WAMERCIO 4.2.2 — Hotfix de compilación SuperAdmin
+
+- Corrige el error de TypeScript en `apps/web/app/admin/landing/page.tsx`: `lucide-react` no exporta un componente llamado `Storefront`.
+- Sustituye `Storefront` por `Store`, que sí es un icono válido y ya se usa en otras pantallas del proyecto.
+- No modifica contratos de API, endpoints, migraciones ni lógica del backend.
+- Mantiene intacto el rediseño funcional del SuperAdmin introducido en 4.2.1.
+- Invalida la caché PWA mediante `wamercio-store-v4.2.2`.
+- No requiere migraciones de base de datos.
+
+---
+
 # WAMERCIO 4.2.1 — SuperAdmin WACatelog-style funcional
 
 - Cambia el SuperAdmin a un lenguaje visual operativo inspirado en WACatelog: sidebar verde oscuro, navegación agrupada, superficies cálidas, tarjetas de borde ligero, tipografía de títulos y acento comercial.
