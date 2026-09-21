@@ -1,4 +1,6 @@
-# WAMERCIO 4.2.0
+# WAMERCIO 4.2.1
+
+> **V4.2.1:** refina el SuperAdmin con el patrón visual operativo de WACatelog y convierte los controles principales en funciones reales conectadas al backend: sidebar verde, topbar interactiva, búsqueda, menú de cuenta, selector de periodo del dashboard, gráficos alimentados por `/admin/dashboard`, activación/desactivación de negocios y planes, y editor de la página comercial con estado de publicación, copia de URL, vista previa y guardado persistente. Consulta `IMPLEMENTACION_V4.2.1_ADMIN_FUNCIONAL.md`.
 
 > **V4.2.0:** rediseño visual integral de la landing pública y SuperAdmin inspirado en WACatelog, adaptado a la identidad y arquitectura de WAMERCIO. Incluye hero WhatsApp-first, recorrido conversacional, comparación de checkout, planes renovados, sidebar/topbar SaaS, búsqueda administrativa y dashboard con tendencias reales. Consulta `IMPLEMENTACION_V4.2.0_WACATALOG_UI.md`.
 

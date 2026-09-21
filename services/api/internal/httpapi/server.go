@@ -404,6 +404,7 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("owners")).Put("/admin/users/{id}/access", s.adminSetUserAccess)
 			a.With(s.requireAdminArea("owners")).Get("/admin/stores", s.adminStores)
 			a.With(s.requireAdminArea("owners")).Put("/admin/stores/{id}", s.adminUpdateAdminStore)
+			a.With(s.requireAdminArea("owners")).Patch("/admin/stores/{id}/status", s.adminStoreStatus)
 			a.With(s.requireAdminArea("owners")).Delete("/admin/stores/{id}", s.adminDeleteStore)
 			a.With(s.requireAdminArea("settings")).Get("/admin/templates", s.adminTemplates)
 			a.With(s.requireAdminArea("settings")).Post("/admin/templates", s.adminCreateTemplate)
@@ -5610,6 +5611,16 @@ func (s *Server) requestSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
+	months := 6
+	if raw := strings.TrimSpace(r.URL.Query().Get("months")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil {
+			switch parsed {
+			case 3, 6, 12:
+				months = parsed
+			}
+		}
+	}
+
 	var users, stores, products, orders, pending, openTickets int
 	var revenue float64
 	_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM users WHERE role='owner'`).Scan(&users)
@@ -5623,7 +5634,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 	if rows, err := s.db.Query(r.Context(), `
 		WITH months AS (
 			SELECT generate_series(
-				date_trunc('month', now()) - interval '5 months',
+				date_trunc('month', now()) - (($1::int - 1) * interval '1 month'),
 				date_trunc('month', now()),
 				interval '1 month'
 			) AS month_start
@@ -5635,7 +5646,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 			(SELECT coalesce(sum(o.total),0) FROM orders o WHERE o.flow_type<>'quote' AND o.status<>'canceled' AND o.created_at>=month_start AND o.created_at<month_start+interval '1 month') AS revenue,
 			(SELECT count(*) FROM users u WHERE u.role='owner' AND u.created_at>=month_start AND u.created_at<month_start+interval '1 month') AS merchants,
 			(SELECT count(*) FROM stores st WHERE st.created_at>=month_start AND st.created_at<month_start+interval '1 month') AS stores
-		FROM months ORDER BY month_start`); err == nil {
+		FROM months ORDER BY month_start`, months); err == nil {
 		defer rows.Close()
 		for rows.Next() {
 			var month, label string
@@ -5679,6 +5690,7 @@ func (s *Server) adminDashboard(w http.ResponseWriter, r *http.Request) {
 		"pending_plan_requests": pending,
 		"open_tickets":          openTickets,
 		"urgent_tickets":        urgentTickets,
+		"period_months":         months,
 		"trend":                 trend,
 		"order_health":          map[string]any{"paid": paidOrders, "unpaid": unpaidOrders, "canceled": canceledOrders},
 		"recent_activity":       recentActivity,
@@ -5879,6 +5891,25 @@ func (s *Server) adminStores(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": id, "name": name, "slug": slug, "public_url": s.storePublicURL(r.Context(), id, slug), "is_active": active, "created_at": created, "owner_id": ownerID, "owner": owner, "owner_phone": ownerPhone, "products": products, "orders": orders})
 	}
 	jsonOut(w, 200, out)
+}
+
+func (s *Server) adminStoreStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var in struct {
+		IsActive *bool `json:"is_active"`
+	}
+	if decode(r, &in) != nil || in.IsActive == nil {
+		jsonErr(w, http.StatusBadRequest, "Estado inválido")
+		return
+	}
+	cmd, err := s.db.Exec(r.Context(), `UPDATE stores SET is_active=$1,updated_at=now() WHERE id=$2`, *in.IsActive, id)
+	if err != nil || cmd.RowsAffected() == 0 {
+		jsonErr(w, http.StatusNotFound, "Negocio no encontrado")
+		return
+	}
+	c := claims(r)
+	s.auditPlatform(r.Context(), c.UserID, "store.status.updated", "store", id, map[string]any{"is_active": *in.IsActive})
+	jsonOut(w, http.StatusOK, map[string]any{"ok": true, "is_active": *in.IsActive})
 }
 
 func (s *Server) adminDeleteStore(w http.ResponseWriter, r *http.Request) {

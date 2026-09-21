@@ -1,3 +1,19 @@
+# WAMERCIO 4.2.1 — SuperAdmin WACatelog-style funcional
+
+- Cambia el SuperAdmin a un lenguaje visual operativo inspirado en WACatelog: sidebar verde oscuro, navegación agrupada, superficies cálidas, tarjetas de borde ligero, tipografía de títulos y acento comercial.
+- Convierte la topbar en una superficie interactiva: búsqueda administrativa real, menú de idioma informativo, menú de cuenta, acceso a configuración y cierre de sesión.
+- Añade selector real de 3/6/12 meses al dashboard; `/admin/dashboard` acepta `?months=` y devuelve tendencias del periodo seleccionado.
+- Los KPI del dashboard navegan a sus módulos reales y los gráficos usan datos del backend, con tooltip en ventas y actualización manual.
+- Reestructura Página comercial siguiendo el patrón de Storefront settings: estado Publicada/Mantenimiento, dirección pública con copiar, tarjetas de configuración, vista previa, indicador de cambios pendientes y barra de acciones fija.
+- Añade `PATCH /admin/stores/{id}/status` para activar/desactivar negocios sin sobrescribir el resto de su configuración.
+- Negocios incorpora búsqueda, selector de estado, contadores, refresh y switch persistente conectado al backend.
+- Planes incorpora búsqueda, selector de estado, KPI, refresh y switch persistente conectado al endpoint real de actualización.
+- Los estilos se aplican únicamente dentro de `.admin-ui` para no alterar paneles de comerciantes, clientes ni storefronts.
+- Invalida la caché PWA mediante `wamercio-store-v4.2.1`.
+- No agrega migraciones de base de datos.
+
+---
+
 # WAMERCIO 4.2.0 — Landing y SuperAdmin inspirados en WACatelog
 
 - Reemplaza completamente la landing pública por una experiencia WhatsApp-first inspirada en la composición, jerarquía, superficies cálidas y patrones visuales de WACatelog, manteniendo marca y contenido propios de WAMERCIO.
