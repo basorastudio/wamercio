@@ -1,0 +1,61 @@
+export type StoreHeroElementConfig={visible:boolean;x:number;y:number}
+export type StoreHeroContentConfig={freePosition:boolean;label:StoreHeroElementConfig;title:StoreHeroElementConfig;description:StoreHeroElementConfig;whatsapp:StoreHeroElementConfig;address:StoreHeroElementConfig;minimum:StoreHeroElementConfig}
+export type StoreThemeConfig={
+  colors:{primary:string;secondary:string;accent:string;background:string;surface:string;text:string;muted:string;border:string;buttonText:string}
+  typography:{heading:string;body:string;scale:'compact'|'normal'|'large'}
+  shape:{radius:number;buttonRadius:number;shadow:'none'|'soft'|'medium'|'strong'}
+  header:{variant:'classic'|'centered'|'minimal'|'glass';sticky:boolean}
+  hero:{variant:'gradient'|'overlay'|'editorial'|'split'|'compact';height:'compact'|'normal'|'large';freePosition?:boolean;label?:Partial<StoreHeroElementConfig>;title?:Partial<StoreHeroElementConfig>;description?:Partial<StoreHeroElementConfig>;whatsapp?:Partial<StoreHeroElementConfig>;address?:Partial<StoreHeroElementConfig>;minimum?:Partial<StoreHeroElementConfig>}
+  categories:{variant:'pills'|'circles'|'cards'|'underline'}
+  products:{card:'clean'|'editorial'|'dense'|'industrial'|'luxury';imageRatio:'1:1'|'4:3'|'3:4'|'16:9';columnsMobile:1|2}
+  buttons:{variant:'solid'|'soft'|'outline'}
+  background:{type:'solid'|'gradient';value:string}
+  custom_css:string
+}
+export type StoreThemePreset={id:string;name:string;description:string;bestFor:string;config:StoreThemeConfig}
+
+const c=(primary:string,secondary:string,accent:string,background:string,surface:string,text:string,muted:string,border:string,buttonText='#fff')=>({primary,secondary,accent,background,surface,text,muted,border,buttonText})
+const base=(colors:StoreThemeConfig['colors']):StoreThemeConfig=>({colors,typography:{heading:'Inter',body:'Inter',scale:'normal'},shape:{radius:18,buttonRadius:14,shadow:'soft'},header:{variant:'classic',sticky:true},hero:{variant:'gradient',height:'normal'},categories:{variant:'pills'},products:{card:'clean',imageRatio:'1:1',columnsMobile:2},buttons:{variant:'solid'},background:{type:'solid',value:colors.background},custom_css:''})
+
+export const STORE_THEMES:StoreThemePreset[]=[
+  {id:'fresh-market',name:'Mercado Fresco',description:'Visual, cercano y fácil de recorrer. Funciona muy bien para compras del día a día.',bestFor:'Minimarkets, supermercados, tiendas de conveniencia y mercados',config:{...base(c('#24a875','#f0b33b','#123f36','#f5f8f5','#ffffff','#17342d','#71817c','#e0e9e5')),typography:{heading:'Manrope',body:'Inter',scale:'normal'},shape:{radius:20,buttonRadius:14,shadow:'soft'},hero:{variant:'split',height:'normal'},categories:{variant:'circles'},products:{card:'clean',imageRatio:'1:1',columnsMobile:2}}},
+  {id:'food-bold',name:'Comida con Sabor',description:'Apetitoso, directo y pensado para provocar el pedido desde la primera pantalla.',bestFor:'Pizzerías, restaurantes, cafeterías, pica pollos y comida rápida',config:{...base(c('#e14a2b','#f7b32b','#31211d','#fff7f1','#ffffff','#2b201d','#806e68','#f1ded4')),typography:{heading:'Oswald',body:'Inter',scale:'large'},shape:{radius:22,buttonRadius:14,shadow:'medium'},hero:{variant:'overlay',height:'large'},categories:{variant:'circles'},products:{card:'dense',imageRatio:'4:3',columnsMobile:2}}},
+  {id:'editorial-fashion',name:'Moda Editorial',description:'Elegante, fotográfico y con aire de boutique para que las prendas sean protagonistas.',bestFor:'Boutiques, ropa, calzados y accesorios',config:{...base(c('#222222','#c8a97e','#795d4a','#f7f4ef','#ffffff','#201f1d','#807a73','#e8e1d8')),typography:{heading:'Playfair Display',body:'Manrope',scale:'large'},shape:{radius:8,buttonRadius:2,shadow:'none'},header:{variant:'centered',sticky:true},hero:{variant:'editorial',height:'large'},categories:{variant:'underline'},products:{card:'editorial',imageRatio:'3:4',columnsMobile:2},buttons:{variant:'outline'}}},
+  {id:'beauty-soft',name:'Belleza Suave',description:'Limpio, delicado y moderno para marcas de belleza y cuidado personal.',bestFor:'Salones, cosméticos, maquillaje y cuidado personal',config:{...base(c('#c45f79','#efc8d0','#74515b','#fff8fa','#ffffff','#3f3034','#927b81','#f0dfe4')),typography:{heading:'DM Sans',body:'Nunito',scale:'normal'},shape:{radius:26,buttonRadius:999,shadow:'soft'},header:{variant:'glass',sticky:true},hero:{variant:'gradient',height:'normal'},categories:{variant:'pills'},products:{card:'clean',imageRatio:'1:1',columnsMobile:2},buttons:{variant:'soft'}}},
+  {id:'luxury',name:'Elegancia Premium',description:'Sobrio, refinado y de alto contraste para negocios que quieren proyectar exclusividad.',bestFor:'Joyería, regalos, detalles y productos premium',config:{...base(c('#171717','#c4a15a','#8a6d35','#f4f1e9','#fffdf8','#1c1b18','#77736b','#ddd7ca')),typography:{heading:'Merriweather',body:'Inter',scale:'large'},shape:{radius:4,buttonRadius:2,shadow:'none'},header:{variant:'minimal',sticky:true},hero:{variant:'editorial',height:'large'},categories:{variant:'underline'},products:{card:'luxury',imageRatio:'3:4',columnsMobile:2},buttons:{variant:'outline'}}},
+  {id:'tech-modern',name:'Tecnología Moderna',description:'Ordenado, limpio y pensado para comparar modelos, precios y especificaciones.',bestFor:'Celulares, tecnología, electrónica y accesorios',config:{...base(c('#3563e9','#16c2a3','#14213d','#f3f6fb','#ffffff','#17223b','#71809c','#dde4ef')),typography:{heading:'Sora',body:'Inter',scale:'normal'},shape:{radius:16,buttonRadius:12,shadow:'medium'},header:{variant:'classic',sticky:true},hero:{variant:'split',height:'normal'},categories:{variant:'cards'},products:{card:'dense',imageRatio:'1:1',columnsMobile:2}}},
+  {id:'industrial-pro',name:'Ferretería Pro',description:'Más técnico y compacto para catálogos grandes donde importan precio, marca y disponibilidad.',bestFor:'Ferreterías, repuestos, materiales y suministros',config:{...base(c('#e06c19','#29323c','#3b4652','#f2f4f5','#ffffff','#263039','#6f7a83','#d9dee2')),typography:{heading:'Roboto Condensed',body:'Inter',scale:'compact'},shape:{radius:10,buttonRadius:8,shadow:'none'},header:{variant:'classic',sticky:true},hero:{variant:'compact',height:'compact'},categories:{variant:'cards'},products:{card:'industrial',imageRatio:'1:1',columnsMobile:1}}},
+  {id:'minimal-shop',name:'Tienda Minimalista',description:'Neutral, flexible y profesional. Una base segura para casi cualquier negocio.',bestFor:'Tiendas generales, servicios y negocios variados',config:{...base(c('#36b385','#82d6b7','#2e3154','#f7f9fc','#ffffff','#2e3154','#858aa7','#e7eaf0')),typography:{heading:'Inter',body:'Inter',scale:'normal'},shape:{radius:18,buttonRadius:12,shadow:'soft'},header:{variant:'minimal',sticky:true},hero:{variant:'gradient',height:'normal'},categories:{variant:'pills'},products:{card:'clean',imageRatio:'4:3',columnsMobile:2}}},
+]
+
+
+export const DEFAULT_HERO_CONTENT:StoreHeroContentConfig={
+ freePosition:false,
+ label:{visible:true,x:4,y:12},
+ title:{visible:true,x:4,y:28},
+ description:{visible:true,x:4,y:48},
+ whatsapp:{visible:true,x:4,y:72},
+ address:{visible:true,x:19,y:72},
+ minimum:{visible:true,x:54,y:72},
+}
+export function resolvedHeroContent(hero?:StoreThemeConfig['hero']|Record<string,any>):StoreHeroContentConfig{
+ const src=hero||{}
+ const out:any={freePosition:!!src.freePosition}
+ for(const key of ['label','title','description','whatsapp','address','minimum'] as const){out[key]={...DEFAULT_HERO_CONTENT[key],...(src[key]||{})}}
+ return out as StoreHeroContentConfig
+}
+export function heroElementStyle(item:StoreHeroElementConfig):{left:string;top:string}{return{left:`${Math.max(0,Math.min(96,Number(item.x)||0))}%`,top:`${Math.max(0,Math.min(96,Number(item.y)||0))}%`}}
+
+export const FONT_OPTIONS=['Inter','Poppins','Montserrat','Manrope','DM Sans','Outfit','Nunito','Rubik','Sora','Oswald','Playfair Display','Merriweather','Roboto Condensed']
+export function getStoreTheme(id?:string){return STORE_THEMES.find(x=>x.id===id)||STORE_THEMES.find(x=>x.id==='minimal-shop')!}
+function merge<T extends Record<string,any>>(a:T,b:any):T{const out:any={...a};if(!b||typeof b!=='object')return out;for(const k of Object.keys(b)){if(b[k]&&typeof b[k]==='object'&&!Array.isArray(b[k])&&a[k]&&typeof a[k]==='object')out[k]=merge(a[k],b[k]);else if(b[k]!==undefined&&b[k]!==null)out[k]=b[k]}return out}
+export function resolvedTheme(id?:string,overrides?:Partial<StoreThemeConfig>|Record<string,any>,legacyPrimary?:string){
+ const preset=getStoreTheme(id);const config=merge(structuredCloneSafe(preset.config),overrides||{});if(legacyPrimary&&!overrides?.colors?.primary)config.colors.primary=legacyPrimary;if(!config.background.value)config.background.value=config.colors.background;return{preset,config}
+}
+function structuredCloneSafe<T>(x:T):T{return JSON.parse(JSON.stringify(x))}
+export function freshThemeConfig(id:string){return structuredCloneSafe(getStoreTheme(id).config)}
+export function fontStack(name:string){const quoted=name.includes(' ')?`"${name}"`:name;return `${quoted}, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`}
+export function themeCSSVars(config:StoreThemeConfig):Record<string,string>{
+ const shadow=config.shape.shadow==='none'?'none':config.shape.shadow==='soft'?'0 10px 30px rgba(15,23,42,.07)':config.shape.shadow==='medium'?'0 14px 34px rgba(15,23,42,.11)':'0 18px 45px rgba(15,23,42,.16)'
+ return {'--store-primary':config.colors.primary,'--store-secondary':config.colors.secondary,'--store-accent':config.colors.accent,'--store-bg':config.colors.background,'--store-surface':config.colors.surface,'--store-text':config.colors.text,'--store-muted':config.colors.muted,'--store-border':config.colors.border,'--store-button-text':config.colors.buttonText,'--store-radius':`${config.shape.radius}px`,'--store-button-radius':`${config.shape.buttonRadius}px`,'--store-shadow':shadow,'--store-heading-font':fontStack(config.typography.heading),'--store-body-font':fontStack(config.typography.body)}
+}

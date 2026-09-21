@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Manrope:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Montserrat:wght@400;500;600;700&family=Nunito:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&family=Roboto+Condensed:wght@400;500;600;700&family=Rubik:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --brand:#0e8347;
+  --brand-dark:#0b5d3b;
+  --brand-soft:#eef8f3;
+  --ink:#17191c;
+  --muted:#717f8e;
+  --surface:#ffffff;
+  --page:#f8fafc;
+}
+* { box-sizing:border-box; }
+/* Mantiene el desplazamiento por rueda, touch y teclado, pero elimina las barras visuales redundantes. */
+html,body,* { scrollbar-width:none; -ms-overflow-style:none; }
+html::-webkit-scrollbar,body::-webkit-scrollbar,*::-webkit-scrollbar { width:0; height:0; display:none; }
+html,body { min-height:100%; scroll-behavior:smooth; }
+html { -webkit-tap-highlight-color:transparent; overscroll-behavior-y:none; }
+body { margin:0; min-height:100dvh; background:var(--page); color:var(--ink); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+a { color:inherit; text-decoration:none; }
+button,input,textarea,select { font:inherit; }
+button,a,input,select,textarea { touch-action:manipulation; }
+::selection { background:#b5dfca; color:#084429; }
+
+@layer components {
+  .card { @apply rounded-3xl border border-[#e3e6e8] bg-white shadow-soft; }
+  .field { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-ink-900 outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10; }
+  .label { @apply mb-1.5 block text-sm font-medium text-ink-900; }
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition active:scale-[.99] disabled:pointer-events-none disabled:opacity-50; }
+  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600; }
+  .btn-secondary { @apply btn border border-brand-500 bg-white text-brand-600 hover:bg-brand-50; }
+  .btn-danger { @apply btn bg-rose-50 text-rose-700 hover:bg-rose-100; }
+  .table-wrap { @apply overflow-hidden rounded-3xl border border-[#e3e6e8] bg-white shadow-soft; }
+  .table { @apply w-full text-left text-sm; }
+  .table th { @apply bg-[#fafbfe] px-4 py-3 text-[11px] font-semibold uppercase tracking-wide text-[#8d92ad]; }
+  .table td { @apply border-t border-slate-100 px-4 py-3 align-middle text-ink-900; }
+}
+
+.whatsapp-food-section-title { color:#2e3154; font-weight:700; letter-spacing:-.02em; }
+.whatsapp-food-muted { color:#8a8fa9; }
+.whatsapp-food-green { color:#36b385; }
+.whatsapp-food-bg { background:#36b385; }
+
+@media (max-width:639px) {
+  .table-wrap { @apply -mx-3 rounded-none border-x-0 shadow-none; }
+  .table th { @apply whitespace-nowrap px-3 py-2.5 text-[10px]; }
+  .table td { @apply whitespace-nowrap px-3 py-3; }
+  .btn { @apply min-h-11; }
+  .field { @apply min-h-11 text-base; }
+}
+
+/* intl-tel-input: WAMERCIO integration */
+.wamercio-phone-input { width:100%; }
+.wamercio-phone-input .iti { width:100%; display:block; }
+.wamercio-phone-input .iti__tel-input { width:100%; min-height:44px; }
+.wamercio-phone-input .iti__selected-country { border-radius:6px 0 0 6px; }
+.wamercio-phone-input .iti__selected-country-primary { padding-left:12px; padding-right:8px; }
+.wamercio-phone-input .iti__selected-dial-code { color:#586079; font-size:.875rem; }
+.wamercio-phone-input .iti__dropdown-content { border:1px solid #e2e8f0; border-radius:10px; box-shadow:0 18px 45px rgba(46,49,84,.12); overflow:hidden; }
+.wamercio-phone-input .iti__search-input { margin:8px; width:calc(100% - 16px); border:1px solid #e2e8f0; border-radius:7px; padding:9px 10px; outline:none; }
+.wamercio-phone-input .iti__country.iti__highlight { background:#eefaf6; }
+.wamercio-phone-input .iti__country-name { color:#2e3154; }
+.wamercio-phone-input .iti__dial-code { color:#858aa7; }
+.iti--fullscreen-popup.iti--detached-country-selector { z-index: 220 !important; }
+
+
+/* Merchant experience 1.8 */
+.soft-panel { @apply rounded-2xl border border-slate-100 bg-white shadow-soft; }
+.section-kicker { @apply text-[10px] font-bold uppercase tracking-[.16em] text-brand-600; }
+.section-title { @apply mt-1 text-xl font-semibold tracking-tight text-ink-900; }
+.section-copy { @apply mt-1 text-sm leading-6 text-[#8d92aa]; }
+.icon-action { @apply grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-[#7f859f] transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700; }
+.merchant-grid-card { @apply overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-soft transition hover:-translate-y-0.5 hover:shadow-lg; }
+.modal-scroll { -ms-overflow-style:none; scrollbar-width:none; }
+.modal-scroll::-webkit-scrollbar { width:0; height:0; display:none; }
+
+@media (max-width:639px) {
+  .mobile-sheet { border-radius:24px 24px 0 0 !important; }
+}
+
+/* Storefront theme engine */
+.storefront input,.storefront textarea,.storefront select{color:var(--store-text);background:var(--store-surface);border-color:var(--store-border)}
+.storefront .label{color:var(--store-text)}
+.storefront-product-card{border-radius:var(--store-radius)}
+
+.storefront .field:focus{border-color:var(--store-primary);box-shadow:0 0 0 4px color-mix(in srgb,var(--store-primary) 12%,transparent)}
+.storefront ::selection{background:color-mix(in srgb,var(--store-primary) 22%,white);color:var(--store-text)}
+
+/* POS: densidad adaptable al estado real del menú lateral. */
+@media (min-width: 1600px) {
+  [data-sidebar-collapsed="false"] .pos-product-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  [data-sidebar-collapsed="true"] .pos-product-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+/* Customer location map: interactive marker anchored to stored coordinates. */
+.customer-map-div-icon { background:transparent !important; border:0 !important; }
+.customer-map-marker-shell { position:relative; width:56px; height:66px; display:flex; justify-content:center; align-items:flex-start; }
+.customer-map-marker-avatar { position:relative; z-index:2; display:grid; place-items:center; width:54px; height:54px; overflow:hidden; border:4px solid #fff; border-radius:9999px; background:#eefaf6; color:#2d8f70; font-size:18px; font-weight:800; object-fit:cover; box-shadow:0 8px 22px rgba(30,41,59,.28); }
+.customer-map-marker-tip { position:absolute; z-index:1; left:50%; bottom:5px; width:18px; height:18px; transform:translateX(-50%) rotate(45deg); border-right:4px solid #fff; border-bottom:4px solid #fff; border-radius:2px; background:#36b385; box-shadow:3px 3px 8px rgba(30,41,59,.16); }
+.leaflet-container { font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.leaflet-control-zoom a { color:#2e3154 !important; }
+
+/* intl-tel-input: dark softphone variant */
+.wamercio-phone-input--dark .iti { width:100%; }
+.wamercio-phone-input--dark .wamercio-phone-control-dark { width:100%; min-height:46px; border:1px solid rgba(255,255,255,.10); border-radius:15px; outline:none; background:rgba(255,255,255,.055); color:#fff; padding:0 12px; font-size:14px; font-weight:800; }
+.wamercio-phone-input--dark .wamercio-phone-control-dark:focus { border-color:rgba(119,227,198,.60); box-shadow:0 0 0 3px rgba(0,168,132,.14); }
+.wamercio-phone-input--dark .iti__selected-country { background:transparent; color:#fff; }
+.wamercio-phone-input--dark .iti__selected-dial-code { color:rgba(255,255,255,.72); }
+.wamercio-phone-input--dark .iti__arrow { border-top-color:rgba(255,255,255,.65); }
+.wamercio-phone-input--dark .iti__dropdown-content { background:#17332c; border-color:rgba(255,255,255,.12); }
+.wamercio-phone-input--dark .iti__search-input { background:#10241f; border-color:rgba(255,255,255,.12); color:#fff; }
+.wamercio-phone-input--dark .iti__country-name { color:#fff; }
+.wamercio-phone-input--dark .iti__dial-code { color:rgba(255,255,255,.52); }
+.wamercio-phone-input--dark .iti__country.iti__highlight { background:rgba(0,168,132,.18); }
+
+
+/* WACatelog-inspired marketing typography and warm public surface */
+.marketing-shell{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+.marketing-shell h1,.marketing-shell h2,.marketing-shell h3{font-family:"Bricolage Grotesque",Inter,ui-sans-serif,system-ui,sans-serif;}
+.marketing-shell button,.marketing-shell a{outline-offset:3px;}
+.marketing-shell :focus-visible{outline:2px solid rgba(11,93,59,.45);}

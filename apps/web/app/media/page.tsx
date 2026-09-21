@@ -1,0 +1,18 @@
+'use client'
+import {useEffect,useRef,useState} from 'react'
+import StoreShell,{StoreSelector} from '@/components/store-shell'
+import {api,upload,dateTime} from '@/lib/api'
+import {Alert,Loading,PageEmpty} from '@/components/ui'
+import {Image as ImageIcon,Upload,Trash2,Film,FileText,Search} from 'lucide-react'
+
+export default function MediaPage(){
+ const[store,setStore]=useState(''),[items,setItems]=useState<any[]>([]),[loading,setLoading]=useState(false),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[q,setQ]=useState('');const input=useRef<HTMLInputElement>(null)
+ const load=async()=>{if(!store)return;setLoading(true);try{setItems(await api(`/media-assets?store_id=${store}`));setErr('')}catch(e:any){setErr(e.message)}finally{setLoading(false)}}
+ useEffect(()=>{if(store)void load()},[store])
+ const add=async(file?:File)=>{if(!file||!store)return;setBusy(true);setErr('');try{const url=await upload(file);const kind=file.type.startsWith('video/')?'video':file.type.startsWith('image/')?'image':'document';await api(`/media-assets?store_id=${store}`,{method:'POST',body:JSON.stringify({name:file.name,url,mime_type:file.type,file_size:file.size,kind,source:'upload'})});await load()}catch(e:any){setErr(e.message)}finally{setBusy(false);if(input.current)input.current.value=''}}
+ const remove=async(id:string)=>{if(!confirm('¿Eliminar este recurso de la biblioteca?'))return;try{await api(`/media-assets/${id}?store_id=${store}`,{method:'DELETE'});await load()}catch(e:any){setErr(e.message)}}
+ const shown=items.filter(x=>(x.name||'').toLowerCase().includes(q.toLowerCase()))
+ return <StoreShell title="Multimedia" subtitle="Biblioteca reutilizable para publicaciones, Google y campañas" context={<StoreSelector value={store} onChange={setStore}/>} actions={<><input ref={input} className="hidden" type="file" accept="image/*,video/*" onChange={e=>add(e.target.files?.[0])}/><button disabled={!store||busy} className="btn-primary" onClick={()=>input.current?.click()}><Upload className="h-4 w-4"/>{busy?'Subiendo...':'Subir archivo'}</button></>}>
+  {!store?<PageEmpty title="Selecciona una tienda" detail="La biblioteca multimedia es independiente para cada negocio."/>:<div className="space-y-5">{err&&<Alert text={err}/>}<section className="card p-4"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input className="field pl-10" placeholder="Buscar en la biblioteca..." value={q} onChange={e=>setQ(e.target.value)}/></div></section>{loading?<Loading/>:shown.length?<section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{shown.map(x=>{const I=x.kind==='video'?Film:x.kind==='image'?ImageIcon:FileText;return <article key={x.id} className="card overflow-hidden"><div className="aspect-[4/3] bg-[#f5f6f8]">{x.kind==='image'?<img src={x.thumbnail_url||x.url} alt={x.name} className="h-full w-full object-cover"/>:x.kind==='video'?<video src={x.url} className="h-full w-full object-cover" controls={false}/>:<div className="grid h-full place-items-center"><I className="h-10 w-10 text-[#adb1c0]"/></div>}</div><div className="p-4"><div className="flex items-start gap-2"><div className="min-w-0 flex-1"><h3 className="truncate text-sm font-semibold">{x.name||'Sin nombre'}</h3><p className="mt-1 text-[11px] text-[#9ba0b4]">{x.kind} · {dateTime(x.created_at)}</p></div><button onClick={()=>remove(x.id)} className="rounded-xl p-2 text-[#9ba0b4] hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4"/></button></div></div></article>})}</section>:<PageEmpty title="Biblioteca vacía" detail="Sube imágenes o videos para reutilizarlos en publicaciones sociales y Google."/>}</div>}
+ </StoreShell>
+}

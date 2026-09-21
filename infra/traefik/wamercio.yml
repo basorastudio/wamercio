@@ -1,0 +1,72 @@
+http:
+  routers:
+    wamercio-http-file:
+      rule: "Host(`wamercio.com`) || Host(`www.wamercio.com`)"
+      entryPoints:
+        - web
+      service: wamercio-file-service
+      priority: 1000
+
+    wamercio-https-file:
+      rule: "Host(`wamercio.com`) || Host(`www.wamercio.com`)"
+      entryPoints:
+        - websecure
+      service: wamercio-file-service
+      priority: 1000
+      tls:
+        certResolver: letsencrypt
+
+    wamercio-tenant-root-http:
+      rule: "Host(`ltd.do`) || Host(`www.ltd.do`)"
+      entryPoints:
+        - web
+      service: wamercio-file-service
+      middlewares:
+        - wamercio-tenant-root-redirect
+      priority: 980
+
+    wamercio-tenant-root-https:
+      rule: "Host(`ltd.do`) || Host(`www.ltd.do`)"
+      entryPoints:
+        - websecure
+      service: wamercio-file-service
+      middlewares:
+        - wamercio-tenant-root-redirect
+      priority: 980
+      tls:
+        certResolver: letsencrypt
+
+    wamercio-customer-sso-http:
+      rule: "Host(`cliente.ltd.do`)"
+      entryPoints:
+        - web
+      service: wamercio-file-service
+      priority: 950
+
+    wamercio-customer-sso-https:
+      rule: "Host(`cliente.ltd.do`)"
+      entryPoints:
+        - websecure
+      service: wamercio-file-service
+      priority: 950
+      tls:
+        certResolver: letsencrypt
+
+
+  middlewares:
+    wamercio-tenant-root-redirect:
+      redirectRegex:
+        regex: "^https?://(?:www\\.)?ltd\\.do(?:/.*)?$"
+        replacement: "https://wamercio.com"
+        permanent: true
+
+  services:
+    wamercio-file-service:
+      loadBalancer:
+        passHostHeader: true
+        healthCheck:
+          path: /gateway-health
+          interval: 10s
+          timeout: 3s
+        servers:
+          - url: "http://wamercio-gateway:8080"

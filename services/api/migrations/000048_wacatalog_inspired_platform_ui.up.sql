@@ -1,0 +1,46 @@
+-- WAMERCIO 4.2 UI refresh: align the public commercial page copy with the
+-- WhatsApp-first/WACatelog-inspired experience. The JSONB merge keeps custom
+-- maintenance fields and any future keys while refreshing the visible defaults.
+UPDATE platform_settings
+SET value = value || '{
+  "brand_name":"WAMERCIO",
+  "brand_subtitle":"Comercio conversacional",
+  "nav_features_label":"Cómo funciona",
+  "nav_product_label":"Funciones",
+  "nav_prices_label":"Precios",
+  "nav_demo_label":"Demo",
+  "nav_access_label":"Iniciar sesión",
+  "hero_badge":"Comercios dominicanos",
+  "hero_kicker":"WhatsApp-first",
+  "hero_title":"Toda tu tienda funciona dentro de WhatsApp.",
+  "hero_subtitle":"Crea tu catálogo una sola vez. Tus clientes navegan, preguntan y piden sin salir de la conversación, mientras WAMERCIO mantiene pedidos, inventario y clientes organizados.",
+  "access_label":"Crear mi comercio",
+  "demo_label":"Ver precios",
+  "feature_1_title":"Catálogo listo una sola vez",
+  "feature_1_text":"Crea productos, precios, variantes e inventario desde un panel pensado para vender por conversación.",
+  "feature_2_title":"Toma el pedido en el chat",
+  "feature_2_text":"Conecta WhatsApp y convierte conversaciones reales en pedidos organizados sin perder contexto.",
+  "feature_3_title":"Cobra como trabaja tu negocio",
+  "feature_3_text":"Efectivo, transferencia, terminal y métodos locales, con el estado del cobro ligado al pedido.",
+  "feature_4_title":"Entrega sin romper la conversación",
+  "feature_4_text":"Coordina entrega, dirección, zonas y seguimiento sin obligar al cliente a abandonar WhatsApp.",
+  "feature_5_title":"Ventas que sí puedes medir",
+  "feature_5_text":"Consulta pedidos, ingresos, productos y movimientos con una lectura clara de lo que está pasando.",
+  "feature_6_title":"Conoce a cada cliente",
+  "feature_6_text":"Une el contacto de WhatsApp con compras, notas, direcciones y conversaciones anteriores.",
+  "features_strip_primary":"WAMERCIO organiza catálogo, pedidos, clientes y WhatsApp en un solo lugar.",
+  "features_strip_secondary":"Tu operación sigue siendo simple aunque tu negocio crezca.",
+  "process_title":"Un toque en un enlace. Lo demás es una conversación.",
+  "process_subtitle":"Sin carrito complicado, sin formularios eternos y sin obligar al cliente a instalar otra aplicación.",
+  "process_customer_title":"Para tus clientes",
+  "process_customer_text":"Abren el catálogo, eligen y continúan el pedido desde la conversación que ya conocen.",
+  "process_business_title":"Para tu comercio",
+  "process_business_text":"Recibes el pedido estructurado, atiendes WhatsApp y conservas todo el historial comercial.",
+  "plans_title":"Planes WAMERCIO",
+  "plans_subtitle":"Empieza simple y crece cuando tu comercio lo necesite.",
+  "demo_title":"Prueba la experiencia desde tu celular",
+  "demo_text":"Escanea el QR para abrir WAMERCIO. No necesitas instalar nada; el panel también funciona como PWA.",
+  "footer_text":"Tu comercio, catálogo, pedidos y clientes conectados a la conversación donde ya están tus compradores."
+}'::jsonb,
+updated_at = now()
+WHERE key='landing';
