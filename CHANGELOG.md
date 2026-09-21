@@ -1,3 +1,15 @@
+# WAMERCIO 4.3.1 — Hotfix de consola, sesión pública y PWA
+
+- El storefront ya no consulta `/customer/me` al cargar como invitado.
+- Añade `GET /api/v1/customer/session`, que devuelve HTTP 200 para invitados y reutiliza la sesión real cuando existe.
+- `/customer/me` continúa protegido y conserva el 401 correcto para accesos autenticados inválidos.
+- Añade `mobile-web-app-capable=yes` al metadata de plataforma y tenants, manteniendo `apple-mobile-web-app-capable` para compatibilidad iOS.
+- Confirma que `static.cloudflareinsights.com/beacon.min.js` y `Target website not loaded` no existen en el repositorio; son mensajes externos al bundle de WAMERCIO.
+- Invalida la caché PWA mediante `wamercio-store-v4.3.1`.
+- No agrega migraciones de base de datos.
+
+---
+
 # WAMERCIO 4.3.0 — Panel de negocios y storefront inspirados en WACatelog
 
 - Rediseña el shell completo del panel de comerciantes con sidebar verde oscuro, superficies cálidas, bordes suaves y densidad operativa similar a WACatelog.

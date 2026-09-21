@@ -90,6 +90,7 @@ func (s *Server) Router() http.Handler {
 		api.Post("/auth/customer/login", s.customerLogin)
 		api.Post("/auth/customer/logout", s.customerLogout)
 		api.Post("/auth/customer/sso/exchange", s.customerSSOExchange)
+		api.Get("/customer/session", s.customerSession)
 		// Legacy aliases kept for clients created before 1.2.
 		api.Post("/auth/register", s.register)
 		api.Post("/auth/admin/login", s.adminLogin)

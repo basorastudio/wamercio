@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -19,6 +20,18 @@ func customerAddressRow(id, label, provinceCode, province, cityID, municipality,
 		"neighborhood_id": neighborhoodID, "neighborhood": neighborhood, "street": street, "street_number": streetNumber, "reference": reference,
 		"latitude": latitude, "longitude": longitude, "is_primary": primary, "formatted": customerAddressText(input), "created_at": created,
 	}
+}
+
+func (s *Server) customerSession(w http.ResponseWriter, r *http.Request) {
+	c, err := s.claimsFromCookie(r, "wamercio_customer_token")
+	if err != nil || c.Role != "customer" {
+		// The public storefront checks session state on every visit. Returning
+		// 200 for guests avoids an expected 401 being reported as a browser
+		// console/network error while preserving /customer/me as protected.
+		jsonOut(w, http.StatusOK, map[string]any{"authenticated": false})
+		return
+	}
+	s.customerMe(w, r.WithContext(context.WithValue(r.Context(), claimsKey, c)))
 }
 
 func (s *Server) customerMe(w http.ResponseWriter, r *http.Request) {

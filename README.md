@@ -1,4 +1,7 @@
-# WAMERCIO 4.3.0
+# WAMERCIO 4.3.1
+
+> **V4.3.1 — HOTFIX DE SESIÓN PÚBLICA/PWA:** elimina el 401 esperado del storefront cuando un visitante todavía no inició sesión, añade `GET /customer/session` como comprobación pública segura y conserva `/customer/me` como endpoint protegido. También añade `mobile-web-app-capable=yes` manteniendo `appleWebApp` para iOS. Los mensajes de Cloudflare Insights bloqueado y `Target website not loaded` no se originan en el código WAMERCIO. Consulta `HOTFIX_V4.3.1.md`.
+
 
 > **V4.3.0 — PANEL DE NEGOCIO + STOREFRONT WACatelog-style:** rediseña el área operativa de los comercios y el frontend público con el patrón visual de WACatelog, manteniendo la lógica propia de WAMERCIO. Incluye sidebar verde agrupada, dashboard por negocio con métricas/gráficos reales desde `/analytics` y `/orders`, navegación reorganizada sin eliminar módulos, catálogo público con hero verde/patrón conversacional, categorías tipo chip, búsqueda, grilla densa de productos y acciones conectadas al carrito/modal/checkout existente. El backend amplía `top_products` con `product_id` e `image_url` para alimentar el dashboard. Consulta `IMPLEMENTACION_V4.3.0_MERCHANT_STOREFRONT.md`.
 

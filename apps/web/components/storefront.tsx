@@ -100,7 +100,7 @@ export default function Storefront(){
     }
   },[data?.store,form.delivery_type,form.payment_method,customer?.cheque_authorized])
   const applyCustomer=(c:any)=>{setCustomer(c);const primary=Array.isArray(c?.addresses)?(c.addresses.find((a:any)=>a.is_primary)||c.addresses[0]):null;if(primary)setForm(v=>({...v,address_id:primary.id}))}
-  const loadCustomer=()=>api<any>('/customer/me').then(applyCustomer).catch(()=>setCustomer(null))
+  const loadCustomer=()=>api<any>('/customer/session').then(c=>c?.id?applyCustomer(c):setCustomer(null)).catch(()=>setCustomer(null))
   useEffect(()=>{void loadCustomer()},[])
   useEffect(()=>{
     const storeID=String(data?.store?.id||'')

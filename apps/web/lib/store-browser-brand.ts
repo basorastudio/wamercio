@@ -18,8 +18,8 @@ export function applyStoreBrowserBrand(brand:StorefrontBrand){
   ensureMeta('theme-color').content=color
   ensureMeta('application-name').content=brand.name
   const appleTitle=ensureMeta('apple-mobile-web-app-title');appleTitle.content=brand.name
-  const manifest=ensureLink('manifest');manifest.href=`/manifest.webmanifest?tenant=${encodeURIComponent(window.location.hostname)}&v=2.8.3`
-  const fallbackIcon=`/tenant-icon.svg?tenant=${encodeURIComponent(window.location.hostname)}&v=2.8.3`
+  const manifest=ensureLink('manifest');manifest.href=`/manifest.webmanifest?tenant=${encodeURIComponent(window.location.hostname)}&v=4.3.1`
+  const fallbackIcon=`/tenant-icon.svg?tenant=${encodeURIComponent(window.location.hostname)}&v=4.3.1`
   const logo=brand.logo_url||fallbackIcon
   const icon=ensureLink('icon');icon.href=logo
   const shortcut=ensureLink('shortcut icon');shortcut.href=logo
