@@ -1,3 +1,7 @@
+# WAMERCIO 4.3.2
+
+> **V4.3.2 — SUPERADMIN UX + SOFTPHONE GLOBAL:** elimina la duplicidad entre WhatsApp de soporte y Configuración: `/admin/whatsapp` queda exclusivamente como chat, mientras **Configuración → WhatsApp → Proveedor y sesión global** es el único lugar para vincular/desvincular el dispositivo. Añade **Mi perfil** al menú de cuenta del SuperAdmin, elimina el cierre de sesión duplicado de la parte inferior de la sidebar y lo sustituye por el launcher del **softphone PiP del SuperAdmin**, conectado a la sesión global `support` del bridge para realizar y recibir llamadas WhatsApp con audio WebRTC. No agrega migraciones. Consulta `IMPLEMENTACION_V4.3.2_SUPERADMIN_UX_SOFTPHONE.md`.
+
 # WAMERCIO 4.3.1
 
 > **V4.3.1 — HOTFIX DE SESIÓN PÚBLICA/PWA:** elimina el 401 esperado del storefront cuando un visitante todavía no inició sesión, añade `GET /customer/session` como comprobación pública segura y conserva `/customer/me` como endpoint protegido. También añade `mobile-web-app-capable=yes` manteniendo `appleWebApp` para iOS. Los mensajes de Cloudflare Insights bloqueado y `Target website not loaded` no se originan en el código WAMERCIO. Consulta `HOTFIX_V4.3.1.md`.

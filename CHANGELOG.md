@@ -1,3 +1,21 @@
+# WAMERCIO 4.3.2 — SuperAdmin sin duplicidades, perfil y softphone PiP
+
+- Convierte **WhatsApp de soporte** en una superficie exclusivamente de chat: lista de comercios, conversación, adjuntos, lectura y envío; elimina QR, vinculación y desvinculación de esta sección.
+- Define **Configuración → WhatsApp → Proveedor y sesión global** como única superficie de vinculación/desvinculación del WhatsApp oficial de soporte, conservando estado, QR y reconexión; los endpoints de connect/disconnect requieren ahora el área administrativa `settings`.
+- Los enlaces a configuración usan `?section=whatsapp` y la pantalla abre directamente esa sección sin introducir dependencias de renderizado estático.
+- Añade `/admin/profile` con edición real de nombre/correo, cambio de contraseña y vista de permisos; el menú superior **Mi perfil** actualiza también la identidad visible en la topbar al guardar.
+- Elimina el botón duplicado **Cerrar sesión** del pie de la sidebar. El cierre de sesión queda únicamente en el menú de cuenta de la barra superior.
+- Sustituye ese espacio por **Abrir softphone**, usando el mismo patrón visual oscuro/verde y Document Picture-in-Picture del softphone de los negocios.
+- Añade softphone global del SuperAdmin con directorio de comerciantes, teclado, llamadas salientes y entrantes, contestar, rechazar, colgar, silenciar micrófono, espera/reanudación y fallback flotante cuando Document-PiP no está disponible.
+- El softphone utiliza exclusivamente la sesión WhatsApp global `support`; no reutiliza una sesión de negocio ni requiere un `store_id` tenant.
+- Amplía el motor de llamadas embebido del WhatsApp bridge para aceptar llamadas en la sesión `support`, exponer snapshots vivos con identidad del interlocutor y mantener grabación/transcripción desactivadas para esta sesión global.
+- Añade endpoints SuperAdmin de llamadas bajo `/admin/whatsapp/calls/*` y reutiliza el puente WebRTC de WAMERCIO mediante un endpoint configurable en el helper del navegador.
+- Mejora la identificación de llamadas entrantes usando `CallerPn` antes del JID/LID cuando WhatsApp lo proporciona.
+- Invalida la caché PWA mediante `wamercio-store-v4.3.2`.
+- No agrega migraciones de base de datos.
+
+---
+
 # WAMERCIO 4.3.1 — Hotfix de consola, sesión pública y PWA
 
 - El storefront ya no consulta `/customer/me` al cargar como invitado.

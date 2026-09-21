@@ -90,6 +90,10 @@ type engineCallSnapshot struct {
 	Direction      string    `json:"direction"`
 	CreatedAt      time.Time `json:"created_at"`
 	MediaReady     bool      `json:"media_ready"`
+	RemoteJID      string    `json:"remote_jid,omitempty"`
+	Phone          string    `json:"phone,omitempty"`
+	DisplayName    string    `json:"display_name,omitempty"`
+	MediaType      string    `json:"media_type,omitempty"`
 }
 
 func (r *callRegistry) snapshots() []engineCallSnapshot {
@@ -118,7 +122,23 @@ func (r *callRegistry) snapshots() []engineCallSnapshot {
 		recordID := item.ac.recordID
 		createdAt := item.ac.createdAt
 		item.ac.mu.RUnlock()
-		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady()})
+		remoteJID := strings.TrimSpace(ci.PeerJid)
+		phone := strings.TrimSpace(ci.CallerPn)
+		if phone != "" {
+			if jid, err := types.ParseJID(phone); err == nil {
+				phone = strings.TrimSpace(jid.User)
+			} else if at := strings.Index(phone, "@"); at > 0 {
+				phone = phone[:at]
+			}
+		}
+		if phone == "" && remoteJID != "" {
+			if jid, err := types.ParseJID(remoteJID); err == nil {
+				phone = strings.TrimSpace(jid.User)
+			} else if at := strings.Index(remoteJID, "@"); at > 0 {
+				phone = remoteJID[:at]
+			}
+		}
+		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady(), RemoteJID: remoteJID, Phone: phone, DisplayName: strings.TrimSpace(ci.PeerName), MediaType: string(ci.MediaType)})
 	}
 	return out
 }
@@ -339,7 +359,14 @@ type callEngineSettings struct {
 
 func (m *Manager) callSettingsForEngine(storeID string) callEngineSettings {
 	out := callEngineSettings{Ring: 30}
-	if storeID == "" || storeID == SupportSessionKey {
+	if storeID == "" {
+		return out
+	}
+	// The SaaS support account is a first-class WhatsApp session. Calls are
+	// enabled whenever that global session is linked, without store-level
+	// recording/transcription settings or a tenant UUID.
+	if storeID == SupportSessionKey {
+		out.Enabled = true
 		return out
 	}
 	if err := m.db.QueryRow(`SELECT is_active,record_calls,transcribe_calls,ring_seconds FROM store_call_settings WHERE store_id=$1`, storeID).Scan(&out.Enabled, &out.Record, &out.Transcribe, &out.Ring); err != nil {
@@ -594,7 +621,7 @@ func (m *Manager) watchEmbeddedCallSetup(s *Session, callID string, timeout time
 }
 
 func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
-	if s == nil || evt == nil || s.callReg == nil || s.StoreID == SupportSessionKey {
+	if s == nil || evt == nil || s.callReg == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

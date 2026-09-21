@@ -4,9 +4,10 @@ import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useMemo,useRef,useState} from 'react'
 import {api} from '@/lib/api'
+import SuperAdminSupportSoftphone from '@/components/superadmin-support-softphone'
 import {
   BadgeDollarSign,Bell,ChevronDown,ContactRound,FileText,Globe2,Home,LayoutDashboard,
-  LifeBuoy,LogOut,Menu,MessageCircleMore,MonitorCog,PanelLeftClose,PanelLeftOpen,
+  LifeBuoy,LogOut,Menu,MessageCircleMore,MonitorCog,PanelLeftClose,PanelLeftOpen,PhoneCall,
   ReceiptText,Search,Settings,ShieldCheck,Store,UsersRound,UserRound,X
 } from 'lucide-react'
 
@@ -27,7 +28,7 @@ const navGroups:NavGroup[]=[
     {href:'/admin/global-customers',label:'Clientes globales',icon:ContactRound,key:'customers'},
     {href:'/admin/transactions',label:'Transacciones',icon:BadgeDollarSign},
     {href:'/admin/tickets',label:'Soporte',icon:LifeBuoy},
-    {href:'/admin/whatsapp',label:'WhatsApp SaaS',icon:MessageCircleMore},
+    {href:'/admin/whatsapp',label:'WhatsApp de soporte',icon:MessageCircleMore},
   ]},
   {label:'Contenido',items:[
     {href:'/admin/landing',label:'Página comercial',icon:MonitorCog,key:'landing'},
@@ -60,7 +61,12 @@ export default function SuperAdminShell({children,title,subtitle,actions}:{child
   const languageRef=useRef<HTMLDivElement>(null)
   const searchInputRef=useRef<HTMLInputElement>(null)
 
-  useEffect(()=>{api<AdminMe>('/admin/me').then(setMe).catch(()=>router.replace('/admin/login'))},[router])
+  useEffect(()=>{
+    const loadMe=()=>api<AdminMe>('/admin/me').then(setMe).catch(()=>router.replace('/admin/login'))
+    void loadMe()
+    window.addEventListener('wamercio:admin-profile-updated',loadMe)
+    return()=>window.removeEventListener('wamercio:admin-profile-updated',loadMe)
+  },[router])
   useEffect(()=>{setOpen(false);setAccountOpen(false);setLanguageOpen(false)},[path])
   useEffect(()=>{try{setCollapsed(localStorage.getItem('wamercio-admin-sidebar-collapsed')==='1')}catch{}},[])
   useEffect(()=>{
@@ -107,7 +113,7 @@ export default function SuperAdminShell({children,title,subtitle,actions}:{child
       </div>
 
       <div className={`shrink-0 border-t border-white/10 p-3 ${collapsed?'lg:px-2':''}`}>
-        <button onClick={logout} title="Cerrar sesión" className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2.5 text-left text-[13px] font-medium text-white/75 transition hover:bg-white/10 hover:text-white ${collapsed?'lg:justify-center lg:gap-0 lg:px-0':''}`}><LogOut className="h-[17px] w-[17px] shrink-0"/><span className={`${collapsed?'lg:hidden':''}`}>Cerrar sesión</span></button>
+        <button onClick={()=>window.dispatchEvent(new CustomEvent('wamercio:open-admin-softphone'))} title="Abrir softphone" className={`flex w-full items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-2.5 py-2.5 text-left text-[13px] font-semibold text-white transition hover:bg-white/10 ${collapsed?'lg:justify-center lg:gap-0 lg:px-0':''}`}><span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#00a884] text-white"><PhoneCall className="h-[16px] w-[16px]"/></span><span className={`${collapsed?'lg:hidden':''}`}><span className="block">Abrir softphone</span><span className="mt-0.5 block text-[9px] font-medium text-white/50">Sesión global de soporte</span></span></button>
       </div>
     </aside>
 
@@ -139,7 +145,7 @@ export default function SuperAdminShell({children,title,subtitle,actions}:{child
               <span className="hidden max-w-[150px] text-left xl:block"><span className="block truncate text-[11px] font-bold text-[#0a3f2a]">{me?.name||'Administrador'}</span><span className="block text-[9px] text-[#7f8a84]">{me?.role==='superadmin'?'Super Admin':'Administrador'}</span></span>
               <ChevronDown className={`hidden h-3 w-3 text-[#7f8a84] transition xl:block ${accountOpen?'rotate-180':''}`}/>
             </button>
-            {accountOpen&&<div className="absolute right-0 top-12 w-60 rounded-xl border border-[#e6ded1] bg-white p-2 shadow-[0_18px_50px_rgba(55,43,30,.14)]"><div className="border-b border-[#f0eae1] px-3 py-2.5"><div className="truncate text-xs font-bold text-[#0a3f2a]">{me?.name||'Administrador'}</div><div className="mt-0.5 text-[10px] text-[#7f8a84]">{me?.role==='superadmin'?'Superadministrador':'Usuario de plataforma'}</div></div><Link href="/admin/settings" className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#46584f] hover:bg-[#f3eee5]"><Settings className="h-4 w-4"/>Configuración</Link><button type="button" onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-[#a63a23] hover:bg-[#fff2ef]"><LogOut className="h-4 w-4"/>Cerrar sesión</button></div>}
+            {accountOpen&&<div className="absolute right-0 top-12 w-60 rounded-xl border border-[#e6ded1] bg-white p-2 shadow-[0_18px_50px_rgba(55,43,30,.14)]"><div className="border-b border-[#f0eae1] px-3 py-2.5"><div className="truncate text-xs font-bold text-[#0a3f2a]">{me?.name||'Administrador'}</div><div className="mt-0.5 text-[10px] text-[#7f8a84]">{me?.role==='superadmin'?'Superadministrador':'Usuario de plataforma'}</div></div><Link href="/admin/profile" className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#46584f] hover:bg-[#f3eee5]"><UserRound className="h-4 w-4"/>Mi perfil</Link><Link href="/admin/settings" className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-[#46584f] hover:bg-[#f3eee5]"><Settings className="h-4 w-4"/>Configuración</Link><button type="button" onClick={logout} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-[#a63a23] hover:bg-[#fff2ef]"><LogOut className="h-4 w-4"/>Cerrar sesión</button></div>}
           </div>
         </div>
       </header>
@@ -152,5 +158,6 @@ export default function SuperAdminShell({children,title,subtitle,actions}:{child
         {children}
       </main>
     </div>
+    <SuperAdminSupportSoftphone/>
   </div>
 }

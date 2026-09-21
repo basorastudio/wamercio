@@ -47,7 +47,7 @@ const waitForIceGathering = (pc: RTCPeerConnection, timeoutMs = 1800) =>
     timer = setTimeout(finish, timeoutMs)
   })
 
-export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: () => void, onRemoteAudio?: () => void): Promise<WamercioBrowserCall> {
+export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: () => void, onRemoteAudio?: () => void, webrtcEndpoint?: (callId:string)=>string): Promise<WamercioBrowserCall> {
   if (typeof window === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
     throw new Error('Este navegador no permite usar el micrófono para llamadas.')
   }
@@ -145,7 +145,8 @@ export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: 
     await waitForIceGathering(pc)
     const sdp = pc.localDescription?.sdp || ''
     if (!sdp.trim()) throw new Error('El navegador no generó una oferta WebRTC válida.')
-    const res = await fetch(`/api/v1/calls/${encodeURIComponent(callId)}/webrtc`, {
+    const endpoint=webrtcEndpoint?webrtcEndpoint(callId):`/api/v1/calls/${encodeURIComponent(callId)}/webrtc`
+    const res = await fetch(endpoint, {
       method: 'POST',
       credentials: 'include',
       cache: 'no-store',

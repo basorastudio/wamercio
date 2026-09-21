@@ -367,6 +367,8 @@ func (s *Server) Router() http.Handler {
 		api.Group(func(a chi.Router) {
 			a.Use(s.requireAdminAuth)
 			a.Get("/admin/me", s.adminMe)
+			a.Patch("/admin/me", s.adminUpdateMe)
+			a.Post("/admin/me/password", s.adminChangePassword)
 			a.With(s.requireAdminArea("dashboard")).Get("/admin/dashboard", s.adminDashboard)
 			a.With(s.requireAdminArea("owners")).Get("/admin/owners", s.adminOwners)
 			a.With(s.requireAdminArea("owners")).Post("/admin/owners", s.adminCreateOwner)
@@ -425,9 +427,13 @@ func (s *Server) Router() http.Handler {
 			a.Post("/admin/tickets/{id}/reply", s.adminReplyTicket)
 			a.Patch("/admin/tickets/{id}/status", s.adminTicketStatus)
 			a.Get("/admin/whatsapp/status", s.adminWhatsAppStatus)
-			a.Post("/admin/whatsapp/connect", s.adminWhatsAppConnect)
-			a.Post("/admin/whatsapp/disconnect", s.adminWhatsAppDisconnect)
+			a.With(s.requireAdminArea("settings")).Post("/admin/whatsapp/connect", s.adminWhatsAppConnect)
+			a.With(s.requireAdminArea("settings")).Post("/admin/whatsapp/disconnect", s.adminWhatsAppDisconnect)
 			a.Get("/admin/whatsapp/conversations", s.adminWhatsAppConversations)
+			a.Get("/admin/whatsapp/calls/status", s.adminSupportCallsStatus)
+			a.Post("/admin/whatsapp/calls", s.adminSupportStartCall)
+			a.Post("/admin/whatsapp/calls/{id}/webrtc", s.adminSupportCallWebRTC)
+			a.Post("/admin/whatsapp/calls/{id}/{action}", s.adminSupportCallAction)
 			a.Post("/admin/whatsapp/conversations", s.adminWhatsAppEnsureConversation)
 			a.Get("/admin/whatsapp/conversations/{id}/messages", s.adminWhatsAppMessages)
 			a.Patch("/admin/whatsapp/conversations/{id}/read", s.adminWhatsAppRead)
@@ -6532,7 +6538,7 @@ func (s *Server) adminWhatsAppDisconnect(w http.ResponseWriter, r *http.Request)
 	jsonOut(w, 200, out)
 }
 func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT coalesce(c.id::text,''),u.id::text,u.name,coalesce(u.phone,''),coalesce(c.remote_jid,''),coalesce(c.display_name,u.name),coalesce(c.unread_count,0),coalesce(c.last_message,''),c.last_message_at,u.status FROM users u LEFT JOIN LATERAL (SELECT * FROM support_whatsapp_conversations x WHERE x.owner_id=u.id ORDER BY x.last_message_at DESC NULLS LAST LIMIT 1) c ON true WHERE u.role='owner' ORDER BY coalesce(c.last_message_at,u.created_at) DESC`)
+	rows, err := s.db.Query(r.Context(), `SELECT coalesce(c.id::text,''),u.id::text,u.name,coalesce(u.phone,''),coalesce(c.remote_jid,''),coalesce(c.display_name,nullif(u.whatsapp_name,''),u.name),coalesce(c.unread_count,0),coalesce(c.last_message,''),c.last_message_at,u.status,coalesce(u.profile_picture_url,'') FROM users u LEFT JOIN LATERAL (SELECT * FROM support_whatsapp_conversations x WHERE x.owner_id=u.id ORDER BY x.last_message_at DESC NULLS LAST LIMIT 1) c ON true WHERE u.role='owner' ORDER BY coalesce(c.last_message_at,u.created_at) DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los comercios")
 		return
@@ -6540,11 +6546,11 @@ func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Reque
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, ownerID, name, wa, jid, display, last, status string
+		var id, ownerID, name, wa, jid, display, last, status, profilePictureURL string
 		var unread int
 		var lastAt *time.Time
-		if rows.Scan(&id, &ownerID, &name, &wa, &jid, &display, &unread, &last, &lastAt, &status) == nil {
-			out = append(out, map[string]any{"id": id, "owner_id": ownerID, "name": name, "whatsapp": wa, "remote_jid": jid, "display_name": display, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "owner_status": status})
+		if rows.Scan(&id, &ownerID, &name, &wa, &jid, &display, &unread, &last, &lastAt, &status, &profilePictureURL) == nil {
+			out = append(out, map[string]any{"id": id, "owner_id": ownerID, "name": name, "whatsapp": wa, "remote_jid": jid, "display_name": display, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "owner_status": status, "profile_picture_url": profilePictureURL})
 		}
 	}
 	jsonOut(w, 200, out)
