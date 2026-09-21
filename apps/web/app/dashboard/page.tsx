@@ -1,35 +1,124 @@
 'use client'
-import Link from 'next/link'
-import {useEffect,useState} from 'react'
-import StoreShell from '@/components/store-shell'
-import {api,dateTime,money} from '@/lib/api'
-import {Loading,Status} from '@/components/ui'
-import {Store,Boxes,ShoppingBag,CircleDollarSign,ArrowUpRight,UsersRound,MessageCircleMore,ChevronRight,Plus,Truck,Settings2,PackageSearch} from 'lucide-react'
 
-const flowLabel=(v?:string)=>v==='reservation'?'Reserva':v==='quote'?'Solicitud':'Pedido'
+import Link from 'next/link'
+import {useEffect,useMemo,useState} from 'react'
+import StoreShell,{StoreSelector} from '@/components/store-shell'
+import {api,money} from '@/lib/api'
+import {Alert,Loading,Status} from '@/components/ui'
+import {ArrowRight,CalendarDays,CircleDollarSign,Eye,PackageCheck,ShoppingBag,Store,UsersRound} from 'lucide-react'
+
+type RangeKey='7d'|'30d'|'90d'
+type Analytics={
+  range:string
+  metrics:{orders:number;revenue:number;average_ticket:number;customers:number;repeat_customer_rate?:number;cancellation_rate?:number}
+  daily:{date:string;orders:number;revenue:number}[]
+  source_breakdown:{name:string;orders:number;revenue:number}[]
+  top_products:{product_id?:string;name:string;quantity:number;revenue:number;image_url?:string}[]
+}
+type Order={id:string;number:number;customer_name:string;total:number;status:string;payment_status:string;source:string;flow_type:string;created_at:string}
+
+const RANGE_OPTIONS:{value:RangeKey;label:string}[]=[
+  {value:'7d',label:'Últimos 7 días'},
+  {value:'30d',label:'Últimos 30 días'},
+  {value:'90d',label:'Últimos 90 días'},
+]
+const openStatuses=new Set(['pending','confirmed','processing','preparing','ready','out_for_delivery'])
+const sourceLabel=(v:string)=>({whatsapp:'WhatsApp',storefront:'Tienda online',web:'Tienda online',pos:'Punto de venta',quote:'Cotización',manual:'Manual'} as Record<string,string>)[String(v||'').toLowerCase()]||v||'Otros'
+
+function shortDay(value:string,range:RangeKey){
+  const d=new Date(`${value}T12:00:00`)
+  return new Intl.DateTimeFormat('es-DO',range==='7d'?{weekday:'short'}:{day:'2-digit',month:'short'}).format(d).replace('.','')
+}
+
+function RevenueChart({rows,range}:{rows:Analytics['daily'];range:RangeKey}){
+  const width=760,height=220,padX=30,padTop=18,padBottom=34
+  const values=rows.map(x=>Number(x.revenue||0)),max=Math.max(1,...values)
+  const usableW=width-padX*2,usableH=height-padTop-padBottom
+  const points=rows.map((row,i)=>({x:padX+(rows.length<=1?usableW/2:i/(rows.length-1)*usableW),y:padTop+usableH-(Number(row.revenue||0)/max)*usableH,row}))
+  const line=points.map((p,i)=>`${i?'L':'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
+  const area=points.length?`M ${points[0].x} ${padTop+usableH} ${points.map(p=>`L ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')} L ${points[points.length-1].x} ${padTop+usableH} Z`:''
+  const step=range==='7d'?1:range==='30d'?Math.max(1,Math.ceil(rows.length/7)):Math.max(1,Math.ceil(rows.length/8))
+  return <div className="overflow-x-auto px-2 pb-2">
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-[220px] min-w-[620px] w-full" role="img" aria-label="Ingresos por día">
+      <defs><linearGradient id="merchantRevenueArea" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#0b6843" stopOpacity=".15"/><stop offset="100%" stopColor="#0b6843" stopOpacity="0"/></linearGradient></defs>
+      {[0,.25,.5,.75,1].map((ratio,i)=>{const y=padTop+usableH-ratio*usableH;return <line key={i} x1={padX} y1={y} x2={width-padX} y2={y} stroke="#ebe4da" strokeWidth="1"/>})}
+      {area&&<path d={area} fill="url(#merchantRevenueArea)"/>}
+      {line&&<path d={line} fill="none" stroke="#0b6843" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>}
+      {points.map((p,i)=><g key={p.row.date}><circle cx={p.x} cy={p.y} r="3" fill="#fff" stroke="#0b6843" strokeWidth="2"><title>{`${shortDay(p.row.date,range)} · ${money(p.row.revenue)} · ${p.row.orders} pedidos`}</title></circle>{(i%step===0||i===points.length-1)&&<text x={p.x} y={height-9} textAnchor="middle" fontSize="10" fill="#7c8983">{shortDay(p.row.date,range)}</text>}</g>)}
+    </svg>
+  </div>
+}
+
+function SourceDonut({rows}:{rows:Analytics['source_breakdown']}){
+  const clean=rows.filter(x=>Number(x.orders||0)>0)
+  const total=clean.reduce((sum,x)=>sum+Number(x.orders||0),0)
+  const palette=['#0b6843','#35a46f','#d18b2c','#4c7c9d','#8a6ca8','#b45b45']
+  let at=0
+  const stops=clean.map((row,i)=>{const start=at;at+=total?Number(row.orders||0)/total*100:0;return `${palette[i%palette.length]} ${start}% ${at}%`})
+  const bg=total?`conic-gradient(${stops.join(',')})`:'#eee8df'
+  return <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-5 p-5 sm:flex-row xl:flex-col">
+    <div className="relative h-32 w-32 shrink-0 rounded-full" style={{background:bg}}><div className="absolute inset-[18px] grid place-items-center rounded-full bg-white text-center"><span><strong className="block text-xl text-[#083d2b]">{total}</strong><span className="text-[10px] text-[#7c8983]">pedidos</span></span></div></div>
+    <div className="w-full max-w-xs space-y-2">{clean.length?clean.slice(0,6).map((row,i)=><div key={`${row.name}-${i}`} className="flex items-center gap-2 text-xs"><span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{background:palette[i%palette.length]}}/><span className="min-w-0 flex-1 truncate text-[#5d6d65]">{sourceLabel(row.name)}</span><strong className="text-[#083d2b]">{row.orders}</strong></div>):<div className="py-4 text-center text-xs text-[#7c8983]">Aún no hay pedidos en este período.</div>}</div>
+  </div>
+}
 
 export default function Dashboard(){
- const[d,setD]=useState<any>(null),[me,setMe]=useState<any>(null)
- useEffect(()=>{api('/dashboard').then(setD).catch(()=>{});api('/me').then(setMe).catch(()=>{})},[])
- if(!d)return <StoreShell title="Inicio" subtitle="Tu negocio, de un vistazo"><Loading/></StoreShell>
- const metrics=[
-  ['Operaciones hoy',d.metrics.orders_today||0,ShoppingBag,'bg-brand-50 text-brand-600'],
-  ['Ventas hoy',money(d.metrics.revenue_today||0),CircleDollarSign,'bg-emerald-50 text-emerald-600'],
-  ['Por atender',d.metrics.pending_orders||0,Boxes,'bg-amber-50 text-amber-600'],
-  ['WhatsApp sin leer',d.metrics.unread_chats||0,UsersRound,'bg-violet-50 text-violet-600']
- ]
- const first=String(me?.name||'').split(' ')[0]||'Hola'
- return <StoreShell title="Inicio" subtitle="Todo lo importante, sin complicaciones">
-  <section className="relative overflow-hidden rounded-[24px] bg-gradient-to-br from-[#2da87d] to-[#42bd91] p-5 text-white shadow-soft sm:p-7"><div className="absolute -right-12 -top-16 h-48 w-48 rounded-full bg-white/10"/><div className="absolute -bottom-20 right-24 h-40 w-40 rounded-full bg-white/10"/><div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between"><div><p className="text-sm font-medium text-white/75">Buen día, {first}</p><h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">¿Qué quieres hacer hoy?</h2><p className="mt-2 max-w-xl text-sm leading-6 text-white/75">Administra ventas, solicitudes, catálogo y WhatsApp desde un panel pensado para trabajar rápido.</p></div><div className="grid grid-cols-2 gap-2 sm:flex"><Link href="/catalog/products" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#247e61] shadow-sm"><Plus className="h-4 w-4"/>Catálogo</Link><Link href="/orders" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/25"><ShoppingBag className="h-4 w-4"/>Pedidos</Link><Link href="/conversations" className="inline-flex items-center justify-center gap-2 rounded-xl bg-white/15 px-4 py-3 text-sm font-semibold text-white ring-1 ring-white/25"><MessageCircleMore className="h-4 w-4"/>WhatsApp</Link></div></div></section>
+  const[storeID,setStoreID]=useState('')
+  const[store,setStore]=useState<any>(null)
+  const[me,setMe]=useState<any>(null)
+  const[range,setRange]=useState<RangeKey>('7d')
+  const[analytics,setAnalytics]=useState<Analytics|null>(null)
+  const[orders,setOrders]=useState<Order[]>([])
+  const[busy,setBusy]=useState(false)
+  const[err,setErr]=useState('')
 
-  <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">{metrics.map(([label,value,Icon,color]:any)=><div key={label} className="card p-4 sm:p-5"><div className="flex items-center gap-3"><div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${color}`}><Icon className="h-5 w-5"/></div><div className="min-w-0"><p className="text-xs font-medium text-[#9298ad]">{label}</p><p className="mt-0.5 truncate text-xl font-semibold text-ink-900 sm:text-2xl">{value}</p></div></div></div>)}</section>
-  {Number(d.metrics.low_stock||0)>0&&<Link href="/catalog/products" className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 transition hover:bg-amber-100"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600"><PackageSearch className="h-5 w-5"/></span><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{d.metrics.low_stock} producto(s) con inventario bajo</p><p className="mt-0.5 text-xs text-amber-800/75">Revísalos antes de que se agoten.</p></div><ChevronRight className="h-4 w-4 shrink-0"/></Link>}
+  useEffect(()=>{api('/me').then(setMe).catch(()=>{})},[])
+  useEffect(()=>{
+    if(!storeID){setAnalytics(null);setOrders([]);return}
+    let active=true
+    setBusy(true);setErr('')
+    Promise.all([
+      api<Analytics>(`/analytics?store_id=${encodeURIComponent(storeID)}&range=${range}`),
+      api<Order[]>(`/orders?store_id=${encodeURIComponent(storeID)}`),
+    ]).then(([a,o])=>{if(active){setAnalytics(a);setOrders(o)}}).catch((e:any)=>{if(active)setErr(e.message||'No se pudo cargar el dashboard')}).finally(()=>{if(active)setBusy(false)})
+    return()=>{active=false}
+  },[storeID,range])
 
-  <section className="mt-4 grid gap-4 xl:grid-cols-[1fr_330px]">
-   <div className="card overflow-hidden"><div className="flex items-center justify-between border-b border-[#f0f1f5] px-4 py-4 sm:px-5"><div><h2 className="font-semibold text-ink-900">Actividad reciente</h2><p className="mt-0.5 text-xs text-[#8d92aa]">Lo último que está pasando en tus tiendas</p></div><Link href="/orders" className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 sm:text-sm">Ver todos<ChevronRight className="h-4 w-4"/></Link></div>
-    {d.recent_orders.length?<><div className="divide-y divide-slate-100 sm:hidden">{d.recent_orders.map((o:any)=><Link key={o.id} href="/orders" className="flex items-center gap-3 p-4 active:bg-[#fafbfe]"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-50 text-brand-600"><ShoppingBag className="h-4 w-4"/></div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><strong className="truncate text-sm">{flowLabel(o.flow_type)} #{o.number} · {o.customer}</strong><span className="shrink-0 text-sm font-semibold">{money(o.total)}</span></div><div className="mt-1 flex items-center justify-between gap-2"><span className="truncate text-xs text-[#8d92aa]">{o.store} · {dateTime(o.created_at)}</span><Status value={o.status}/></div></div></Link>)}</div><div className="hidden overflow-x-auto sm:block"><table className="table"><thead><tr><th>Referencia</th><th>Cliente</th><th>Tienda</th><th>Total</th><th>Estado</th><th>Fecha</th></tr></thead><tbody>{d.recent_orders.map((o:any)=><tr key={o.id}><td className="font-semibold">{flowLabel(o.flow_type)} #{o.number}</td><td>{o.customer}</td><td>{o.store}</td><td className="font-semibold">{money(o.total)}</td><td><Status value={o.status}/></td><td className="text-[#8d92aa]">{dateTime(o.created_at)}</td></tr>)}</tbody></table></div></>:<div className="flex min-h-72 flex-col items-center justify-center p-8 text-center"><div className="grid h-14 w-14 place-items-center rounded-full bg-brand-50 text-brand-600"><ShoppingBag className="h-6 w-6"/></div><h3 className="mt-4 font-semibold text-ink-900">Aún no hay actividad</h3><p className="mt-1 max-w-sm text-sm leading-6 text-[#8d92aa]">Cuando tus clientes compren, reserven o envíen una solicitud desde el catálogo o WhatsApp, aparecerá aquí.</p><Link href="/stores" className="btn-secondary mt-4">Ver mi tienda</Link></div>}
-   </div>
-   <div className="space-y-4"><div className="card p-5"><div className="flex items-center gap-2"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-50 text-brand-600"><MessageCircleMore className="h-5 w-5"/></span><div><h3 className="font-semibold text-ink-900">WhatsApp conectado</h3><p className="text-xs text-[#9298ad]">Atiende desde WAMERCIO</p></div></div><p className="mt-4 text-sm leading-6 text-[#7e849b]">Recibe conversaciones y responde a tus clientes sin salir del panel.</p><Link href="/settings/whatsapp" className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-brand-600">Revisar conexión <ArrowUpRight className="h-4 w-4"/></Link></div><div className="card p-5"><h3 className="font-semibold text-ink-900">Accesos rápidos</h3><div className="mt-3 grid grid-cols-2 gap-2"><Link href="/settings/store?tab=sales" className="rounded-2xl bg-[#f8fafb] p-3 text-xs font-semibold text-[#6f758d]"><Truck className="mb-2 h-5 w-5 text-brand-600"/>Ventas y entrega</Link><Link href="/settings/store" className="rounded-2xl bg-[#f8fafb] p-3 text-xs font-semibold text-[#6f758d]"><Settings2 className="mb-2 h-5 w-5 text-brand-600"/>Ajustes</Link><Link href="/stores" className="rounded-2xl bg-[#f8fafb] p-3 text-xs font-semibold text-[#6f758d]"><Store className="mb-2 h-5 w-5 text-brand-600"/>Mi tienda</Link><Link href="/customers" className="rounded-2xl bg-[#f8fafb] p-3 text-xs font-semibold text-[#6f758d]"><UsersRound className="mb-2 h-5 w-5 text-brand-600"/>Clientes</Link></div></div></div>
-  </section>
- </StoreShell>
+  const recent=useMemo(()=>orders.filter(o=>o.flow_type!=='quote').slice(0,5),[orders])
+  const pending=useMemo(()=>orders.filter(o=>o.flow_type!=='quote'&&openStatuses.has(o.status)).length,[orders])
+  const first=String(me?.name||'').trim().split(/\s+/)[0]||'Hola'
+  const periodLabel=RANGE_OPTIONS.find(x=>x.value===range)?.label||'Últimos 7 días'
+  const context=<StoreSelector value={storeID} onChange={setStoreID} onStoreChange={setStore}/>
+
+  return <StoreShell title="Dashboard" subtitle="Resumen operativo de tu comercio" context={context}>
+    <div className="mx-auto max-w-[1480px]">
+      <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div><h2 className="text-2xl font-extrabold tracking-[-.03em] text-[#083d2b] sm:text-3xl">Buenos días, {first}</h2><p className="mt-1 text-sm text-[#64766d]">Así está {store?.name||'tu negocio'}.</p></div>
+        <label className="relative inline-flex w-fit items-center"><CalendarDays className="pointer-events-none absolute left-3 h-4 w-4 text-[#0b6843]"/><select value={range} onChange={e=>setRange(e.target.value as RangeKey)} className="field min-w-[170px] appearance-none py-2.5 pl-9 pr-8 text-xs font-semibold sm:text-sm" aria-label="Período del dashboard">{RANGE_OPTIONS.map(x=><option key={x.value} value={x.value}>{x.label}</option>)}</select></label>
+      </div>
+
+      {err&&<Alert text={err}/>} {!storeID?<Loading/>:!analytics?<Loading/>:<div className={`space-y-5 transition-opacity ${busy?'opacity-60':'opacity-100'}`}>
+        {Number(analytics.metrics.orders||0)===0&&<section className="merchant-dashboard-panel p-4 sm:p-5"><h3 className="text-sm font-bold text-[#083d2b]">Aún no hay pedidos en este período</h3><p className="mt-1 text-sm text-[#6f7e77]">El dashboard se completará a medida que tus clientes hagan pedidos durante {periodLabel.toLowerCase()}.</p></section>}
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Pedidos</span><span className="merchant-kpi-icon"><ShoppingBag className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{Number(analytics.metrics.orders||0).toLocaleString('es-DO')}</div><div className="merchant-kpi-note">Pedidos no cancelados · {periodLabel.toLowerCase()}</div></article>
+          <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Ingresos</span><span className="merchant-kpi-icon"><CircleDollarSign className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{money(analytics.metrics.revenue||0)}</div><div className="merchant-kpi-note">Ventas registradas en el período</div></article>
+          <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Por completar</span><span className="merchant-kpi-icon"><PackageCheck className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{pending.toLocaleString('es-DO')}</div><div className="merchant-kpi-note">Pedidos abiertos en este momento</div></article>
+          <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Clientes</span><span className="merchant-kpi-icon"><UsersRound className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{Number(analytics.metrics.customers||0).toLocaleString('es-DO')}</div><div className="merchant-kpi-note">Clientes únicos durante el período</div></article>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(310px,.78fr)]">
+          <article className="merchant-dashboard-panel overflow-hidden"><header className="merchant-dashboard-head"><h3 className="merchant-dashboard-title">Ingresos</h3><Link href={`/analytics?store_id=${encodeURIComponent(storeID)}`} className="inline-flex items-center gap-1 text-xs font-semibold text-[#0b6843]">Detalles <ArrowRight className="h-3.5 w-3.5"/></Link></header><div className="p-3"><RevenueChart rows={analytics.daily||[]} range={range}/></div></article>
+          <article className="merchant-dashboard-panel overflow-hidden"><header className="merchant-dashboard-head"><h3 className="merchant-dashboard-title">Dónde comienzan los pedidos</h3></header><SourceDonut rows={analytics.source_breakdown||[]}/></article>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(310px,.78fr)]">
+          <article className="merchant-dashboard-panel overflow-hidden"><header className="merchant-dashboard-head"><h3 className="merchant-dashboard-title">Pedidos recientes</h3><Link href="/orders" className="inline-flex items-center gap-1 text-xs font-semibold text-[#0b6843]">Todos los pedidos <ArrowRight className="h-3.5 w-3.5"/></Link></header>
+            {recent.length?<div className="overflow-x-auto"><table className="table"><thead><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Estado</th></tr></thead><tbody>{recent.map(o=><tr key={o.id}><td><Link href={`/orders?id=${o.id}`} className="font-bold text-[#0b6843]">#{o.number}</Link></td><td className="whitespace-nowrap">{o.customer_name||'Cliente'}</td><td className="whitespace-nowrap font-semibold">{money(o.total)}</td><td><Status value={o.status}/></td></tr>)}</tbody></table></div>:<div className="grid min-h-[220px] place-items-center p-6 text-center"><div><ShoppingBag className="mx-auto h-8 w-8 text-[#b5c0ba]"/><p className="mt-3 text-sm font-semibold text-[#083d2b]">No hay pedidos recientes</p><p className="mt-1 text-xs text-[#7c8983]">Los pedidos aparecerán aquí cuando entren por la tienda, WhatsApp o el POS.</p></div></div>}
+          </article>
+          <article className="merchant-dashboard-panel overflow-hidden"><header className="merchant-dashboard-head"><h3 className="merchant-dashboard-title">Productos principales</h3><Link href="/analytics" className="inline-flex items-center gap-1 text-xs font-semibold text-[#0b6843]">Detalles <ArrowRight className="h-3.5 w-3.5"/></Link></header><div className="p-4">{analytics.top_products?.length?<div className="space-y-3">{analytics.top_products.slice(0,5).map((p,i)=><div key={`${p.product_id||p.name}-${i}`} className="flex items-center gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-lg bg-[#f2eee7] text-[#0b6843]">{p.image_url?<img src={p.image_url} alt="" className="h-full w-full object-cover"/>:<Store className="h-4 w-4"/>}</span><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold text-[#083d2b]">{p.name}</div><div className="mt-0.5 text-[11px] text-[#7c8983]">{Number(p.quantity||0).toLocaleString('es-DO')} unidad(es)</div></div><strong className="whitespace-nowrap text-xs text-[#083d2b]">{money(p.revenue)}</strong></div>)}</div>:<div className="grid min-h-[190px] place-items-center text-center"><div><Eye className="mx-auto h-7 w-7 text-[#b5c0ba]"/><p className="mt-3 text-xs text-[#7c8983]">Aún no hay ventas de productos en este período.</p></div></div>}</div></article>
+        </section>
+      </div>}
+    </div>
+  </StoreShell>
 }

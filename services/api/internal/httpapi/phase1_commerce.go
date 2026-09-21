@@ -421,12 +421,12 @@ func (s *Server) storeAnalytics(w http.ResponseWriter, r *http.Request) {
 		rows.Close()
 	}
 	topProducts := []map[string]any{}
-	if rows, err := s.db.Query(r.Context(), `SELECT oi.product_name,coalesce(sum(oi.quantity),0),coalesce(sum(oi.line_total),0) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE o.store_id=$1 AND o.created_at>=$2 AND o.status<>'canceled' AND o.flow_type<>'quote' GROUP BY oi.product_name ORDER BY 3 DESC LIMIT 10`, storeID, since); err == nil {
+	if rows, err := s.db.Query(r.Context(), `SELECT coalesce(oi.product_id::text,''),oi.product_name,coalesce(sum(oi.quantity),0),coalesce(sum(oi.line_total),0),coalesce(max(p.image_url),'') FROM order_items oi JOIN orders o ON o.id=oi.order_id LEFT JOIN products p ON p.id=oi.product_id WHERE o.store_id=$1 AND o.created_at>=$2 AND o.status<>'canceled' AND o.flow_type<>'quote' GROUP BY oi.product_id,oi.product_name ORDER BY 4 DESC LIMIT 10`, storeID, since); err == nil {
 		for rows.Next() {
-			var name string
+			var productID, name, imageURL string
 			var quantity, total float64
-			if rows.Scan(&name, &quantity, &total) == nil {
-				topProducts = append(topProducts, map[string]any{"name": name, "quantity": quantity, "revenue": total})
+			if rows.Scan(&productID, &name, &quantity, &total, &imageURL) == nil {
+				topProducts = append(topProducts, map[string]any{"product_id": productID, "name": name, "quantity": quantity, "revenue": total, "image_url": imageURL})
 			}
 		}
 		rows.Close()

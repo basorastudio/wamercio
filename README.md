@@ -1,3 +1,7 @@
+# WAMERCIO 4.3.0
+
+> **V4.3.0 — PANEL DE NEGOCIO + STOREFRONT WACatelog-style:** rediseña el área operativa de los comercios y el frontend público con el patrón visual de WACatelog, manteniendo la lógica propia de WAMERCIO. Incluye sidebar verde agrupada, dashboard por negocio con métricas/gráficos reales desde `/analytics` y `/orders`, navegación reorganizada sin eliminar módulos, catálogo público con hero verde/patrón conversacional, categorías tipo chip, búsqueda, grilla densa de productos y acciones conectadas al carrito/modal/checkout existente. El backend amplía `top_products` con `product_id` e `image_url` para alimentar el dashboard. Consulta `IMPLEMENTACION_V4.3.0_MERCHANT_STOREFRONT.md`.
+
 # WAMERCIO 4.2.2
 
 > **V4.2.2 HOTFIX:** corrige el fallo de compilación de producción de la página comercial del SuperAdmin causado por un icono inexistente de `lucide-react` (`Storefront`). Se reemplaza por el icono soportado `Store`, manteniendo intacta la funcionalidad y el backend de V4.2.1. Consulta `HOTFIX_V4.2.2.md`.

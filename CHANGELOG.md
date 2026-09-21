@@ -1,3 +1,18 @@
+# WAMERCIO 4.3.0 — Panel de negocios y storefront inspirados en WACatelog
+
+- Rediseña el shell completo del panel de comerciantes con sidebar verde oscuro, superficies cálidas, bordes suaves y densidad operativa similar a WACatelog.
+- Reorganiza la navegación en Principal, Ventas, Catálogo, Tienda online, Interacción, Relación con clientes, Informes y Ajustes, conservando las rutas y funciones existentes.
+- Reemplaza el dashboard de inicio por una vista por negocio con selector real de 7/30/90 días y datos de `/analytics` + `/orders`.
+- Añade KPI reales de pedidos, ingresos, pedidos por completar y clientes, gráfico de ingresos, distribución por origen, pedidos recientes y productos principales.
+- Enriquece `top_products` del backend con `product_id` e `image_url` sin cambiar el contrato base de analytics.
+- Rediseña el storefront público con hero verde/patrón conversacional, identidad del negocio, metadatos operativos, categorías tipo chip, búsqueda, grilla responsive densa, footer y CTA de WhatsApp.
+- Mantiene funcionales el modal de producto, variantes, extras, productos por peso, carrito, checkout, acceso de cliente y seguimiento; las nuevas tarjetas invocan la lógica existente.
+- Aplica los estilos del panel únicamente dentro de `.merchant-ui` para no contaminar SuperAdmin ni superficies de clientes.
+- Invalida la caché PWA mediante `wamercio-store-v4.3.0`.
+- No agrega migraciones de base de datos.
+
+---
+
 # WAMERCIO 4.2.2 — Hotfix de compilación SuperAdmin
 
 - Corrige el error de TypeScript en `apps/web/app/admin/landing/page.tsx`: `lucide-react` no exporta un componente llamado `Storefront`.
