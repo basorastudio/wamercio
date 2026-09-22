@@ -430,6 +430,7 @@ func (s *Server) Router() http.Handler {
 			a.With(s.requireAdminArea("settings")).Post("/admin/whatsapp/connect", s.adminWhatsAppConnect)
 			a.With(s.requireAdminArea("settings")).Post("/admin/whatsapp/disconnect", s.adminWhatsAppDisconnect)
 			a.Get("/admin/whatsapp/conversations", s.adminWhatsAppConversations)
+			a.Get("/admin/whatsapp/call-directory", s.adminWhatsAppCallDirectory)
 			a.Get("/admin/whatsapp/calls/status", s.adminSupportCallsStatus)
 			a.Post("/admin/whatsapp/calls", s.adminSupportStartCall)
 			a.Post("/admin/whatsapp/calls/{id}/webrtc", s.adminSupportCallWebRTC)
@@ -6555,6 +6556,58 @@ func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Reque
 	}
 	jsonOut(w, 200, out)
 }
+func (s *Server) adminWhatsAppCallDirectory(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(r.Context(), `
+		SELECT st.id::text,
+		       u.id::text,
+		       coalesce(nullif(st.commercial_name,''),st.name),
+		       coalesce(st.logo_url,''),
+		       coalesce(nullif(regexp_replace(coalesce(st.whatsapp,''),'[^0-9]','','g'),''),regexp_replace(coalesce(u.phone,''),'[^0-9]','','g')),
+		       coalesce(conv.remote_jid,''),
+		       coalesce(u.name,''),
+		       st.is_active
+		FROM stores st
+		JOIN users u ON u.id=st.user_id
+		LEFT JOIN LATERAL (
+			SELECT sc.remote_jid
+			FROM support_whatsapp_conversations sc
+			WHERE regexp_replace(coalesce(sc.whatsapp,''),'[^0-9]','','g')=
+			      coalesce(nullif(regexp_replace(coalesce(st.whatsapp,''),'[^0-9]','','g'),''),regexp_replace(coalesce(u.phone,''),'[^0-9]','','g'))
+			ORDER BY sc.last_message_at DESC NULLS LAST,sc.updated_at DESC
+			LIMIT 1
+		) conv ON true
+		WHERE coalesce(nullif(regexp_replace(coalesce(st.whatsapp,''),'[^0-9]','','g'),''),regexp_replace(coalesce(u.phone,''),'[^0-9]','','g'))<>''
+		ORDER BY st.is_active DESC,coalesce(nullif(st.commercial_name,''),st.name),st.created_at`)
+	if err != nil {
+		jsonErr(w, 500, "No se pudo cargar el directorio de llamadas")
+		return
+	}
+	defer rows.Close()
+	out := []map[string]any{}
+	for rows.Next() {
+		var storeID, ownerID, name, logoURL, phone, remoteJID, ownerName string
+		var active bool
+		if rows.Scan(&storeID, &ownerID, &name, &logoURL, &phone, &remoteJID, &ownerName, &active) != nil {
+			continue
+		}
+		phone = normalizePhone(phone)
+		if remoteJID == "" && phone != "" {
+			remoteJID = phone + "@s.whatsapp.net"
+		}
+		subtitle := "Negocio WAMERCIO"
+		if strings.TrimSpace(ownerName) != "" {
+			subtitle = "Negocio · " + strings.TrimSpace(ownerName)
+		}
+		out = append(out, map[string]any{
+			"id": storeID, "store_id": storeID, "owner_id": ownerID,
+			"name": name, "display_name": name, "whatsapp": phone,
+			"remote_jid": remoteJID, "profile_picture_url": logoURL,
+			"subtitle": subtitle, "is_active": active,
+		})
+	}
+	jsonOut(w, 200, out)
+}
+
 func (s *Server) adminWhatsAppEnsureConversation(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		OwnerID string `json:"owner_id"`

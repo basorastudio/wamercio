@@ -347,8 +347,17 @@ func (s *Server) startCallRecord(w http.ResponseWriter, r *http.Request) {
 	var enabled bool
 	_ = s.db.QueryRow(r.Context(), `SELECT is_active FROM store_call_settings WHERE store_id=$1`, in.StoreID).Scan(&enabled)
 	if !enabled {
-		jsonErr(w, 409, "WAMERCIO Calls no está activado para este negocio")
-		return
+		// Pressing Llamar is an explicit operator intent. Earlier releases left
+		// store_call_settings disabled by default, which made the canonical
+		// softphone look functional while POST /calls returned 409. Activate the
+		// module atomically on the first explicit outgoing call. The settings
+		// screen can still disable Calls again afterwards.
+		_, err := s.db.Exec(r.Context(), `INSERT INTO store_call_settings(store_id,is_active,updated_at) VALUES($1,true,now()) ON CONFLICT(store_id) DO UPDATE SET is_active=true,updated_at=now()`, in.StoreID)
+		if err != nil {
+			jsonErr(w, 500, "No se pudo activar WAMERCIO Calls para este negocio")
+			return
+		}
+		enabled = true
 	}
 	// Clear any persisted ghost from a previous call before preparing a new
 	// outbound dial. This is the same self-healing principle HDN applies before

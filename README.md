@@ -1,6 +1,6 @@
-# WAMERCIO 4.3.2
+# WAMERCIO 4.3.3
 
-> **V4.3.2 — SUPERADMIN UX + SOFTPHONE GLOBAL:** elimina la duplicidad entre WhatsApp de soporte y Configuración: `/admin/whatsapp` queda exclusivamente como chat, mientras **Configuración → WhatsApp → Proveedor y sesión global** es el único lugar para vincular/desvincular el dispositivo. Añade **Mi perfil** al menú de cuenta del SuperAdmin, elimina el cierre de sesión duplicado de la parte inferior de la sidebar y lo sustituye por el launcher del **softphone PiP del SuperAdmin**, conectado a la sesión global `support` del bridge para realizar y recibir llamadas WhatsApp con audio WebRTC. No agrega migraciones. Consulta `IMPLEMENTACION_V4.3.2_SUPERADMIN_UX_SOFTPHONE.md`.
+> **V4.3.3 — SOFTPHONE UNIFICADO + LLAMADAS FUNCIONALES:** usa una sola interfaz de softphone para negocios y SuperAdmin, corrige la activación de llamadas salientes/entrantes, hace que el directorio del SuperAdmin llame al WhatsApp real de cada negocio y mejora el diagnóstico del audio WebRTC. Agrega la migración `000049_unified_softphone_calls` para activar WAMERCIO Calls por defecto. Consulta `IMPLEMENTACION_V4.3.3_SOFTPHONE_UNIFICADO.md`.
 
 # WAMERCIO 4.3.1
 

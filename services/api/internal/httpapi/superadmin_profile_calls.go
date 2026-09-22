@@ -111,6 +111,17 @@ func (s *Server) enrichSupportCallSnapshot(ctx context.Context, item map[string]
 				)
 			)
 			LIMIT 1`, phone, remoteJID, name).Scan(&ownerID, &name, &avatarURL, &conversationID)
+		if ownerID == "" {
+			_ = s.db.QueryRow(ctx, `
+				SELECT st.user_id::text,
+				       coalesce(nullif(st.commercial_name,''),st.name,$2),
+				       coalesce(st.logo_url,'')
+				FROM stores st
+				WHERE regexp_replace(coalesce(st.whatsapp,''),'[^0-9]','','g')=$1
+				   OR regexp_replace(coalesce(st.phone,''),'[^0-9]','','g')=$1
+				ORDER BY st.is_active DESC,st.created_at
+				LIMIT 1`, phone, name).Scan(&ownerID, &name, &avatarURL)
+		}
 	}
 	item["phone"] = phone
 	if name != "" {

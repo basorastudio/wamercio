@@ -16,13 +16,13 @@ const keypad=['1','2','3','4','5','6','7','8','9','*','0','#']
 type DirectoryKind='all'|'contact'|'customer'|'user'
 type DialerTab='directory'|'keypad'
 
-export type SoftphoneTarget={phone?:string;display_name?:string;conversation_id?:string;kind?:Exclude<DirectoryKind,'all'>;avatar_url?:string}
+export type SoftphoneTarget={phone?:string;display_name?:string;conversation_id?:string;kind?:Exclude<DirectoryKind,'all'>;avatar_url?:string;remote_jid?:string;subtitle?:string}
 export type CallsSoftphoneHandle={
   openPictureInPicture:()=>Promise<boolean>
   startDirectCall:(target:SoftphoneTarget,storeIdOverride?:string)=>Promise<void>
 }
 
-type DirectoryItem=SoftphoneTarget&{id:string;kind:Exclude<DirectoryKind,'all'>;name:string;phone:string;subtitle:string;avatar_url?:string}
+type DirectoryItem=SoftphoneTarget&{id:string;kind:Exclude<DirectoryKind,'all'>;name:string;phone:string;subtitle:string;avatar_url?:string;remote_jid?:string}
 
 const pipCss=`
 :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#10241f}*{box-sizing:border-box}body{margin:0;min-width:320px;min-height:100vh;background:#10241f;color:#fff;overflow:hidden}button,input{font:inherit}.wam-pip{min-height:100vh;padding:12px;background:radial-gradient(circle at top right,rgba(0,168,132,.22),transparent 34%),#10241f}.wam-card{min-height:calc(100vh - 24px);display:flex;flex-direction:column;overflow:hidden;border:1px solid rgba(255,255,255,.08);border-radius:24px;background:#17332c;box-shadow:0 20px 60px rgba(0,0,0,.35)}.wam-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}.wam-brand{font-size:10px;font-weight:900;letter-spacing:.16em;color:#77e3c6}.wam-status{margin-top:4px;font-size:11px;font-weight:750;color:rgba(255,255,255,.62)}.wam-icon{display:grid;place-items:center;width:38px;height:38px;border:0;border-radius:13px;background:rgba(255,255,255,.08);color:#fff;cursor:pointer}.wam-tabs{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:10px 12px 8px;border-bottom:1px solid rgba(255,255,255,.06)}.wam-tabs button{display:flex;height:38px;align-items:center;justify-content:center;gap:7px;border:0;border-radius:13px;background:rgba(255,255,255,.06);color:rgba(255,255,255,.52);font-size:11px;font-weight:900;cursor:pointer}.wam-tabs button.active{background:#00a884;color:#fff;box-shadow:0 7px 18px rgba(0,168,132,.18)}.wam-dir{display:flex;min-height:0;flex:1;flex-direction:column;padding:10px 12px 0}.wam-search{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;border:1px solid rgba(255,255,255,.1);border-radius:15px;background:rgba(255,255,255,.055);color:rgba(255,255,255,.42)}.wam-search input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#fff;font-size:12px;font-weight:750}.wam-filters{display:flex;gap:6px;padding:8px 0;overflow-x:auto;scrollbar-width:none}.wam-filters button{display:flex;flex:0 0 auto;height:30px;align-items:center;gap:5px;padding:0 9px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(255,255,255,.045);color:rgba(255,255,255,.5);font-size:9px;font-weight:900;cursor:pointer}.wam-filters button.active{border-color:rgba(119,227,198,.55);background:rgba(0,168,132,.2);color:#77e3c6}.wam-list{display:flex;min-height:0;flex:1;flex-direction:column;gap:6px;overflow-y:auto;padding:0 1px 9px}.wam-item{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:9px;width:100%;min-height:59px;padding:8px 9px;border:1px solid rgba(255,255,255,.07);border-radius:15px;background:rgba(255,255,255,.04);color:#fff;text-align:left;cursor:pointer}.wam-item:hover,.wam-item.selected{border-color:rgba(119,227,198,.55);background:rgba(0,168,132,.13)}.wam-avatar{display:grid;place-items:center;width:42px;height:42px;align-self:center;border-radius:13px;object-fit:cover;background:#e7fce7;color:#008069;font-size:10px;font-weight:1000}.wam-copy{display:flex;min-width:0;align-self:center;flex-direction:column}.wam-copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:950}.wam-copy small{margin-top:2px;overflow:hidden;color:rgba(255,255,255,.43);font-size:9px;font-weight:700;text-overflow:ellipsis;white-space:nowrap}.wam-kind{align-self:start;padding:4px 6px;border-radius:999px;font-size:8px;font-weight:950;background:rgba(119,227,198,.12);color:#9ef0d8}.wam-keypad-panel{display:flex;min-height:0;flex:1;flex-direction:column;padding:12px}.wam-number{display:flex;align-items:center;gap:8px;height:48px;padding:0 8px 0 13px;border:1px solid rgba(255,255,255,.1);border-radius:16px;background:rgba(255,255,255,.055)}.wam-number input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:#fff;text-align:center;font-size:17px;font-weight:950;letter-spacing:.035em}.wam-number .wamercio-phone-input{min-width:0;flex:1}.wam-number .iti{width:100%}.wam-number .wamercio-phone-control-dark{width:100%;height:44px;border:0!important;outline:0;background:transparent!important;color:#fff!important;padding-top:0;padding-bottom:0;font-size:15px;font-weight:900;box-shadow:none!important}.wam-number .iti__selected-country{background:transparent!important;color:#fff}.wam-number .iti__selected-dial-code{color:rgba(255,255,255,.72)}.wam-number .iti__dropdown-content{background:#17332c;border:1px solid rgba(255,255,255,.12);border-radius:12px}.wam-number .iti__search-input{background:#10241f;border:1px solid rgba(255,255,255,.12);border-radius:8px;color:#fff}.wam-number .iti__country-name{color:#fff}.wam-number .iti__dial-code{color:rgba(255,255,255,.52)}.wam-number .iti__country.iti__highlight{background:rgba(0,168,132,.18)}.wam-keypad{display:grid;flex:1;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:7px;padding-top:10px}.wam-keypad button{min-height:46px;border:0;border-radius:15px;background:rgba(255,255,255,.06);color:#fff;font-size:16px;font-weight:950;cursor:pointer}.wam-keypad button:hover{background:rgba(0,168,132,.2);color:#9ef0d8}.wam-foot{display:flex;flex-direction:column;gap:7px;padding:9px 12px 12px;border-top:1px solid rgba(255,255,255,.08)}.wam-target{display:grid;grid-template-columns:34px minmax(0,1fr) 28px;gap:8px;align-items:center;padding:7px 8px;border:1px solid rgba(119,227,198,.25);border-radius:13px;background:rgba(0,168,132,.1)}.wam-target>span{display:grid;width:34px;height:34px;place-items:center;border-radius:11px;background:#e7fce7;color:#008069;font-size:9px;font-weight:1000}.wam-target>div{display:flex;min-width:0;flex-direction:column}.wam-target strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.wam-target small{margin-top:1px;color:rgba(255,255,255,.4);font-size:8px}.wam-target>button{display:grid;width:28px;height:28px;place-items:center;border:0;border-radius:9px;background:rgba(255,255,255,.07);color:rgba(255,255,255,.55);cursor:pointer}.wam-call{display:flex;height:48px;align-items:center;justify-content:center;gap:8px;border:0;border-radius:15px;background:#00a884;color:#fff;font-size:12px;font-weight:1000;box-shadow:0 8px 20px rgba(0,168,132,.2);cursor:pointer}.wam-call:disabled{opacity:.38;cursor:not-allowed;box-shadow:none}.wam-contact{display:flex;flex:1;min-height:230px;flex-direction:column;align-items:center;justify-content:center;padding:22px 18px;text-align:center}.wam-contact .avatar{display:grid;place-items:center;width:82px;height:82px;border-radius:999px;border:4px solid #fff;background:#e7fce7;color:#008069;font-size:22px;font-weight:1000;box-shadow:0 8px 24px rgba(0,0,0,.22)}.wam-contact h1{max-width:100%;margin:18px 0 0;font-size:22px;line-height:1.15;font-weight:1000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.wam-contact p{margin:6px 0 0;color:rgba(255,255,255,.48);font-size:12px;font-weight:750}.wam-timer{margin-top:14px;padding:7px 13px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;font-weight:900;letter-spacing:.08em}.wam-controls{display:grid;grid-template-columns:1fr 1fr;gap:9px;padding:12px;border-top:1px solid rgba(255,255,255,.08)}.wam-controls button{min-height:58px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;border:0;border-radius:17px;background:rgba(255,255,255,.08);color:#fff;font-size:11px;font-weight:900;cursor:pointer}.wam-controls button.active{background:#00a884}.wam-controls button.danger{background:#ef4444}.wam-controls button.wide{grid-column:1/-1;min-height:44px;flex-direction:row;background:#00a884}.wam-controls button:disabled{opacity:.38;cursor:not-allowed}.wam-transfer{padding:12px;border-top:1px solid rgba(255,255,255,.08)}.wam-transfer select{width:100%;padding:10px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:#21443b;color:white}.wam-transfer .row{display:flex;gap:8px;margin-top:8px}.wam-transfer .row button{flex:1;padding:10px;border:0;border-radius:12px;background:rgba(255,255,255,.08);color:#fff;font-weight:800}.wam-transfer .row button.primary{background:#00a884}.wam-empty{display:flex;min-height:165px;flex:1;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;color:rgba(255,255,255,.45)}
@@ -51,7 +51,8 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   target?:SoftphoneTarget|null
   title?:string
   subtitle?:string
-}>(({open,onClose,storeId,target,title='Softphone',subtitle='Llamadas WhatsApp directamente desde WAMERCIO.'},ref)=>{
+  scope?:'merchant'|'superadmin'
+}>(({open,onClose,storeId,target,title='Softphone',subtitle='Llamadas WhatsApp directamente desde WAMERCIO.',scope='merchant'},ref)=>{
   const[settings,setSettings]=useState<any>(null)
   const[rows,setRows]=useState<any[]>([])
   const[staff,setStaff]=useState<any[]>([])
@@ -94,11 +95,31 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const load=useCallback((silent=false)=>{
     if(!storeId)return
     if(!silent)setLoading(true)
-    const request=silent
-      ?api<any[]>(`/calls?store_id=${storeId}`).then(c=>{setRows(c)})
-      :Promise.all([api(`/calls/settings?store_id=${storeId}`),api<any[]>(`/calls?store_id=${storeId}`),api<any[]>(`/staff?store_id=${storeId}`),api<any[]>(`/customers?store_id=${storeId}`),api<any[]>(`/contacts?store_id=${storeId}`)]).then(([s,c,u,customerRows,contactRows])=>{setSettings(s);setRows(c);setStaff(u.filter((x:any)=>x.status==='active'&&x.role!=='delivery'));setCustomers(customerRows);setContacts(contactRows)})
+    const mapAdminRows=(status:any)=>{
+      const snapshots=Array.isArray(status?.active_call_snapshots)?status.active_call_snapshots:[]
+      return snapshots.map((x:any)=>({
+        ...x,
+        id:String(x.external_call_id||x.id||''),
+        external_call_id:String(x.external_call_id||x.id||''),
+        started_at:x.created_at||x.started_at||new Date().toISOString(),
+        metadata:{avatar_url:x.avatar_url||x.profile_picture_url||''},
+      })).filter((x:any)=>x.id)
+    }
+    const request=scope==='superadmin'
+      ?(silent
+        ?api<any>('/admin/whatsapp/calls/status').then(status=>{setSettings((prev:any)=>({...prev,...status,is_active:!!status?.calls_enabled,engine_ready:!!status?.session_connected}));setRows(mapAdminRows(status))})
+        :Promise.all([api<any>('/admin/whatsapp/calls/status'),api<any[]>('/admin/whatsapp/call-directory')]).then(([status,directoryRows])=>{
+          setSettings({...status,is_active:!!status?.calls_enabled,engine_ready:!!status?.session_connected})
+          setRows(mapAdminRows(status))
+          setStaff([])
+          setCustomers([])
+          setContacts((directoryRows||[]).map((x:any)=>({...x,id:x.id||x.store_id,name:x.display_name||x.name,phone:x.whatsapp,profile_picture_url:x.profile_picture_url||x.logo_url,subtitle:x.subtitle||'Negocio WAMERCIO',kind:'contact'})))
+        }))
+      :(silent
+        ?api<any[]>(`/calls?store_id=${storeId}`).then(c=>{setRows(c)})
+        :Promise.all([api(`/calls/settings?store_id=${storeId}`),api<any[]>(`/calls?store_id=${storeId}`),api<any[]>(`/staff?store_id=${storeId}`),api<any[]>(`/customers?store_id=${storeId}`),api<any[]>(`/contacts?store_id=${storeId}`)]).then(([s,c,u,customerRows,contactRows])=>{setSettings(s);setRows(c);setStaff(u.filter((x:any)=>x.status==='active'&&x.role!=='delivery'));setCustomers(customerRows);setContacts(contactRows)}))
     request.then(()=>{if(!silent)setError('')}).catch((e:any)=>{if(!silent)setError(e.message||'No se pudo cargar el softphone.')}).finally(()=>{if(!silent)setLoading(false)})
-  },[storeId])
+  },[storeId,scope])
 
   useEffect(()=>{
     if(previousStore.current===storeId)return
@@ -124,7 +145,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     wasOpen.current=open
     if(target){const next={phone:target.phone||'',display_name:target.display_name||'',conversation_id:target.conversation_id||''};setForm(next);setSelectedTarget(target);return}
     if(justOpened){setForm({phone:'',display_name:'',conversation_id:''});setSelectedTarget(null);setTab('directory')}
-  },[target?.phone,target?.display_name,target?.conversation_id,target?.kind,open])
+  },[target?.phone,target?.display_name,target?.conversation_id,target?.kind,target?.remote_jid,open])
 
   useEffect(()=>()=>{
     closeAudio()
@@ -165,12 +186,12 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('wamercio:softphone-call-ended',{detail:{id:endedId}}))
     }
   },[currentCall?.id])
-  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;window.dispatchEvent(new CustomEvent('wamercio:incoming-call',{detail:{id:currentCall.id,store_id:storeId,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id,avatar_url:currentCall.avatar_url||currentCall.profile_picture_url||''}}))},[currentCall,storeId])
+  useEffect(()=>{if(typeof window==='undefined'||!currentCall||currentCall.direction!=='in'||currentCall.status!=='ringing'||lastIncoming.current===currentCall.id)return;lastIncoming.current=currentCall.id;const eventName=scope==='superadmin'?'wamercio:incoming-admin-call':'wamercio:incoming-call';window.dispatchEvent(new CustomEvent(eventName,{detail:{id:currentCall.id,store_id:storeId,phone:currentCall.phone,display_name:currentCall.display_name,conversation_id:currentCall.conversation_id,avatar_url:currentCall.avatar_url||currentCall.profile_picture_url||''}}))},[currentCall,storeId,scope])
 
   const directory=useMemo<DirectoryItem[]>(()=>{
     const customerItems=customers.map((x:any)=>({id:`customer:${x.id}`,kind:'customer' as const,name:x.name||x.whatsapp_name||x.phone||'Cliente',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.whatsapp_name&&x.whatsapp_name!==x.name?`WhatsApp: ${x.whatsapp_name}`:'Cliente WAMERCIO',avatar_url:x.profile_picture_url,conversation_id:x.conversation_id||''}))
     const customerPhones=new Set(customerItems.map(x=>x.phone).filter(Boolean))
-    const contactItems=contacts.map((x:any)=>({id:`contact:${x.id}`,kind:'contact' as const,name:x.name||x.whatsapp_name||x.phone||'Contacto',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.whatsapp_name&&x.whatsapp_name!==x.name?`WhatsApp: ${x.whatsapp_name}`:'Contacto de WhatsApp',avatar_url:x.profile_picture_url,conversation_id:x.conversation_id||''})).filter(x=>x.phone&&!customerPhones.has(x.phone))
+    const contactItems=contacts.map((x:any)=>({id:`contact:${x.id}`,kind:'contact' as const,name:x.name||x.whatsapp_name||x.phone||'Contacto',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.subtitle||(x.whatsapp_name&&x.whatsapp_name!==x.name?`WhatsApp: ${x.whatsapp_name}`:'Contacto de WhatsApp'),avatar_url:x.profile_picture_url,conversation_id:x.conversation_id||'',remote_jid:x.remote_jid||''})).filter(x=>x.phone&&!customerPhones.has(x.phone))
     const userItems=staff.map((x:any)=>({id:`user:${x.id}`,kind:'user' as const,name:[x.name,x.last_name].filter(Boolean).join(' ')||x.phone||'Usuario',phone:String(x.phone||'').replace(/\D/g,''),subtitle:x.role?`Usuario · ${x.role}`:'Usuario operativo',avatar_url:x.profile_picture_url,conversation_id:''}))
     const all=[...contactItems,...customerItems,...userItems].filter(x=>x.phone)
     const q=directorySearch.trim().toLowerCase()
@@ -194,12 +215,17 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
         const answeredAt=new Date().toISOString()
         setMediaActiveCallId(id)
         setRows(v=>v.map(row=>row.id===id&&['ringing','connecting'].includes(row.status)?{...row,status:'active',answered_at:row.answered_at||answeredAt}:row))
-      })
+      },scope==='superadmin'?(callId)=>`/api/v1/admin/whatsapp/calls/${encodeURIComponent(callId)}/webrtc`:undefined)
       browserCall.current=bc
       setAudioCallId(id)
       setMuted(false)
     }catch(e:any){
-      setError(e.message||'No se pudo conectar el audio del navegador.')
+      const networkHint=settings?.webrtc_external_ip_configured===false
+        ?' La llamada puede seguir activa, pero el audio del navegador requiere configurar WAMERCIO_WEBRTC_EXTERNAL_IP con la IP pública del servidor.'
+        :settings?.webrtc_udp_range_configured===false
+          ?' La llamada puede seguir activa, pero el rango UDP de WebRTC no está configurado/publicado.'
+          :''
+      setError((e.message||'No se pudo conectar el audio del navegador.')+networkHint)
     }finally{
       setAudioBusy('')
     }
@@ -222,15 +248,27 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     setBusy(true)
     setError('')
     try{
-      const created=await api<any>('/calls',{method:'POST',body:JSON.stringify({store_id:targetStore,phone,display_name:chosen.display_name||form.display_name||'',conversation_id:chosen.conversation_id||form.conversation_id||'',avatar_url:chosen.avatar_url||''})})
+      if(scope==='merchant'&&settings&&!settings.is_active){
+        await api('/calls/settings',{method:'PUT',body:JSON.stringify({
+          store_id:targetStore,is_active:true,record_calls:!!settings.record_calls,transcribe_calls:!!settings.transcribe_calls,
+          ring_seconds:Number(settings.ring_seconds||30),routing_strategy:String(settings.routing_strategy||'least_load'),
+        })})
+        setSettings((prev:any)=>prev?{...prev,is_active:true}:prev)
+      }
+      const created=scope==='superadmin'
+        ?await api<any>('/admin/whatsapp/calls',{method:'POST',body:JSON.stringify({phone,display_name:chosen.display_name||form.display_name||'',remote_jid:chosen.remote_jid||''})})
+        :await api<any>('/calls',{method:'POST',body:JSON.stringify({store_id:targetStore,phone,display_name:chosen.display_name||form.display_name||'',conversation_id:chosen.conversation_id||form.conversation_id||'',avatar_url:chosen.avatar_url||''})})
       setForm({phone,display_name:chosen.display_name||form.display_name||'',conversation_id:chosen.conversation_id||form.conversation_id||''})
       setSelectedTarget({...chosen,phone})
       await load(true)
-      try{
-        await connectAudio(created.id)
-      }catch{
-        // The WhatsApp call can keep ringing even if the local browser audio
-        // negotiation fails. connectAudio already exposes the actionable error.
+      const callId=String(scope==='superadmin'?(created.external_call_id||created.id||''):created.id||'')
+      if(callId){
+        try{
+          await connectAudio(callId)
+        }catch{
+          // La llamada de WhatsApp puede seguir timbrando aunque la negociación
+          // de audio del navegador falle. connectAudio ya muestra el diagnóstico.
+        }
       }
     }catch(e:any){
       setError(e.message||'No se pudo iniciar la llamada.')
@@ -238,14 +276,16 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
       dialingRef.current=false
       setBusy(false)
     }
-  },[selectedTarget,form,storeId,load,currentCall])
+  },[selectedTarget,form,storeId,load,currentCall,scope,settings])
 
   const startCall=async(e?:React.FormEvent)=>{e?.preventDefault();await performCall()}
 
   const action=async(x:any,a:string,assigned_staff_id='')=>{
     setError('')
     try{
-      const result=await api<any>(`/calls/${x.id}`,{method:'PATCH',body:JSON.stringify({action:a,assigned_staff_id})})
+      const result=scope==='superadmin'
+        ?await api<any>(`/admin/whatsapp/calls/${encodeURIComponent(x.external_call_id||x.id)}/${a}`,{method:'POST'})
+        :await api<any>(`/calls/${x.id}`,{method:'PATCH',body:JSON.stringify({action:a,assigned_staff_id})})
       const fallbackStatus=a==='hangup'?'completed':a==='reject'?'rejected':''
       const nextStatus=String(result?.status||result?.engine?.status||fallbackStatus).trim()
       if(nextStatus)setRows(v=>v.map(row=>row.id===x.id?{...row,status:nextStatus,assigned_staff_id:assigned_staff_id||row.assigned_staff_id}:row))
@@ -323,15 +363,15 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   }
   const backspace=()=>{setSelectedTarget(null);setForm(v=>({...v,phone:(v.phone||'').slice(0,-1)}))}
   const chooseDirectory=(item:DirectoryItem)=>{
-    const next={phone:item.phone,display_name:item.name,conversation_id:item.conversation_id,kind:item.kind,avatar_url:item.avatar_url}
+    const next={phone:item.phone,display_name:item.name,conversation_id:item.conversation_id,kind:item.kind,avatar_url:item.avatar_url,remote_jid:item.remote_jid,subtitle:item.subtitle}
     setSelectedTarget(next)
     setForm({phone:item.phone,display_name:item.name,conversation_id:item.conversation_id||''})
   }
 
   const directoryPanel=(dark=false)=>dark?<div className="wam-dir">
     <div className="wam-search"><Search size={15}/><input value={directorySearch} onChange={e=>setDirectorySearch(e.target.value)} placeholder="Buscar por nombre o WhatsApp..."/>{directorySearch&&<button onClick={()=>setDirectorySearch('')}><X size={13}/></button>}</div>
-    <div className="wam-filters">{([['all','Todos'],['contact','Contactos'],['customer','Clientes'],['user','Usuarios']] as [DirectoryKind,string][]).map(([kind,label])=><button key={kind} className={directoryKind===kind?'active':''} onClick={()=>setDirectoryKind(kind)}>{label}</button>)}</div>
-    <div className="wam-list">{directory.length?directory.map(item=><button key={item.id} className={`wam-item ${selectedTarget?.phone===item.phone?'selected':''}`} onClick={()=>chooseDirectory(item)} onDoubleClick={()=>void performCall(item)}>{item.avatar_url?<img src={item.avatar_url} className="wam-avatar" alt=""/>:<span className="wam-avatar">{item.name.slice(0,2).toUpperCase()}</span>}<span className="wam-copy"><strong>{item.name}</strong><small>{item.phone} · {item.subtitle}</small></span><span className="wam-kind">{kindLabel(item.kind)}</span></button>):<div className="wam-empty"><BookUser size={26}/><strong>Sin resultados</strong><small>Prueba otro nombre, número o filtro.</small></div>}</div>
+    {scope==='merchant'&&<div className="wam-filters">{([['all','Todos'],['contact','Contactos'],['customer','Clientes'],['user','Usuarios']] as [DirectoryKind,string][]).map(([kind,label])=><button key={kind} className={directoryKind===kind?'active':''} onClick={()=>setDirectoryKind(kind)}>{label}</button>)}</div>}
+    <div className="wam-list">{directory.length?directory.map(item=><button key={item.id} className={`wam-item ${selectedTarget?.phone===item.phone?'selected':''}`} onClick={()=>chooseDirectory(item)} onDoubleClick={()=>void performCall(item)}>{item.avatar_url?<img src={item.avatar_url} className="wam-avatar" alt=""/>:<span className="wam-avatar">{item.name.slice(0,2).toUpperCase()}</span>}<span className="wam-copy"><strong>{item.name}</strong><small>{item.phone} · {item.subtitle}</small></span><span className="wam-kind">{scope==='superadmin'?'Negocio':kindLabel(item.kind)}</span></button>):<div className="wam-empty"><BookUser size={26}/><strong>Sin resultados</strong><small>Prueba otro nombre, número o filtro.</small></div>}</div>
   </div>:<div className="space-y-3">
     <div className="relative"><Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#a2a6b8]"/><input className="field pl-10" value={directorySearch} onChange={e=>setDirectorySearch(e.target.value)} placeholder="Buscar por nombre o WhatsApp..."/></div>
     <div className="flex gap-2 overflow-x-auto pb-1">{([['all','Todos'],['contact','Contactos'],['customer','Clientes'],['user','Usuarios']] as [DirectoryKind,string][]).map(([kind,label])=><button type="button" key={kind} onClick={()=>setDirectoryKind(kind)} className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold ${directoryKind===kind?'border-brand-200 bg-brand-50 text-brand-700':'border-[#e7eaf0] bg-white text-[#7a8097]'}`}>{label}</button>)}</div>
@@ -364,7 +404,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
         <p>{currentCall.phone||''} · {currentCall.direction==='out'?'Saliente':'Entrante'}</p>
         <div className="wam-timer">{timerText}</div>
       </div>
-      {pipTransfer&&connectedPhase?<div className="wam-transfer"><select value={transferStaff} onChange={e=>setTransferStaff(e.target.value)}><option value="">Selecciona un agente</option>{staff.map(x=><option key={x.id} value={x.id}>{x.name} {x.last_name||''}</option>)}</select><div className="row"><button onClick={()=>setPipTransfer(false)}>Cancelar</button><button className="primary" disabled={!transferStaff} onClick={()=>action(currentCall,'transfer',transferStaff)}>Transferir</button></div></div>:<div className="wam-controls">
+      {pipTransfer&&connectedPhase&&scope==='merchant'?<div className="wam-transfer"><select value={transferStaff} onChange={e=>setTransferStaff(e.target.value)}><option value="">Selecciona un agente</option>{staff.map(x=><option key={x.id} value={x.id}>{x.name} {x.last_name||''}</option>)}</select><div className="row"><button onClick={()=>setPipTransfer(false)}>Cancelar</button><button className="primary" disabled={!transferStaff} onClick={()=>action(currentCall,'transfer',transferStaff)}>Transferir</button></div></div>:<div className="wam-controls">
         {incomingRinging&&<><button className="active" onClick={()=>void answerIncoming(currentCall)}><PhoneIncoming size={18}/>Contestar</button><button className="danger" onClick={()=>action(currentCall,'reject')}><PhoneOff size={18}/>Rechazar</button></>}
         {outgoingRinging&&<button className="danger wide" onClick={()=>action(currentCall,'hangup')}><PhoneOff size={18}/>Cancelar llamada</button>}
         {connecting&&<><button className="wide" disabled><RotateCw size={16}/>Conectando llamada…</button><button className="danger wide" onClick={()=>action(currentCall,'hangup')}><PhoneOff size={18}/>Colgar</button></>}
@@ -372,7 +412,7 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
         {connectedPhase&&audioConnected&&<button className={muted?'active':''} onClick={toggleMute}>{muted?<MicOff size={18}/>:<Mic size={18}/>}<span>{muted?'Activar':'Silenciar'}</span></button>}
         {active&&<button onClick={()=>action(currentCall,'hold')}><Pause size={18}/><span>Espera</span></button>}
         {held&&<button onClick={()=>action(currentCall,'resume')}><Play size={18}/><span>Reanudar</span></button>}
-        {connectedPhase&&<button onClick={()=>setPipTransfer(true)}><ArrowRightLeft size={18}/><span>Transferir</span></button>}
+        {connectedPhase&&scope==='merchant'&&<button onClick={()=>setPipTransfer(true)}><ArrowRightLeft size={18}/><span>Transferir</span></button>}
         {connectedPhase&&<button className="danger" onClick={()=>action(currentCall,'hangup')}><PhoneOff size={18}/><span>Colgar</span></button>}
         {transferred&&<div className="wide" style={{display:'flex',alignItems:'center',justifyContent:'center',minHeight:44,color:'rgba(255,255,255,.62)',fontSize:11,fontWeight:800}}>La llamada fue transferida a otro agente.</div>}
       </div>}
@@ -380,9 +420,9 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   }
 
   const softphoneSurface=()=><div className="wam-card">
-    <div className="wam-head"><div><div className="wam-brand">WAMERCIO</div><div className="wam-status">{currentCall?'Llamada WhatsApp':busy?'Preparando llamada…':settings?.engine_ready?'Softphone · disponible':'Softphone · esperando sesión'}</div></div><div style={{display:'flex',gap:7}}><button className="wam-icon" title="Volver a la aplicación" onClick={()=>{window.focus();pipWindow?.close()}}><ExternalLink size={17}/></button></div></div>
+    <div className="wam-head"><div><div className="wam-brand">{scope==='superadmin'?'WAMERCIO · SUPERADMIN':'WAMERCIO'}</div><div className="wam-status">{currentCall?'Llamada WhatsApp':busy?'Preparando llamada…':settings?.engine_ready?'Softphone · disponible':'Softphone · esperando sesión'}</div></div><div style={{display:'flex',gap:7}}><button className="wam-icon" title="Volver a la aplicación" onClick={()=>{window.focus();pipWindow?.close()}}><ExternalLink size={17}/></button></div></div>
     {error&&<div style={{margin:'10px 12px 0',border:'1px solid rgba(248,113,113,.35)',borderRadius:12,background:'rgba(127,29,29,.35)',padding:'9px 10px',fontSize:10,fontWeight:800,color:'#fecaca'}}>{error}</div>}
-    {!storeId?<div className="wam-empty"><PhoneOff size={26}/><strong>Selecciona una tienda</strong><small>El softphone necesita un negocio activo.</small></div>:loading&&!settings?<div className="wam-empty"><RotateCw className="animate-spin" size={24}/><strong>Cargando softphone…</strong></div>:currentCall?activeControls():busy?<div className="wam-contact">{selectedTarget?.avatar_url?<img className="avatar" src={selectedTarget.avatar_url} alt=""/>:<div className="avatar">{(selectedTarget?.display_name||form.display_name||form.phone||'?').slice(0,2).toUpperCase()}</div>}<h1>{selectedTarget?.display_name||form.display_name||form.phone||'Contacto WhatsApp'}</h1><p>{form.phone||selectedTarget?.phone||''} · Saliente</p><div className="wam-timer">Preparando llamada…</div></div>:<><div className="wam-tabs"><button className={tab==='directory'?'active':''} onClick={()=>setTab('directory')}><BookUser size={15}/>Directorio</button><button className={tab==='keypad'?'active':''} onClick={()=>setTab('keypad')}><Keyboard size={15}/>Teclado</button></div>{tab==='directory'?directoryPanel(true):keypadPanel(true)}<div className="wam-foot">{selectedTargetPanel(true)}<button className="wam-call" disabled={!settings?.is_active||busy||!form.phone.trim()} onClick={()=>void startCall()}><PhoneCall size={16}/>{busy?'Llamando...':'Llamar ahora'}</button></div></>}
+    {!storeId?<div className="wam-empty"><PhoneOff size={26}/><strong>{scope==='superadmin'?'Sesión global no disponible':'Selecciona una tienda'}</strong><small>{scope==='superadmin'?'El softphone necesita la sesión global de soporte.':'El softphone necesita un negocio activo.'}</small></div>:loading&&!settings?<div className="wam-empty"><RotateCw className="animate-spin" size={24}/><strong>Cargando softphone…</strong></div>:currentCall?activeControls():busy?<div className="wam-contact">{selectedTarget?.avatar_url?<img className="avatar" src={selectedTarget.avatar_url} alt=""/>:<div className="avatar">{(selectedTarget?.display_name||form.display_name||form.phone||'?').slice(0,2).toUpperCase()}</div>}<h1>{selectedTarget?.display_name||form.display_name||form.phone||'Contacto WhatsApp'}</h1><p>{form.phone||selectedTarget?.phone||''} · Saliente</p><div className="wam-timer">Preparando llamada…</div></div>:<><div className="wam-tabs"><button className={tab==='directory'?'active':''} onClick={()=>setTab('directory')}><BookUser size={15}/>Directorio</button><button className={tab==='keypad'?'active':''} onClick={()=>setTab('keypad')}><Keyboard size={15}/>Teclado</button></div>{tab==='directory'?directoryPanel(true):keypadPanel(true)}<div className="wam-foot">{selectedTargetPanel(true)}<button className="wam-call" disabled={busy||!form.phone.trim()||!settings?.engine_ready} onClick={()=>void startCall()}><PhoneCall size={16}/>{busy?'Llamando...':scope==='merchant'&&settings&&!settings.is_active?'Activar y llamar':'Llamar ahora'}</button></div></>}
   </div>
 
   const pipContent=pipWindow&&!pipWindow.closed?createPortal(<div className="wam-pip">{softphoneSurface()}</div>,pipWindow.document.body):null

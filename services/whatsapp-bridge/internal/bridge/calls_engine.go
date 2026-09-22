@@ -2,6 +2,7 @@ package bridge
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -370,6 +371,12 @@ func (m *Manager) callSettingsForEngine(storeID string) callEngineSettings {
 		return out
 	}
 	if err := m.db.QueryRow(`SELECT is_active,record_calls,transcribe_calls,ring_seconds FROM store_call_settings WHERE store_id=$1`, storeID).Scan(&out.Enabled, &out.Record, &out.Transcribe, &out.Ring); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// New stores may receive their first WhatsApp call before anyone opens
+			// the Calls settings page. Calls is a core WAMERCIO capability, so the
+			// absence of a settings row means the default enabled state from 4.3.3.
+			return callEngineSettings{Enabled: true, Ring: 30}
+		}
 		return callEngineSettings{Ring: 30}
 	}
 	if out.Ring < 5 || out.Ring > 120 {

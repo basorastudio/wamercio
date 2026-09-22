@@ -1,3 +1,18 @@
+# WAMERCIO 4.3.3 — Softphone unificado y llamadas funcionales
+
+- Unifica el softphone de negocios y SuperAdmin sobre `CallsSoftphone`; elimina la segunda implementación visual/lógica del SuperAdmin.
+- Corrige el botón **Llamar** de los negocios: una llamada saliente explícita puede activar WAMERCIO Calls si el flag histórico estaba apagado.
+- Añade migración `000049_unified_softphone_calls` para dejar Calls activo por defecto y activar instalaciones existentes creadas con `DEFAULT false`.
+- El bridge trata un negocio nuevo sin fila de `store_call_settings` como Calls habilitado por defecto, evitando rechazar su primera llamada entrante.
+- Añade `/admin/whatsapp/call-directory` basado en `stores.whatsapp`, nombre comercial y logo; el SuperAdmin llama al WhatsApp real del negocio en vez de depender del teléfono personal del propietario.
+- Mejora la resolución de identidad de llamadas del soporte contra `stores.whatsapp`.
+- SuperAdmin y negocio comparten directorio/teclado, timbrado, controles, mute, espera, reconexión de audio, PiP y fallback entrante.
+- Mejora el error WebRTC indicando específicamente cuando falta `WAMERCIO_WEBRTC_EXTERNAL_IP` o el rango UDP.
+- El botón de la pantalla WAMERCIO Calls permite **Activar y llamar** si la sesión/motor están listos.
+- Invalida PWA mediante `wamercio-store-v4.3.3`.
+
+---
+
 # WAMERCIO 4.3.2 — SuperAdmin sin duplicidades, perfil y softphone PiP
 
 - Convierte **WhatsApp de soporte** en una superficie exclusivamente de chat: lista de comercios, conversación, adjuntos, lectura y envío; elimina QR, vinculación y desvinculación de esta sección.
