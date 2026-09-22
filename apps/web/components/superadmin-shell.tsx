@@ -47,7 +47,7 @@ function AdminBrand({collapsed=false}:{collapsed?:boolean}){
   </Link>
 }
 
-export default function SuperAdminShell({children,title,subtitle,actions}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode}){
+export default function SuperAdminShell({children,title,subtitle,actions,fullHeight=false,hidePageHeader=false}:{children:React.ReactNode;title:string;subtitle?:string;actions?:React.ReactNode;fullHeight?:boolean;hidePageHeader?:boolean}){
   const path=usePathname(),router=useRouter()
   const[open,setOpen]=useState(false)
   const[collapsed,setCollapsed]=useState(false)
@@ -150,11 +150,11 @@ export default function SuperAdminShell({children,title,subtitle,actions}:{child
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1760px] px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
-        <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      <main className={`mx-auto w-full max-w-[1760px] ${fullHeight?'h-[calc(100dvh-64px)] overflow-hidden p-0':'px-4 py-5 sm:px-6 lg:px-8 lg:py-6'}`}>
+        {!hidePageHeader&&<div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div><div className="text-[9px] font-extrabold uppercase tracking-[.17em] text-[#0b5d3b]">Panel central de plataforma</div><h1 className="mt-1 text-2xl font-extrabold tracking-[-.025em] text-[#0a3f2a] sm:text-[28px]">{title}</h1>{subtitle&&<p className="mt-1 max-w-3xl text-sm leading-6 text-[#718078]">{subtitle}</p>}</div>
           {actions&&<div className="flex flex-wrap items-center gap-2">{actions}</div>}
-        </div>
+        </div>}
         {children}
       </main>
     </div>

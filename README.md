@@ -1,4 +1,6 @@
-# WAMERCIO 4.3.4
+# WAMERCIO 4.3.5
+> **V4.3.5 — CHAT DE SOPORTE UNIFICADO:** convierte WhatsApp de soporte del SuperAdmin en una bandeja de conversación a pantalla completa, visual y funcionalmente alineada con el chat de los negocios. Elimina cabeceras/banners duplicados y añade voz, adjuntos, encuestas, búsqueda, llamadas y contexto real del comerciante. Consulta `IMPLEMENTACION_V4.3.5_CHAT_SOPORTE_UNIFICADO.md`.
+
 
 > **V4.3.4 — ESTABILIDAD TOTAL DEL SOFTPHONE:** corrige identidad PN/LID, nombres `<nil>`, llamadas entrantes duplicadas y pérdidas temporales del audio WebRTC. Mantiene un único `CallsSoftphone` para negocios y SuperAdmin e incorpora la migración `000050_calls_identity_dedupe`. Consulta `IMPLEMENTACION_V4.3.4_SOFTPHONE_ESTABLE.md`.
 

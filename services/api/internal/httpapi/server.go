@@ -440,6 +440,10 @@ func (s *Server) Router() http.Handler {
 			a.Patch("/admin/whatsapp/conversations/{id}/read", s.adminWhatsAppRead)
 			a.Post("/admin/whatsapp/conversations/{id}/send", s.adminWhatsAppSend)
 			a.Post("/admin/whatsapp/conversations/{id}/send-media", s.adminWhatsAppSendMedia)
+			a.Post("/admin/whatsapp/conversations/{id}/send-poll", s.adminWhatsAppSendPoll)
+			a.Patch("/admin/whatsapp/conversations/{id}/unread", s.adminWhatsAppMarkUnread)
+			a.Delete("/admin/whatsapp/conversations/{id}/messages", s.adminWhatsAppClearMessages)
+			a.Delete("/admin/whatsapp/conversations/{id}", s.adminWhatsAppDeleteConversation)
 		})
 	})
 	return r
@@ -6539,7 +6543,58 @@ func (s *Server) adminWhatsAppDisconnect(w http.ResponseWriter, r *http.Request)
 	jsonOut(w, 200, out)
 }
 func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(r.Context(), `SELECT coalesce(c.id::text,''),u.id::text,u.name,coalesce(u.phone,''),coalesce(c.remote_jid,''),coalesce(c.display_name,nullif(u.whatsapp_name,''),u.name),coalesce(c.unread_count,0),coalesce(c.last_message,''),c.last_message_at,u.status,coalesce(u.profile_picture_url,'') FROM users u LEFT JOIN LATERAL (SELECT * FROM support_whatsapp_conversations x WHERE x.owner_id=u.id ORDER BY x.last_message_at DESC NULLS LAST LIMIT 1) c ON true WHERE u.role='owner' ORDER BY coalesce(c.last_message_at,u.created_at) DESC`)
+	rows, err := s.db.Query(r.Context(), `
+		SELECT coalesce(c.id::text,''),
+		       u.id::text,
+		       u.name,
+		       coalesce(u.phone,''),
+		       coalesce(c.remote_jid,''),
+		       coalesce(c.display_name,nullif(u.whatsapp_name,''),u.name),
+		       coalesce(c.unread_count,0),
+		       coalesce(c.last_message,''),
+		       c.last_message_at,
+		       u.status,
+		       coalesce(u.profile_picture_url,''),
+		       coalesce(st.id,''),
+		       coalesce(st.name,''),
+		       coalesce(st.logo_url,''),
+		       coalesce(st.whatsapp,''),
+		       coalesce(st.slug,''),
+		       coalesce(st.address,''),
+		       coalesce(st.is_active,false),
+		       coalesce(sc.store_count,0),
+		       coalesce(pl.name,''),
+		       u.created_at
+		FROM users u
+		LEFT JOIN LATERAL (
+			SELECT *
+			FROM support_whatsapp_conversations x
+			WHERE x.owner_id=u.id
+			ORDER BY x.last_message_at DESC NULLS LAST,x.updated_at DESC
+			LIMIT 1
+		) c ON true
+		LEFT JOIN LATERAL (
+			SELECT st.id::text,
+			       coalesce(nullif(st.commercial_name,''),st.name) AS name,
+			       coalesce(st.logo_url,'') AS logo_url,
+			       coalesce(st.whatsapp,'') AS whatsapp,
+			       coalesce(st.slug,'') AS slug,
+			       coalesce(st.address,'') AS address,
+			       st.is_active
+			FROM stores st
+			WHERE st.user_id=u.id
+			ORDER BY st.is_active DESC,st.created_at
+			LIMIT 1
+		) st ON true
+		LEFT JOIN LATERAL (
+			SELECT count(*)::int AS store_count
+			FROM stores sx
+			WHERE sx.user_id=u.id
+		) sc ON true
+		LEFT JOIN subscriptions sub ON sub.user_id=u.id
+		LEFT JOIN plans pl ON pl.id=sub.plan_id
+		WHERE u.role='owner'
+		ORDER BY coalesce(c.last_message_at,u.created_at) DESC`)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar los comercios")
 		return
@@ -6548,10 +6603,20 @@ func (s *Server) adminWhatsAppConversations(w http.ResponseWriter, r *http.Reque
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, ownerID, name, wa, jid, display, last, status, profilePictureURL string
-		var unread int
+		var storeID, storeName, storeLogo, storeWhatsApp, storeSlug, storeAddress, planName string
+		var unread, storeCount int
 		var lastAt *time.Time
-		if rows.Scan(&id, &ownerID, &name, &wa, &jid, &display, &unread, &last, &lastAt, &status, &profilePictureURL) == nil {
-			out = append(out, map[string]any{"id": id, "owner_id": ownerID, "name": name, "whatsapp": wa, "remote_jid": jid, "display_name": display, "unread_count": unread, "last_message": last, "last_message_at": lastAt, "owner_status": status, "profile_picture_url": profilePictureURL})
+		var storeActive bool
+		var ownerCreatedAt time.Time
+		if rows.Scan(&id, &ownerID, &name, &wa, &jid, &display, &unread, &last, &lastAt, &status, &profilePictureURL, &storeID, &storeName, &storeLogo, &storeWhatsApp, &storeSlug, &storeAddress, &storeActive, &storeCount, &planName, &ownerCreatedAt) == nil {
+			out = append(out, map[string]any{
+				"id": id, "owner_id": ownerID, "name": name, "whatsapp": wa, "remote_jid": jid,
+				"display_name": display, "unread_count": unread, "last_message": last, "last_message_at": lastAt,
+				"owner_status": status, "profile_picture_url": profilePictureURL,
+				"store_id": storeID, "store_name": storeName, "store_logo_url": storeLogo,
+				"store_whatsapp": normalizePhone(storeWhatsApp), "store_slug": storeSlug, "store_address": storeAddress,
+				"store_active": storeActive, "store_count": storeCount, "plan_name": planName, "owner_created_at": ownerCreatedAt,
+			})
 		}
 	}
 	jsonOut(w, 200, out)

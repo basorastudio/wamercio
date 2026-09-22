@@ -1,3 +1,14 @@
+# WAMERCIO 4.3.5 — Chat de soporte unificado
+
+- Rediseña completamente `/admin/whatsapp` para igualar el patrón visual y operativo de `/conversations`.
+- Elimina el encabezado interno duplicado y el banner de conexión/sesión global.
+- Mantiene la vinculación exclusivamente en Configuración → WhatsApp.
+- Añade filtros, búsqueda, llamadas, panel de comerciante, notas de voz, adjuntos, encuestas, respuestas rápidas y búsqueda dentro del chat.
+- Añade exportación, marcar no leído, vaciar historial y eliminar conversación local.
+- Enriquece el listado de soporte con negocio, plan y estado reales del backend.
+- Añade endpoints administrativos de encuesta y mantenimiento de conversación.
+- Invalida la caché PWA mediante `wamercio-store-v4.3.5`.
+
 # WAMERCIO 4.3.4 — Estabilidad total del softphone
 
 - Corrige la identidad visual de llamadas salientes: conserva el nombre, número, avatar y JID elegidos por el operador aunque WhatsApp cambie el peer de PN a un identificador opaco `@lid` durante la señalización.
