@@ -1,3 +1,19 @@
+# WAMERCIO 4.3.4 — Estabilidad total del softphone
+
+- Corrige la identidad visual de llamadas salientes: conserva el nombre, número, avatar y JID elegidos por el operador aunque WhatsApp cambie el peer de PN a un identificador opaco `@lid` durante la señalización.
+- Evita que el bridge exponga `"<nil>"` como nombre de contacto y prioriza la identidad estable capturada al crear/recibir la llamada.
+- Corrige las llamadas entrantes duplicadas: `OnStateChange` pasa a ser el único camino de persistencia y se elimina la doble escritura concurrente `OnIncoming + OnStateChange`.
+- Añade migración `000050_calls_identity_dedupe`, limpia duplicados históricos por `(store_id, external_call_id)` y crea un índice único parcial para impedir que vuelvan a aparecer.
+- Convierte el alta de llamadas del API en un UPSERT idempotente por `store_id + external_call_id`, de modo que callbacks repetidos actualizan la misma llamada en lugar de crear varias filas `Perdida`.
+- Protege llamadas salientes contra regresiones de identidad: los callbacks del motor ya no pueden sobrescribir el teléfono/nombre seleccionado por el operador con datos de transporte.
+- Mejora la resolución de llamadas entrantes `@lid → PN` usando el store LID de WhatsMeow antes del primer snapshot.
+- Endurece el audio WebRTC del navegador: amplía de 5 s a 15 s la tolerancia a desconexiones ICE temporales y añade reconexión automática progresiva del audio sin finalizar la llamada de WhatsApp.
+- Añade protección por generación al audio para que una negociación WebRTC antigua no cierre o invalide una conexión más nueva.
+- Mantiene el mismo `CallsSoftphone` compartido en negocios y SuperAdmin; no se introduce una segunda interfaz ni lógica paralela.
+- Invalida la caché PWA mediante `wamercio-store-v4.3.4`.
+
+---
+
 # WAMERCIO 4.3.3 — Softphone unificado y llamadas funcionales
 
 - Unifica el softphone de negocios y SuperAdmin sobre `CallsSoftphone`; elimina la segunda implementación visual/lógica del SuperAdmin.

@@ -47,6 +47,14 @@ type activeCall struct {
 	held         bool
 	createdAt    time.Time
 	lastActivity time.Time
+	// Stable operator-facing identity. WhatsApp frequently resolves a dialed PN
+	// to an opaque @lid while the call is in progress. Keep the original target
+	// here so status polling never replaces a business/contact with a LID number
+	// or a literal <nil> display name. Incoming calls populate these fields from
+	// the session's LID->PN/contact stores as soon as the offer arrives.
+	remoteJID    string
+	phone        string
+	displayName  string
 	terminalOnce sync.Once
 	mu           sync.RWMutex
 }
@@ -57,6 +65,24 @@ type callRegistry struct {
 }
 
 func newCallRegistry() *callRegistry { return &callRegistry{calls: map[string]*activeCall{}} }
+
+func (c *activeCall) setIdentity(remoteJID, phone, displayName string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if strings.TrimSpace(remoteJID) != "" {
+		c.remoteJID = strings.TrimSpace(remoteJID)
+	}
+	if strings.TrimSpace(phone) != "" {
+		c.phone = nonDigits.ReplaceAllString(phone, "")
+	}
+	name := strings.TrimSpace(displayName)
+	if name != "" && name != "<nil>" {
+		c.displayName = name
+	}
+}
 func (r *callRegistry) add(id string, c *activeCall) {
 	r.mu.Lock()
 	r.calls[id] = c
@@ -122,6 +148,9 @@ func (r *callRegistry) snapshots() []engineCallSnapshot {
 		item.ac.mu.RLock()
 		recordID := item.ac.recordID
 		createdAt := item.ac.createdAt
+		stableRemoteJID := strings.TrimSpace(item.ac.remoteJID)
+		stablePhone := strings.TrimSpace(item.ac.phone)
+		stableDisplayName := strings.TrimSpace(item.ac.displayName)
 		item.ac.mu.RUnlock()
 		remoteJID := strings.TrimSpace(ci.PeerJid)
 		phone := strings.TrimSpace(ci.CallerPn)
@@ -139,7 +168,23 @@ func (r *callRegistry) snapshots() []engineCallSnapshot {
 				phone = remoteJID[:at]
 			}
 		}
-		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady(), RemoteJID: remoteJID, Phone: phone, DisplayName: strings.TrimSpace(ci.PeerName), MediaType: string(ci.MediaType)})
+		displayName := strings.TrimSpace(ci.PeerName)
+		if displayName == "<nil>" {
+			displayName = ""
+		}
+		// Prefer the identity captured when the call was created. CallInfo.PeerJid
+		// is allowed to become an @lid during signaling and must never leak into
+		// the operator-facing softphone as the contact's phone/name.
+		if stableRemoteJID != "" {
+			remoteJID = stableRemoteJID
+		}
+		if stablePhone != "" {
+			phone = stablePhone
+		}
+		if stableDisplayName != "" {
+			displayName = stableDisplayName
+		}
+		out = append(out, engineCallSnapshot{ExternalCallID: item.id, RecordID: recordID, Status: mapEngineStatus(ci), Direction: callDirection(ci), CreatedAt: createdAt, MediaReady: item.ac.cm.MediaReady(), RemoteJID: remoteJID, Phone: phone, DisplayName: displayName, MediaType: string(ci.MediaType)})
 	}
 	return out
 }
@@ -295,7 +340,7 @@ func newBrowserCallBridge(offerSDP string) (*browserCallBridge, string, error) {
 			// If the browser leg does not recover, release only that leg; the
 			// WhatsApp call itself remains alive and the UI can reconnect audio.
 			go func() {
-				time.Sleep(5 * time.Second)
+				time.Sleep(15 * time.Second)
 				if b.pc != nil && b.pc.ICEConnectionState() == webrtc.ICEConnectionStateDisconnected && b.OnTerminal != nil {
 					b.OnTerminal()
 				}
@@ -562,9 +607,12 @@ func (m *Manager) createCallManager(s *Session, callID, recordID string) *call.C
 		ac.mu.Unlock()
 	}
 	cm.OnIncoming = func(c *call.CallInfo) {
+		// HandleCallOffer immediately emits the same ringing state through
+		// OnStateChange. Persisting both callbacks concurrently used to race the
+		// core API and create duplicate missed-call rows for a single WhatsApp
+		// call. Keep OnIncoming for activity bookkeeping only; OnStateChange is the
+		// canonical persistence path.
 		touch()
-		snapshot := *c
-		go m.emitCallState(s, &snapshot, recordID, "incoming")
 	}
 	cm.OnStateChange = func(c *call.CallInfo) {
 		touch()
@@ -651,6 +699,14 @@ func (m *Manager) handleIncomingCallOffer(s *Session, evt *events.CallOffer) {
 		return
 	}
 	cm := m.createCallManager(s, callID, "")
+	// Resolve the user-facing identity before the first status poll. Incoming
+	// offers frequently arrive from @lid identifiers; phoneForJID maps them back
+	// to the real PN when whatsmeow already knows the association.
+	incomingPhone := phoneForJID(s, evt.From)
+	incomingName := m.whatsappContactName(s, evt.From, "")
+	if ac, ok := s.callReg.get(callID); ok {
+		ac.setIdentity(evt.From.ToNonAD().String(), incomingPhone, incomingName)
+	}
 	cm.HandleCallOffer(ctx, node, evt.From)
 	go func() {
 		t := time.NewTimer(time.Duration(ringSeconds) * time.Second)
@@ -812,6 +868,9 @@ func (m *Manager) startEmbeddedCall(w http.ResponseWriter, r *http.Request) {
 	}
 	externalCallID := signaling.GenerateCallID()
 	cm := m.createCallManager(s, externalCallID, in.CallID)
+	if ac, ok := s.callReg.get(externalCallID); ok {
+		ac.setIdentity(strings.TrimSpace(in.RemoteJID), strings.TrimSpace(in.Phone), strings.TrimSpace(in.DisplayName))
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 55*time.Second)
 	defer cancel()
 	if err := cm.StartCall(ctx, externalCallID, peer, false); err != nil {

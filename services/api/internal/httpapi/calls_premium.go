@@ -578,7 +578,16 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 		if in.ExternalCallID == "" {
 			in.ExternalCallID = fmt.Sprintf("wamercio-call-%d", time.Now().UnixNano())
 		}
-		err := s.db.QueryRow(r.Context(), `INSERT INTO whatsapp_calls(store_id,conversation_id,remote_jid,phone,display_name,direction,status,assigned_staff_id,external_call_id,metadata) VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid,$9,$10::jsonb) RETURNING id::text`, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), in.DisplayName, in.Direction, in.Status, in.AssignedStaffID, in.ExternalCallID, mustJSON(in.Metadata)).Scan(&in.CallID)
+		// Incoming offer/state callbacks can arrive concurrently. The partial
+		// unique index introduced in 4.3.4 makes (store,external_call_id) the
+		// canonical call identity; this upsert turns duplicate callbacks into
+		// updates of the same row instead of duplicate missed calls.
+		err := s.db.QueryRow(r.Context(), `
+			INSERT INTO whatsapp_calls(store_id,conversation_id,remote_jid,phone,display_name,direction,status,assigned_staff_id,external_call_id,metadata)
+			VALUES($1,NULLIF($2,'')::uuid,$3,$4,$5,$6,$7,NULLIF($8,'')::uuid,$9,$10::jsonb)
+			ON CONFLICT (store_id,external_call_id) WHERE external_call_id<>''
+			DO UPDATE SET updated_at=now()
+			RETURNING id::text`, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), in.DisplayName, in.Direction, in.Status, in.AssignedStaffID, in.ExternalCallID, mustJSON(in.Metadata)).Scan(&in.CallID)
 		if err != nil {
 			jsonErr(w, 500, "No se pudo registrar la llamada")
 			return
@@ -588,9 +597,21 @@ func (s *Server) callEngineEvent(w http.ResponseWriter, r *http.Request) {
 	// Call lifecycle is monotonic even though persistence callbacks are sent
 	// asynchronously. Terminal states never resurrect, Active/Held never regress
 	// to Ringing/Connecting, and Connecting never regresses to Ringing.
-	var persistedStatus string
-	_ = s.db.QueryRow(r.Context(), `SELECT status FROM whatsapp_calls WHERE id=$1 AND store_id=$2`, in.CallID, in.StoreID).Scan(&persistedStatus)
+	var persistedStatus, persistedDirection, persistedPhone, persistedName string
+	_ = s.db.QueryRow(r.Context(), `SELECT status,direction,coalesce(phone,''),coalesce(display_name,'') FROM whatsapp_calls WHERE id=$1 AND store_id=$2`, in.CallID, in.StoreID).Scan(&persistedStatus, &persistedDirection, &persistedPhone, &persistedName)
 	in.Status = preserveCallProgress(persistedStatus, in.Status)
+	// The operator-selected destination is authoritative for outgoing calls.
+	// WhatsApp may swap the signaling peer from PN to an opaque @lid after the
+	// offer/accept exchange; never let that transport identity overwrite what
+	// the operator dialed or the resolved contact/business name.
+	if persistedDirection == "out" {
+		if strings.TrimSpace(persistedPhone) != "" {
+			in.Phone = persistedPhone
+		}
+		if strings.TrimSpace(persistedName) != "" {
+			in.DisplayName = persistedName
+		}
+	}
 	answeredSQL := "answered_at"
 	ended := callStatusTerminal(in.Status)
 	_, _ = s.db.Exec(r.Context(), fmt.Sprintf(`UPDATE whatsapp_calls SET status=$1,assigned_staff_id=coalesce(NULLIF($2,'')::uuid,assigned_staff_id),external_call_id=coalesce(NULLIF($3,''),external_call_id),recording_url=coalesce(NULLIF($4,''),recording_url),transcript=coalesce(NULLIF($5,''),transcript),metadata=metadata||$6::jsonb,%s=CASE WHEN $1='active' THEN coalesce(%s,now()) ELSE %s END,ended_at=CASE WHEN $7 THEN coalesce(ended_at,now()) ELSE ended_at END,duration_seconds=CASE WHEN $7 AND %s IS NOT NULL THEN greatest(0,extract(epoch FROM (coalesce(ended_at,now())-%s))::int) ELSE duration_seconds END,conversation_id=coalesce(NULLIF($10,'')::uuid,conversation_id),remote_jid=coalesce(NULLIF($11,''),remote_jid),phone=coalesce(NULLIF($12,''),phone),display_name=coalesce(NULLIF($13,''),display_name),updated_at=now() WHERE id=$8 AND store_id=$9`, answeredSQL, answeredSQL, answeredSQL, answeredSQL, answeredSQL), in.Status, in.AssignedStaffID, in.ExternalCallID, in.RecordingURL, in.Transcript, mustJSON(in.Metadata), ended, in.CallID, in.StoreID, in.ConversationID, in.RemoteJID, normalizePhone(in.Phone), strings.TrimSpace(in.DisplayName))

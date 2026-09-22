@@ -1,6 +1,6 @@
-# WAMERCIO 4.3.3
+# WAMERCIO 4.3.4
 
-> **V4.3.3 — SOFTPHONE UNIFICADO + LLAMADAS FUNCIONALES:** usa una sola interfaz de softphone para negocios y SuperAdmin, corrige la activación de llamadas salientes/entrantes, hace que el directorio del SuperAdmin llame al WhatsApp real de cada negocio y mejora el diagnóstico del audio WebRTC. Agrega la migración `000049_unified_softphone_calls` para activar WAMERCIO Calls por defecto. Consulta `IMPLEMENTACION_V4.3.3_SOFTPHONE_UNIFICADO.md`.
+> **V4.3.4 — ESTABILIDAD TOTAL DEL SOFTPHONE:** corrige identidad PN/LID, nombres `<nil>`, llamadas entrantes duplicadas y pérdidas temporales del audio WebRTC. Mantiene un único `CallsSoftphone` para negocios y SuperAdmin e incorpora la migración `000050_calls_identity_dedupe`. Consulta `IMPLEMENTACION_V4.3.4_SOFTPHONE_ESTABLE.md`.
 
 # WAMERCIO 4.3.1
 

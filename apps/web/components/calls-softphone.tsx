@@ -76,6 +76,9 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const[pipOpening,setPipOpening]=useState(false)
   const[pipTransfer,setPipTransfer]=useState(false)
   const browserCall=useRef<WamercioBrowserCall|null>(null)
+  const audioReconnectTimer=useRef<ReturnType<typeof setTimeout>|null>(null)
+  const audioReconnectAttempts=useRef(0)
+  const audioGeneration=useRef(0)
   const dialingRef=useRef(false)
   const lastIncoming=useRef('')
   const wasOpen=useRef(false)
@@ -85,9 +88,13 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
   const activeAnchorRef=useRef<{callId:string;at:number}>({callId:'',at:0})
   const[clock,setClock]=useState(()=>Date.now())
 
-  const closeAudio=useCallback(()=>{
-    browserCall.current?.close()
+  const closeAudio=useCallback((resetRetries=true)=>{
+    audioGeneration.current+=1
+    if(audioReconnectTimer.current){clearTimeout(audioReconnectTimer.current);audioReconnectTimer.current=null}
+    if(resetRetries)audioReconnectAttempts.current=0
+    const current=browserCall.current
     browserCall.current=null
+    current?.close()
     setAudioCallId('')
     setMuted(false)
   },[])
@@ -198,38 +205,71 @@ const CallsSoftphone=forwardRef<CallsSoftphoneHandle,{
     return all.filter(x=>(directoryKind==='all'||x.kind===directoryKind)&&(!q||(x.name+' '+x.phone+' '+x.subtitle).toLowerCase().includes(q))).slice(0,80)
   },[customers,contacts,staff,directorySearch,directoryKind])
 
-  const connectAudio=async(id:string)=>{
+  const connectAudio=async(id:string,automatic=false)=>{
+    if(!id)return
     setAudioBusy(id)
-    setError('')
+    if(!automatic)setError('')
+    const rowIsLive=()=>{const row=rowsRef.current.find(x=>x.id===id);return !!row&&!terminalStatuses.has(String(row.status||''))}
+    const scheduleReconnect=(reason='')=>{
+      if(!rowIsLive())return false
+      if(audioReconnectAttempts.current>=4){
+        setError(reason||'El audio del navegador no pudo recuperarse automáticamente. Pulsa “Reconectar audio” para intentarlo de nuevo.')
+        return false
+      }
+      audioReconnectAttempts.current+=1
+      const attempt=audioReconnectAttempts.current
+      const delay=[800,1600,3000,5000][Math.min(attempt-1,3)]
+      if(audioReconnectTimer.current)clearTimeout(audioReconnectTimer.current)
+      setError(`Reconectando audio automáticamente… intento ${attempt} de 4.`)
+      audioReconnectTimer.current=setTimeout(()=>{audioReconnectTimer.current=null;void connectAudio(id,true)},delay)
+      return true
+    }
     try{
-      if(browserCall.current?.id===id)return
-      closeAudio()
-      const bc=await openWamercioCallAudio(id,()=>{
+      const existing=browserCall.current
+      if(existing?.id===id&&existing.pc.connectionState!=='failed'&&existing.pc.connectionState!=='closed')return
+      // Do not let a stale browser leg from the same call clear a newer one.
+      // Each negotiation gets a generation token and only the newest token may
+      // update softphone state.
+      closeAudio(false)
+      const generation=++audioGeneration.current
+      let nextCall:WamercioBrowserCall|null=null
+      nextCall=await openWamercioCallAudio(id,()=>{
+        if(generation!==audioGeneration.current||browserCall.current!==nextCall){nextCall?.close();return}
         const active=browserCall.current
-        if(active?.id===id)browserCall.current=null
+        browserCall.current=null
+        active?.close()
         setAudioCallId(v=>v===id?'':v)
         setMuted(false)
-        const row=rowsRef.current.find(x=>x.id===id)
-        if(row&&['active','held','connecting'].includes(row.status))setError('Se perdió el audio del navegador. Pulsa “Reconectar audio” para continuar escuchando; la llamada de WhatsApp sigue activa mientras el motor la conserve.')
+        if(!scheduleReconnect('Se perdió el audio del navegador. La llamada de WhatsApp sigue activa; pulsa “Reconectar audio” para continuar escuchando.')){
+          const row=rowsRef.current.find(x=>x.id===id)
+          if(row&&!terminalStatuses.has(String(row.status||'')))setError('Se perdió el audio del navegador. La llamada de WhatsApp sigue activa; pulsa “Reconectar audio” para continuar escuchando.')
+        }
       },()=>{
+        if(generation!==audioGeneration.current)return
         const answeredAt=new Date().toISOString()
         setMediaActiveCallId(id)
         setRows(v=>v.map(row=>row.id===id&&['ringing','connecting'].includes(row.status)?{...row,status:'active',answered_at:row.answered_at||answeredAt}:row))
       },scope==='superadmin'?(callId)=>`/api/v1/admin/whatsapp/calls/${encodeURIComponent(callId)}/webrtc`:undefined)
-      browserCall.current=bc
+      if(generation!==audioGeneration.current){nextCall.close();return}
+      browserCall.current=nextCall
       setAudioCallId(id)
       setMuted(false)
+      audioReconnectAttempts.current=0
+      if(audioReconnectTimer.current){clearTimeout(audioReconnectTimer.current);audioReconnectTimer.current=null}
+      setError('')
     }catch(e:any){
       const networkHint=settings?.webrtc_external_ip_configured===false
         ?' La llamada puede seguir activa, pero el audio del navegador requiere configurar WAMERCIO_WEBRTC_EXTERNAL_IP con la IP pública del servidor.'
         :settings?.webrtc_udp_range_configured===false
           ?' La llamada puede seguir activa, pero el rango UDP de WebRTC no está configurado/publicado.'
           :''
-      setError((e.message||'No se pudo conectar el audio del navegador.')+networkHint)
+      const message=(e.message||'No se pudo conectar el audio del navegador.')+networkHint
+      if(!(automatic&&scheduleReconnect(message)))setError(message)
     }finally{
-      setAudioBusy('')
+      setAudioBusy(v=>v===id?'':v)
     }
   }
+
 
   const toggleMute=()=>{
     const next=!muted

@@ -77,7 +77,7 @@ export async function openWamercioCallAudio(callId: string, onUnexpectedClose?: 
       if (disconnectTimer) clearTimeout(disconnectTimer)
       disconnectTimer = setTimeout(() => {
         if (pc.connectionState === 'disconnected') notifyUnexpectedClose()
-      }, 5000)
+      }, 15000)
     } else if (disconnectTimer) {
       clearTimeout(disconnectTimer)
       disconnectTimer = undefined
