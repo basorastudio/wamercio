@@ -118,7 +118,7 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
   const relationshipNav=relationship.filter(item=>!(isQuote&&item.href==='/loyalty')).map(item=>cloneNav(item))
   const accountSettings=storeCount!==null&&storeCount>1?[...settings.map(item=>cloneNav(item)),cloneNav(storesNav)]:settings.map(item=>cloneNav(item))
 
-  const groups:[string,NavItem[]][]=[
+  const groupCandidates:[string,NavItem[]][]= [
     ['Principal',primaryCore],
     ['Ventas',operationsNav],
     ['Catálogo',catalogNav],
@@ -128,7 +128,8 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
     ['Relación con clientes',relationshipNav],
     ['Informes',insights.map(item=>cloneNav(item))],
     ['Ajustes',accountSettings],
-  ].filter(([,items])=>items.length>0)
+  ]
+  const groups=groupCandidates.filter(([,items])=>items.length>0)
 
   const all=groups.flatMap(([,items])=>items)
   const bottom=[primaryCore[0],primaryCore[1],operationsNav[0]||engage[0],catalogNav[0]||storefront[0]].filter(Boolean) as NavItem[]

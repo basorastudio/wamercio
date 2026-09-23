@@ -1,3 +1,14 @@
+# WAMERCIO 4.5.4 — Corrección de build y tipado de navegación
+
+- Corrige el fallo de compilación de `apps/web/components/store-shell.tsx` causado por la inferencia de TypeScript después de aplicar `.filter()` directamente sobre un arreglo de tuplas.
+- Se separa la construcción de `groupCandidates` del filtrado final para conservar el tipo `[string, NavItem[]][]`.
+- Corrige un cierre JSX faltante en `TemplateSidebarPreview` dentro de `platform-landing.tsx`.
+- Añade `LandingFeature` para tipar las tarjetas adaptativas de la landing y evitar `implicit any` en el render de beneficios.
+- Se ejecutó una validación de sintaxis/transpilación sobre todos los archivos `.ts/.tsx` de `app/`, `components/` y `lib/`.
+- Se elimina `tsconfig.tsbuildinfo` del paquete final para evitar artefactos incrementales locales obsoletos durante el despliegue.
+
+---
+
 # WAMERCIO 4.5.0 — WA UI Chat unificado
 
 ## Conversaciones
