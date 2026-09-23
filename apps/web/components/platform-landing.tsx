@@ -4,6 +4,7 @@ import Link from 'next/link'
 import {useEffect,useMemo,useState} from 'react'
 import {QRCodeSVG} from 'qrcode.react'
 import AccessModal from '@/components/access-modal'
+import WamercioLogo from '@/components/wamercio-logo'
 import {api,money} from '@/lib/api'
 import type {Plan} from '@/lib/types'
 import {
@@ -13,16 +14,45 @@ import {
   X,Menu,Star,Send,Plus,Minus,Clock3,MapPin,MousePointerClick
 } from 'lucide-react'
 
+type LandingTemplate={
+  id:string
+  slug:string
+  name:string
+  family:string
+  description:string
+  icon:string
+  engine:string
+  settings?:Record<string,any>
+  is_featured?:boolean
+  sort_order?:number
+}
+
 function Brand({light=false,subtitle=true}:{light?:boolean;subtitle?:boolean}){
-  return <span className="inline-flex items-center gap-2.5">
-    <span className={`grid h-9 w-9 place-items-center rounded-xl ${light?'bg-white text-[#0b5d3b]':'bg-[#0b5d3b] text-white'} shadow-sm`}>
-      <span className="text-[15px] font-black tracking-[-.08em]">W</span>
-    </span>
-    <span className="leading-none">
-      <span className={`block text-[17px] font-extrabold tracking-[-.035em] ${light?'text-white':'text-[#0a3f2a]'}`}>WAMERCIO</span>
-      {subtitle&&<span className={`mt-1 block text-[8px] font-bold uppercase tracking-[.18em] ${light?'text-white/60':'text-[#6e6759]'}`}>Comercio conversacional</span>}
-    </span>
-  </span>
+  return <WamercioLogo light={light} subtitle={subtitle?'Comercio conversacional':false}/>
+}
+
+function templateSignals(template:LandingTemplate){
+  const settings=template.settings||{}
+  const signals:string[]=[]
+  if(settings.appointments)signals.push('Reservas')
+  if(settings.quotation||template.engine==='quotation')signals.push('Cotizaciones')
+  if(settings.wholesale||template.engine==='wholesale')signals.push('Mayoreo')
+  if(settings.delivery_enabled!==false&&template.engine!=='services')signals.push('Delivery')
+  if(settings.supports_dine_in)signals.push('Mesas')
+  if(settings.supports_variants)signals.push('Variantes')
+  if(settings.track_stock_default)signals.push('Inventario')
+  if(settings.personalization)signals.push('Personalización')
+  if(signals.length===0)signals.push(template.engine==='services'?'Agenda y CRM':'Pedidos y catálogo')
+  return signals.slice(0,4)
+}
+
+function templatePanelSummary(template:LandingTemplate){
+  const settings=template.settings||{}
+  if(settings.appointments)return ['Agenda','CRM','Reseñas']
+  if(settings.quotation||template.engine==='quotation')return ['Catálogo técnico','Cotizaciones','Seguimiento']
+  if(settings.wholesale||template.engine==='wholesale')return ['Catálogo mayorista','Clientes','Pedidos']
+  if(settings.supports_dine_in)return ['Pedidos','Mesas','Delivery']
+  return ['Catálogo','Pedidos','Clientes']
 }
 
 function HeroDashboardMock({landing,text}:{landing:any;text:(v:any,f:string)=>string}){
@@ -119,9 +149,11 @@ export default function Landing(){
   const[accessOpen,setAccessOpen]=useState(false)
   const[mobileOpen,setMobileOpen]=useState(false)
   const[plans,setPlans]=useState<Plan[]>([])
+  const[templates,setTemplates]=useState<LandingTemplate[]>([])
   const[platform,setPlatform]=useState<any>(null)
   useEffect(()=>{
     api<Plan[]>('/plans').then(setPlans).catch(()=>{})
+    api<LandingTemplate[]>('/templates').then(setTemplates).catch(()=>{})
     api('/public/platform').then(setPlatform).catch(()=>{})
     if(typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('access')==='1')setAccessOpen(true)
   },[])
@@ -137,6 +169,12 @@ export default function Landing(){
     {icon:BarChart3,title:text(landing.feature_5_title,'Ventas que sí puedes medir'),copy:text(landing.feature_5_text,'Consulta pedidos, ingresos, productos y movimientos con una lectura clara de lo que está pasando.'),details:['Indicadores comerciales','Historial de pedidos','Visibilidad de la operación']},
     {icon:UsersRound,title:text(landing.feature_6_title,'Conoce a cada cliente'),copy:text(landing.feature_6_text,'Une el contacto de WhatsApp con compras, notas, direcciones y conversaciones anteriores.'),details:['CRM por WhatsApp','Historial de compras','Datos de entrega']},
   ],[landing])
+  const templateShowcase=useMemo(()=>[...templates].sort((a,b)=>Number(!!b.is_featured)-Number(!!a.is_featured)||Number(a.sort_order||999)-Number(b.sort_order||999)).slice(0,6),[templates])
+  const adaptiveUseCases=useMemo(()=>[
+    {title:'Comida rápida y restaurantes',copy:'Prioriza menú, delivery, punto de venta, cocina y consumo en mesa cuando el negocio lo necesita.',pill:'Food-first',points:['Pedidos + caja','Combos y extras','Mesas, reservas o delivery']},
+    {title:'Servicios y citas',copy:'En negocios de servicio, el panel muestra agenda, CRM, reseñas y seguimiento en vez de saturar con módulos de inventario.',pill:'Service-first',points:['Agenda y reservas','CRM y recordatorios','Reseñas y fidelización']},
+    {title:'Catálogos técnicos, cotizaciones y mayoreo',copy:'Ideal para ferreterías, repuestos, tecnología o distribuidores que venden por consulta antes de cerrar la venta.',pill:'Quote-first',points:['Cotizaciones','Campos técnicos','Seguimiento comercial']}
+  ],[])
 
   if(landing.maintenance_mode)return <main className="grid min-h-dvh place-items-center bg-[#fbf8f3] p-6 text-[#0a3f2a]"><AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/><div className="w-full max-w-2xl rounded-[28px] border border-[#e6ded1] bg-white p-8 shadow-[0_30px_80px_rgba(25,22,17,.10)] sm:p-12"><Brand/><div className="mt-8 inline-flex rounded-full bg-[#e3f6ea] px-3 py-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#0e8347]">{text(landing.maintenance_badge,'Mantenimiento programado')}</div><h1 className="mt-5 text-3xl font-extrabold tracking-[-.035em] sm:text-4xl">{text(landing.maintenance_title,'Estamos realizando mejoras en la página principal')}</h1><p className="mt-4 text-sm leading-7 text-[#6e6759]">{text(landing.maintenance_text,'La página principal estará temporalmente en mantenimiento. Los negocios activos continúan operando desde sus enlaces públicos.')}</p><button onClick={open} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-[#bd431e] px-5 py-3 text-sm font-bold text-white">{text(landing.maintenance_button_label,'Entrar al panel de administración')}<ArrowRight className="h-4 w-4"/></button></div></main>
 
@@ -205,6 +243,24 @@ export default function Landing(){
       <div className="mx-auto grid max-w-[1180px] gap-10 px-5 sm:px-8 lg:grid-cols-[.75fr_1.25fr] lg:px-10">
         <div className="lg:pt-4"><div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#6e6759]">El centro de control</div><h2 className="mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">Todo lo que necesitas para operar. Nada de lo que no necesitas.</h2><p className="mt-5 max-w-md text-sm leading-7 text-[#5c675f]">WAMERCIO conecta catálogo, pedidos, clientes, pagos y WhatsApp en una sola experiencia, con flujos diseñados para negocios dominicanos.</p><button onClick={open} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-[#bd431e] px-5 py-3 text-sm font-bold text-white">Crear mi comercio<ArrowRight className="h-4 w-4"/></button></div>
         <div><div className="grid gap-4 sm:grid-cols-2">{features.map(({icon:I,title,copy,details},index)=><article key={title} className="rounded-[22px] border border-[#dfd6c9] bg-white p-5 sm:p-6"><span className={`grid h-9 w-9 place-items-center rounded-xl ${index===0?'bg-[#e3f6ea] text-[#0e8347]':index===1?'bg-[#f6e6df] text-[#bd431e]':'bg-[#f3eee5] text-[#0a3f2a]'}`}><I className="h-[18px] w-[18px]"/></span><h3 className="mt-4 text-base font-bold text-[#0a3f2a]">{title}</h3><p className="mt-2 text-xs leading-5 text-[#6e6759]">{copy}</p><ul className="mt-4 space-y-2 text-[11px] text-[#5c675f]">{details.map(x=><li key={x} className="flex items-center gap-2"><Check className="h-3.5 w-3.5 text-[#0e8347]"/>{x}</li>)}</ul></article>)}</div><div className="mt-4 grid gap-2 sm:grid-cols-2"><div className="rounded-xl bg-[#0b5d3b] px-4 py-3 text-center text-[10px] font-bold text-white">{text(landing.features_strip_primary,'WAMERCIO organiza catálogo, pedidos, clientes y WhatsApp en un solo lugar.')}</div><div className="rounded-xl bg-[#bd431e] px-4 py-3 text-center text-[10px] font-bold text-white">{text(landing.features_strip_secondary,'Tu operación sigue siendo simple aunque tu negocio crezca.')}</div></div></div>
+      </div>
+    </section>
+
+    <section className="py-20 sm:py-24 lg:py-28">
+      <div className="mx-auto max-w-[1180px] px-5 sm:px-8 lg:px-10">
+        <div className="grid gap-10 lg:grid-cols-[.82fr_1.18fr]">
+          <div>
+            <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Plantillas activas por negocio</div>
+            <h2 className="mt-3 text-3xl font-extrabold leading-[1.02] tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">La página comercial ahora explica qué resuelve WAMERCIO según el tipo de negocio.</h2>
+            <p className="mt-4 max-w-xl text-sm leading-7 text-[#5c675f]">En lugar de una landing genérica, mostramos plantillas reales y explicamos cómo el panel se adapta a comida, servicios, cotizaciones y operaciones de catálogo.</p>
+            <div className="mt-7 space-y-3">{adaptiveUseCases.map(card=><div key={card.title} className="rounded-[22px] border border-[#e2dbd0] bg-white px-5 py-4"><div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-[#e3f6ea] px-2.5 py-1 text-[9px] font-extrabold uppercase tracking-[.14em] text-[#0e8347]">{card.pill}</span><h3 className="text-sm font-bold text-[#0a3f2a]">{card.title}</h3></div><p className="mt-2 text-xs leading-5 text-[#6e6759]">{card.copy}</p><div className="mt-3 flex flex-wrap gap-2">{card.points.map(point=><span key={point} className="rounded-full border border-[#e8e0d4] bg-[#fffdf9] px-2.5 py-1 text-[10px] font-semibold text-[#46584f]">{point}</span>)}</div></div>)}</div>
+          </div>
+          <div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {templateShowcase.length?templateShowcase.map(template=><article key={template.id} className="rounded-[24px] border border-[#e2dbd0] bg-white p-5 shadow-[0_16px_40px_rgba(25,22,17,.05)]"><div className="flex items-start gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-[#e3f6ea] text-2xl">{template.icon||'✨'}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h3 className="text-base font-extrabold text-[#0a3f2a]">{template.name}</h3>{template.is_featured&&<span className="rounded-full bg-[#f6e6df] px-2 py-1 text-[9px] font-extrabold uppercase tracking-wide text-[#bd431e]">Destacada</span>}</div><p className="mt-1 text-[10px] font-bold uppercase tracking-[.12em] text-[#0e8347]">{template.family}</p><p className="mt-2 text-xs leading-5 text-[#6e6759]">{template.description}</p></div></div><div className="mt-4 flex flex-wrap gap-2">{templateSignals(template).map(signal=><span key={signal} className="rounded-full border border-[#e8e0d4] bg-[#fffdf9] px-2.5 py-1 text-[10px] font-semibold text-[#46584f]">{signal}</span>)}</div><div className="mt-4 grid grid-cols-3 gap-2">{templatePanelSummary(template).map(item=><div key={item} className="rounded-2xl bg-[#f7f5ef] px-3 py-2 text-center text-[10px] font-bold text-[#0a3f2a]">{item}</div>)}</div></article>):<div className="rounded-[24px] border border-[#e2dbd0] bg-white p-8 text-sm text-[#6e6759] md:col-span-2">Las plantillas aparecerán aquí en cuanto estén disponibles.</div>}
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 

@@ -3,6 +3,9 @@ import Link from 'next/link'
 import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useLayoutEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
+import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
+import type {Store as StoreModel} from '@/lib/types'
+import WamercioLogo from '@/components/wamercio-logo'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
@@ -65,7 +68,72 @@ const reservationsNav={href:'/reservations',label:'Reservaciones',icon:CalendarC
 const kdsNav={href:'/kds',label:'KDS',icon:ChefHat}
 const tablesNav={href:'/tables',label:'Gestión de mesas',icon:UtensilsCrossed}
 const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
-const bottom=[core[0],core[1],sales[0],catalog[0]]
+type NavItem={href:string;label:string;icon:any}
+
+const cloneNav=(item:NavItem,patch:Partial<NavItem>={})=>({...item,...patch})
+const titleCase=(value:string)=>value?value.charAt(0).toUpperCase()+value.slice(1):value
+
+function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:number|null){
+  const caps=resolveBusinessCapabilities(store)
+  const engine=caps.engine
+  const isFood=engine==='food'
+  const isService=caps.isService
+  const isQuote=caps.quotation||engine==='quotation'
+  const isWholesale=caps.wholesale||engine==='wholesale'
+  const dineInEnabled=!!store?.dine_in_enabled||caps.supportsDineIn
+  const deliveryEnabled=store?.delivery_enabled===undefined?caps.supportsDelivery:!!store?.delivery_enabled
+
+  const primaryCore=[
+    cloneNav(core[0]),
+    cloneNav(core[1],{label:caps.appointments?'Reservas':isQuote?'Solicitudes':'Pedidos'}),
+    cloneNav(core[2],{label:isWholesale?'Clientes':'Clientes'})
+  ]
+
+  let salesNav=sales.map(item=>cloneNav(item))
+  if(isService)salesNav=salesNav.filter(item=>item.href!=='/pos')
+  if(isQuote)salesNav=salesNav.filter(item=>item.href==='/quotes')
+  if(isWholesale)salesNav=salesNav.filter(item=>item.href!=='/cash')
+
+  let catalogNav=catalog.map(item=>cloneNav(item,{label:item.href==='/catalog/products'?titleCase(caps.itemPlural):item.label}))
+  catalogNav=catalogNav.filter(item=>{
+    if(item.href==='/catalog/combos')return isFood
+    if(item.href==='/product-attributes')return !isService
+    if(item.href==='/coupons')return !isService&&!isQuote&&!isWholesale
+    if(item.href==='/promotions')return !isQuote
+    return true
+  })
+  if(isService){
+    catalogNav=catalogNav.map(item=>item.href==='/catalog/products'?{...item,label:'Servicios'}:item)
+  }
+  if(isQuote){
+    catalogNav=catalogNav.map(item=>item.href==='/catalog/products'?{...item,label:'Catálogo'}:item)
+  }
+
+  const operationsNav=[
+    ...salesNav,
+    ...(caps.appointments?[cloneNav(reservationsNav,{label:isService?'Agenda':'Reservaciones'})]:[]),
+    ...(dineInEnabled?[cloneNav(kdsNav),cloneNav(tablesNav)]:[])
+  ]
+  const businessOps=businessOperations.filter(item=>item.href==='/delivery'?deliveryEnabled:true).map(item=>cloneNav(item))
+  const relationshipNav=relationship.filter(item=>!(isQuote&&item.href==='/loyalty')).map(item=>cloneNav(item))
+  const accountSettings=storeCount!==null&&storeCount>1?[...settings.map(item=>cloneNav(item)),cloneNav(storesNav)]:settings.map(item=>cloneNav(item))
+
+  const groups:[string,NavItem[]][]=[
+    ['Principal',primaryCore],
+    ['Ventas',operationsNav],
+    ['Catálogo',catalogNav],
+    ['Operación',businessOps],
+    ['Tienda online',storefront.map(item=>cloneNav(item))],
+    ['Interacción',engage.map(item=>cloneNav(item))],
+    ['Relación con clientes',relationshipNav],
+    ['Informes',insights.map(item=>cloneNav(item))],
+    ['Ajustes',accountSettings],
+  ].filter(([,items])=>items.length>0)
+
+  const all=groups.flatMap(([,items])=>items)
+  const bottom=[primaryCore[0],primaryCore[1],operationsNav[0]||engage[0],catalogNav[0]||storefront[0]].filter(Boolean) as NavItem[]
+  return {groups,all,bottom}
+}
 
 function NavLink({n,onClick,collapsed}:{n:any;onClick?:()=>void;collapsed?:boolean}){
   const path=usePathname()
@@ -83,11 +151,10 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const[me,setMe]=useState<any>(null)
  const[stores,setStores]=useState<any[]|null>(null)
  const[collapsed,setCollapsed]=useState(false)
- const[dineInNav,setDineInNav]=useState(false)
  const[activeStoreId,setActiveStoreId]=useState('')
  useEffect(()=>{api('/me').then((x:any)=>{if(x.role!=='owner')throw new Error('role');setMe(x)}).catch(()=>router.replace('/login'))},[router])
- useLayoutEffect(()=>{if(typeof window==='undefined')return;const remembered=localStorage.getItem('wamercio_store_id')||'';if(remembered){setActiveStoreId(remembered);const cached=localStorage.getItem(`wamercio_store_dine_in_${remembered}`);if(cached!==null)setDineInNav(cached==='1')}},[])
- useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(rows=>{setStores(rows);if(typeof window!=='undefined'){const remembered=localStorage.getItem('wamercio_store_id')||rows.find((x:any)=>x.is_active!==false)?.id||rows[0]?.id||'';const selected=rows.find((x:any)=>x.id===remembered)??rows.find((x:any)=>x.is_active!==false)??rows[0];if(selected?.id)setActiveStoreId(selected.id);const enabled=!!selected?.dine_in_enabled;setDineInNav(enabled);if(remembered)localStorage.setItem(`wamercio_store_dine_in_${remembered}`,enabled?'1':'0')}}).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;const onActive=(event:any)=>{const id=String(event?.detail?.store_id||localStorage.getItem('wamercio_store_id')||'');setActiveStoreId(id);const cached=id?localStorage.getItem(`wamercio_store_dine_in_${id}`):null;if(cached!==null)setDineInNav(cached==='1');void refresh()};const onSettings=()=>void refresh();window.addEventListener('wamercio:stores-changed',refresh);window.addEventListener('wamercio:active-store-changed',onActive);window.addEventListener('wamercio:store-settings-changed',onSettings);return()=>{window.removeEventListener('wamercio:stores-changed',refresh);window.removeEventListener('wamercio:active-store-changed',onActive);window.removeEventListener('wamercio:store-settings-changed',onSettings)}},[])
+ useLayoutEffect(()=>{if(typeof window==='undefined')return;const remembered=localStorage.getItem('wamercio_store_id')||'';if(remembered)setActiveStoreId(remembered)},[])
+ useEffect(()=>{const refresh=()=>api<any[]>('/stores').then(rows=>{setStores(rows);if(typeof window!=='undefined'){const remembered=localStorage.getItem('wamercio_store_id')||rows.find((x:any)=>x.is_active!==false)?.id||rows[0]?.id||'';const selected=rows.find((x:any)=>x.id===remembered)??rows.find((x:any)=>x.is_active!==false)??rows[0];if(selected?.id)setActiveStoreId(selected.id)}}).catch(()=>setStores([]));refresh();if(typeof window==='undefined')return;const onActive=(event:any)=>{const id=String(event?.detail?.store_id||localStorage.getItem('wamercio_store_id')||'');setActiveStoreId(id);void refresh()};const onSettings=()=>void refresh();window.addEventListener('wamercio:stores-changed',refresh);window.addEventListener('wamercio:active-store-changed',onActive);window.addEventListener('wamercio:store-settings-changed',onSettings);return()=>{window.removeEventListener('wamercio:stores-changed',refresh);window.removeEventListener('wamercio:active-store-changed',onActive);window.removeEventListener('wamercio:store-settings-changed',onSettings)}},[])
  useEffect(()=>{if(typeof window==='undefined')return;setCollapsed(localStorage.getItem(SIDEBAR_KEY)==='1')},[])
  useEffect(()=>{if(typeof window==='undefined'||!activeStoreId)return;localStorage.setItem('wamercio_store_id',activeStoreId);window.dispatchEvent(new CustomEvent('wamercio:active-store-changed',{detail:{store_id:activeStoreId}}))},[activeStoreId])
 
@@ -98,32 +165,27 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const logout=async()=>{await api('/auth/store/logout',{method:'POST'}).catch(()=>{});router.replace('/login')}
  const storeCount=stores?.length??null
  const primaryStore=useMemo(()=>stores?.find((store:any)=>store.is_active!==false)??stores?.[0]??null,[stores])
+ const selectedStore=useMemo(()=>stores?.find((store:any)=>store.id===activeStoreId)??primaryStore??null,[stores,activeStoreId,primaryStore])
+ const navigation=useMemo(()=>buildMerchantNavigation(selectedStore,storeCount),[selectedStore,storeCount])
+ const groups=navigation.groups
+ const all=navigation.all
+ const bottom=navigation.bottom
+ const storeContextLabel=useMemo(()=>{
+   if(!selectedStore)return 'Operación general'
+   return selectedStore.template_name||selectedStore.business_engine||'Operación general'
+ },[selectedStore])
  const launchSoftphone=()=>{const id=activeStoreId||((typeof window!=='undefined'&&localStorage.getItem('wamercio_store_id'))||'')||primaryStore?.id||'';if(id)setActiveStoreId(id);if(typeof window!=='undefined')window.dispatchEvent(new CustomEvent('wamercio:open-softphone',{detail:{store_id:id,picture_in_picture:true}}))}
- const operations=useMemo(()=>dineInNav?[...sales,reservationsNav,kdsNav,tablesNav]:sales,[dineInNav])
- const accountSettings=useMemo(()=>storeCount!==null&&storeCount>1?[...settings,storesNav]:settings,[storeCount])
- const groups=useMemo(()=>[
-   ['Principal',core],
-   ['Ventas',operations],
-   ['Catálogo',catalog],
-   ['Operación',businessOperations],
-   ['Tienda online',storefront],
-   ['Interacción',engage],
-   ['Relación con clientes',relationship],
-   ['Informes',insights],
-   ['Ajustes',accountSettings],
- ],[operations,accountSettings])
- const all=useMemo(()=>[...core,...operations,...catalog,...businessOperations,...storefront,...engage,...relationship,...insights,...accountSettings],[operations,accountSettings])
  return <div data-sidebar-collapsed={collapsed?'true':'false'} className="merchant-ui group/shell min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
   {drawer&&<button aria-label="Cerrar menú" onClick={()=>setDrawer(false)} className="fixed inset-0 z-40 bg-[#2e3154]/25 lg:hidden"/>}
   <aside className={`merchant-sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#eceef4] bg-white transition-[width,transform] duration-200 lg:translate-x-0 ${collapsed?'w-[88px]':'w-[258px]'} ${drawer?'translate-x-0':'-translate-x-full'}`}>
    <div className={`merchant-brand flex h-[70px] items-center border-b border-[#f0f1f5] ${collapsed?'justify-center px-3':'gap-2.5 px-5'}`}>
-    <div className="grid h-9 w-9 shrink-0 place-items-center rounded-2xl bg-brand-500 text-sm font-semibold text-white shadow-sm">W</div>
-    {!collapsed&&<div className="min-w-0"><div className="truncate text-base font-semibold tracking-tight text-ink-900">wamercio</div><div className="text-[8px] font-medium uppercase tracking-[.16em] text-brand-600">Panel de comercio</div></div>}
+    <WamercioLogo mode={collapsed?'icon':'compact'} subtitle={collapsed?false:'Panel de comercio'} className="shrink-0"/>
     <button className="ml-auto rounded-xl p-2 text-[#a0a5b8] hover:bg-[#f5f6f9] lg:hidden" onClick={()=>setDrawer(false)}><X className="h-5 w-5"/></button>
    </div>
 
 
-   <nav className="flex-1 overflow-y-auto py-3">
+   <div className={`px-4 pb-2 ${collapsed?'lg:px-3':''}`}>{!collapsed&&<div className="rounded-2xl border border-[#edf0f4] bg-[#fafbfe] px-3 py-2.5"><div className="text-[9px] font-semibold uppercase tracking-[.14em] text-[#a4aabd]">Plantilla activa</div><div className="mt-1 truncate text-sm font-semibold text-ink-900">{selectedStore?.name||'Tu comercio'}</div><div className="truncate text-[11px] text-brand-700">{titleCase(String(storeContextLabel).replace(/_/g,' '))}</div></div>}</div>
+   <nav className="flex-1 overflow-y-auto py-1">
     {groups.map(([label,items]:any)=><div key={label} className="mb-3">{collapsed?<div className="mx-5 mb-2 mt-3 h-px bg-[#edf0f5]"/>:<p className="merchant-nav-section px-4 pb-1.5 pt-2 text-[9px] font-semibold uppercase tracking-[.14em] text-[#b0b4c4]">{label}</p>}{items.map((n:any)=><NavLink key={n.href} n={n} collapsed={collapsed} onClick={()=>setDrawer(false)}/>)}</div>)}
    </nav>
 

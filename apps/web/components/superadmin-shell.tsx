@@ -5,6 +5,7 @@ import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useMemo,useRef,useState} from 'react'
 import {api} from '@/lib/api'
 import SuperAdminSupportSoftphone from '@/components/superadmin-support-softphone'
+import WamercioLogo from '@/components/wamercio-logo'
 import {
   BadgeDollarSign,Bell,ChevronDown,ContactRound,FileText,Globe2,Home,LayoutDashboard,
   LifeBuoy,LogOut,Menu,MessageCircleMore,MonitorCog,PanelLeftClose,PanelLeftOpen,PhoneCall,
@@ -42,8 +43,7 @@ const navGroups:NavGroup[]=[
 
 function AdminBrand({collapsed=false}:{collapsed?:boolean}){
   return <Link href="/admin" className={`flex min-w-0 items-center ${collapsed?'justify-center':'gap-2.5'}`} aria-label="Ir al Dashboard de WAMERCIO">
-    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-white/90 text-[14px] font-black tracking-[-.08em] text-white">W</span>
-    {!collapsed&&<span className="min-w-0"><span className="block truncate text-[18px] font-extrabold tracking-[-.035em] text-white">WAMERCIO</span><span className="mt-0.5 block truncate text-[8px] font-bold uppercase tracking-[.18em] text-white/55">Administración SaaS</span></span>}
+    <WamercioLogo mode={collapsed?'icon':'compact'} light subtitle={collapsed?false:'Administración SaaS'}/>
   </Link>
 }
 
