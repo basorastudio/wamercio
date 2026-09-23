@@ -1,3 +1,17 @@
+# WAMERCIO 4.5.0 — WA UI Chat unificado
+
+## Conversaciones
+- Nuevo port interno `components/whatsapp-ui/wa-ui.tsx`, compatible con React 18 + Tailwind 3 y sin dependencias nuevas.
+- `/conversations` y `/admin/whatsapp` comparten la misma lista de chats, header, timeline, estados de entrega/lectura, separadores por fecha, compositor y empty state.
+- `WhatsAppMessageContent` se rediseñó para texto, enlaces, imagen, video, sticker, documento, audio/nota de voz, ubicación, contacto, encuesta, reacción, contenido comercial e interactivos.
+- Wallpaper propio de WAMERCIO; no se incorpora branding oficial de WhatsApp.
+- Se conserva la lógica actual: CRM, pedidos, carrito, SLA, colas, soporte, encuestas, adjuntos, respuestas rápidas y softphone.
+- Se incluye atribución MIT de WA UI en `apps/web/components/whatsapp-ui/WA-UI-LICENSE.txt` y `THIRD_PARTY_NOTICES.md`.
+- No hay migraciones ni cambios de contrato en API/WhatsApp bridge.
+- Caché PWA actualizada a `wamercio-store-v4.5.0`.
+
+---
+
 # WAMERCIO 4.4.0 — Operación diaria del negocio
 
 - Añade **Sucursales** dentro de cada tenant: ubicación, horario, WhatsApp, radio de delivery, estado, principal y catálogo/precio/disponibilidad por local.

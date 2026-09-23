@@ -1,5 +1,6 @@
-# WAMERCIO 4.4.0
-> **V4.4.0 — OPERACIÓN DIARIA DEL NEGOCIO:** incorpora sucursales, caja/turnos, TPV avanzado con pedidos telefónicos, opciones/modificadores en POS, combos, promociones automáticas en TPV y control de efectivo/liquidaciones de delivery, manteniendo el patrón visual WACatelog de WAMERCIO. Consulta `IMPLEMENTACION_V4.4.0_OPERACION_NEGOCIO.md`.
+# WAMERCIO 4.5.0
+> **V4.5.0 — WA UI CHAT UNIFICADO:** porta internamente el lenguaje visual de WA UI a React 18/Tailwind 3 sin cambiar el backend de WAMERCIO. Negocios y SuperAdmin comparten lista de chats, encabezado, burbujas, estados, separadores, compositor, multimedia y notas de voz, manteniendo CRM, pedidos, soporte y softphone. Consulta `IMPLEMENTACION_V4.5.0_WA_UI_CHAT_UNIFICADO.md`.
+
 
 > **V4.3.5 — CHAT DE SOPORTE UNIFICADO:** convierte WhatsApp de soporte del SuperAdmin en una bandeja de conversación a pantalla completa, visual y funcionalmente alineada con el chat de los negocios. Elimina cabeceras/banners duplicados y añade voz, adjuntos, encuestas, búsqueda, llamadas y contexto real del comerciante. Consulta `IMPLEMENTACION_V4.3.5_CHAT_SOPORTE_UNIFICADO.md`.
 
