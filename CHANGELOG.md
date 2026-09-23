@@ -1,3 +1,16 @@
+# WAMERCIO 4.4.0 — Operación diaria del negocio
+
+- Añade **Sucursales** dentro de cada tenant: ubicación, horario, WhatsApp, radio de delivery, estado, principal y catálogo/precio/disponibilidad por local.
+- Crea automáticamente una sucursal `Principal` para negocios existentes y futuros.
+- Añade **Caja** con apertura, fondo inicial, movimientos, ventas en efectivo, gastos, retiros, reembolsos, cierre, esperado/contado/diferencia e historial.
+- Rediseña el **Punto de Venta** para operar por sucursal e incorporar venta presencial, pedido telefónico y pedido para recoger, cliente rápido, catálogo local y caja integrada.
+- El TPV ahora valida y persiste **variantes, adicionales, grupos de modificadores y combos**, y aplica las promociones programadas existentes al confirmar la operación.
+- Añade una sección explícita de **Combos** construida sobre el motor de composición/bundles de WAMERCIO.
+- Amplía **Entregas** con cobro por repartidor, efectivo en calle, liquidaciones parciales o totales hacia una caja abierta e historial de liquidaciones.
+- Amplía el dashboard del comerciante con estado de caja, sucursales activas, efectivo pendiente de repartidores y ticket promedio.
+- Añade la migración `000051_business_operations` y endpoints REST para sucursales, caja y liquidaciones.
+- Invalida la caché PWA mediante `wamercio-store-v4.4.0`.
+
 # WAMERCIO 4.3.5 — Chat de soporte unificado
 
 - Rediseña completamente `/admin/whatsapp` para igualar el patrón visual y operativo de `/conversations`.

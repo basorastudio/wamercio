@@ -5,7 +5,7 @@ import {useEffect,useMemo,useState} from 'react'
 import StoreShell,{StoreSelector} from '@/components/store-shell'
 import {api,money} from '@/lib/api'
 import {Alert,Loading,Status} from '@/components/ui'
-import {ArrowRight,CalendarDays,CircleDollarSign,Eye,PackageCheck,ShoppingBag,Store,UsersRound} from 'lucide-react'
+import {ArrowRight,Banknote,Building2,CalendarDays,CircleDollarSign,Eye,PackageCheck,ReceiptText,ShoppingBag,Store,UsersRound,WalletCards} from 'lucide-react'
 
 type RangeKey='7d'|'30d'|'90d'
 type Analytics={
@@ -69,18 +69,24 @@ export default function Dashboard(){
   const[range,setRange]=useState<RangeKey>('7d')
   const[analytics,setAnalytics]=useState<Analytics|null>(null)
   const[orders,setOrders]=useState<Order[]>([])
+  const[branches,setBranches]=useState<any[]>([])
+  const[cashSessions,setCashSessions]=useState<any[]>([])
+  const[courierBalances,setCourierBalances]=useState<any[]>([])
   const[busy,setBusy]=useState(false)
   const[err,setErr]=useState('')
 
   useEffect(()=>{api('/me').then(setMe).catch(()=>{})},[])
   useEffect(()=>{
-    if(!storeID){setAnalytics(null);setOrders([]);return}
+    if(!storeID){setAnalytics(null);setOrders([]);setBranches([]);setCashSessions([]);setCourierBalances([]);return}
     let active=true
     setBusy(true);setErr('')
     Promise.all([
       api<Analytics>(`/analytics?store_id=${encodeURIComponent(storeID)}&range=${range}`),
       api<Order[]>(`/orders?store_id=${encodeURIComponent(storeID)}`),
-    ]).then(([a,o])=>{if(active){setAnalytics(a);setOrders(o)}}).catch((e:any)=>{if(active)setErr(e.message||'No se pudo cargar el dashboard')}).finally(()=>{if(active)setBusy(false)})
+      api<any[]>(`/branches?store_id=${encodeURIComponent(storeID)}`),
+      api<any[]>(`/cash/sessions?store_id=${encodeURIComponent(storeID)}`),
+      api<any[]>(`/delivery/courier-balances?store_id=${encodeURIComponent(storeID)}`).catch(()=>[]),
+    ]).then(([a,o,b,cash,balances])=>{if(active){setAnalytics(a);setOrders(o);setBranches(b);setCashSessions(cash);setCourierBalances(balances)}}).catch((e:any)=>{if(active)setErr(e.message||'No se pudo cargar el dashboard')}).finally(()=>{if(active)setBusy(false)})
     return()=>{active=false}
   },[storeID,range])
 
@@ -88,6 +94,8 @@ export default function Dashboard(){
   const pending=useMemo(()=>orders.filter(o=>o.flow_type!=='quote'&&openStatuses.has(o.status)).length,[orders])
   const first=String(me?.name||'').trim().split(/\s+/)[0]||'Hola'
   const periodLabel=RANGE_OPTIONS.find(x=>x.value===range)?.label||'Últimos 7 días'
+  const openCashCount=cashSessions.filter(x=>x.status==='open').length
+  const pendingCourierCash=courierBalances.reduce((sum,x)=>sum+Number(x.pending_cash||0),0)
   const context=<StoreSelector value={storeID} onChange={setStoreID} onStoreChange={setStore}/>
 
   return <StoreShell title="Dashboard" subtitle="Resumen operativo de tu comercio" context={context}>
@@ -105,6 +113,13 @@ export default function Dashboard(){
           <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Ingresos</span><span className="merchant-kpi-icon"><CircleDollarSign className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{money(analytics.metrics.revenue||0)}</div><div className="merchant-kpi-note">Ventas registradas en el período</div></article>
           <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Por completar</span><span className="merchant-kpi-icon"><PackageCheck className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{pending.toLocaleString('es-DO')}</div><div className="merchant-kpi-note">Pedidos abiertos en este momento</div></article>
           <article className="merchant-kpi"><div className="flex items-start justify-between gap-3"><span className="merchant-kpi-label">Clientes</span><span className="merchant-kpi-icon"><UsersRound className="h-4 w-4"/></span></div><div className="merchant-kpi-value">{Number(analytics.metrics.customers||0).toLocaleString('es-DO')}</div><div className="merchant-kpi-note">Clientes únicos durante el período</div></article>
+        </section>
+
+        <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <Link href="/cash" className="merchant-dashboard-panel flex items-center gap-3 p-4 transition hover:border-brand-200"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><WalletCards className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#8b968f]">Caja</span><strong className="mt-0.5 block text-lg text-[#083d2b]">{openCashCount} abierta{openCashCount===1?'':'s'}</strong><span className="block truncate text-[11px] text-[#7c8983]">Turnos activos ahora</span></span><ArrowRight className="h-4 w-4 text-[#8fa098]"/></Link>
+          <Link href="/branches" className="merchant-dashboard-panel flex items-center gap-3 p-4 transition hover:border-brand-200"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Building2 className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#8b968f]">Sucursales</span><strong className="mt-0.5 block text-lg text-[#083d2b]">{branches.filter(x=>x.is_active!==false).length}</strong><span className="block truncate text-[11px] text-[#7c8983]">Operativas en este negocio</span></span><ArrowRight className="h-4 w-4 text-[#8fa098]"/></Link>
+          <Link href="/delivery" className="merchant-dashboard-panel flex items-center gap-3 p-4 transition hover:border-brand-200"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><Banknote className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#8b968f]">Efectivo en calle</span><strong className="mt-0.5 block text-lg text-[#083d2b]">{money(pendingCourierCash)}</strong><span className="block truncate text-[11px] text-[#7c8983]">Pendiente de liquidación</span></span><ArrowRight className="h-4 w-4 text-[#8fa098]"/></Link>
+          <Link href="/pos" className="merchant-dashboard-panel flex items-center gap-3 p-4 transition hover:border-brand-200"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-50 text-brand-700"><ReceiptText className="h-4 w-4"/></span><span className="min-w-0 flex-1"><span className="block text-[10px] font-bold uppercase tracking-[.12em] text-[#8b968f]">Ticket promedio</span><strong className="mt-0.5 block text-lg text-[#083d2b]">{money(analytics.metrics.average_ticket||0)}</strong><span className="block truncate text-[11px] text-[#7c8983]">{periodLabel}</span></span><ArrowRight className="h-4 w-4 text-[#8fa098]"/></Link>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(310px,.78fr)]">

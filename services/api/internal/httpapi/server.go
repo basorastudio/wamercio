@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -208,6 +209,17 @@ func (s *Server) Router() http.Handler {
 			p.Post("/bank-accounts", s.createStoreBankAccount)
 			p.Put("/bank-accounts/{id}", s.updateStoreBankAccount)
 			p.Delete("/bank-accounts/{id}", s.deleteStoreBankAccount)
+			p.Get("/branches", s.listBranches)
+			p.Post("/branches", s.createBranch)
+			p.Put("/branches/{id}", s.updateBranch)
+			p.Delete("/branches/{id}", s.deleteBranch)
+			p.Get("/branches/{id}/catalog", s.branchCatalog)
+			p.Put("/branches/{id}/catalog/{productID}", s.updateBranchCatalogItem)
+			p.Get("/cash/sessions", s.listCashSessions)
+			p.Get("/cash/summary", s.cashSummary)
+			p.Post("/cash/sessions/open", s.openCashSession)
+			p.Post("/cash/sessions/{id}/movements", s.addCashMovement)
+			p.Post("/cash/sessions/{id}/close", s.closeCashSession)
 			p.Get("/shipping", s.listShipping)
 			p.Get("/delivery/assignments", s.listDeliveryAssignments)
 			p.Post("/delivery/assignments", s.upsertDeliveryAssignment)
@@ -219,6 +231,10 @@ func (s *Server) Router() http.Handler {
 			p.Delete("/delivery/routes/{id}", s.deleteDeliveryRoute)
 			p.Post("/delivery/conversations/{id}/address", s.associateConversationLocation)
 			p.Post("/delivery/courier/location", s.recordCourierLocation)
+			p.Get("/delivery/courier-balances", s.deliveryCourierBalances)
+			p.Post("/delivery/assignments/{id}/collect", s.collectDeliveryPayment)
+			p.Get("/delivery/remittances", s.listDeliveryRemittances)
+			p.Post("/delivery/remittances", s.createDeliveryRemittance)
 			p.Post("/shipping", s.createShipping)
 			p.Put("/shipping/{id}", s.updateShipping)
 			p.Delete("/shipping/{id}", s.deleteShipping)
@@ -2365,7 +2381,7 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,o.source,o.flow_type,o.delivery_type,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.store_id=$1 ORDER BY o.created_at DESC LIMIT 500`, sid)
+	rows, err := s.db.Query(r.Context(), `SELECT o.id,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,o.source,o.flow_type,o.delivery_type,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0),coalesce(o.branch_id::text,''),coalesce(b.name,'') FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id LEFT JOIN store_branches b ON b.id=o.branch_id WHERE o.store_id=$1 ORDER BY o.created_at DESC LIMIT 500`, sid)
 	if err != nil {
 		jsonErr(w, 500, err.Error())
 		return
@@ -2373,22 +2389,22 @@ func (s *Server) listOrders(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 	out := []map[string]any{}
 	for rows.Next() {
-		var id, name, phone, pm, ps, st, source, flowType, deliveryType, tableID, tableName string
+		var id, name, phone, pm, ps, st, source, flowType, deliveryType, tableID, tableName, branchID, branchName string
 		var num int64
 		var total, cashTendered float64
 		var cashChangeRequested bool
 		var cr time.Time
 		var reservationAt *time.Time
 		var partySize int
-		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &st, &source, &flowType, &deliveryType, &cr, &tableID, &tableName, &reservationAt, &partySize)
-		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "status": st, "source": source, "flow_type": flowType, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "created_at": cr})
+		_ = rows.Scan(&id, &num, &name, &phone, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &st, &source, &flowType, &deliveryType, &cr, &tableID, &tableName, &reservationAt, &partySize, &branchID, &branchName)
+		out = append(out, map[string]any{"id": id, "number": num, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "status": st, "source": source, "flow_type": flowType, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "branch_id": branchID, "branch_name": branchName, "created_at": cr})
 	}
 	jsonOut(w, 200, out)
 }
 func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	c := claims(r)
-	var sid, customerID, name, phone, address, deliveryType, coupon, promotionName, pm, ps, status, notes, source, proof, flowType, tableID, tableName string
+	var sid, customerID, name, phone, address, deliveryType, coupon, promotionName, pm, ps, status, notes, source, proof, flowType, tableID, tableName, branchID, branchName string
 	var num int64
 	var subtotal, discount, shipping, total, cashTendered float64
 	var cashChangeRequested bool
@@ -2396,7 +2412,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 	var reservationAt *time.Time
 	var partySize int
 	var customFieldsRaw []byte
-	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),coalesce(o.promotion_name,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.flow_type,o.custom_fields,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0) FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &promotionName, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &flowType, &customFieldsRaw, &cr, &tableID, &tableName, &reservationAt, &partySize)
+	err := s.db.QueryRow(r.Context(), `SELECT o.store_id,coalesce(o.customer_id::text,''),o.order_number,o.customer_name,o.customer_phone,coalesce(o.delivery_address,''),o.delivery_type,coalesce(o.coupon_code,''),coalesce(o.promotion_name,''),o.subtotal,o.discount,o.shipping,o.total,o.payment_method,o.payment_status,o.cash_change_requested,coalesce(o.cash_tendered,0),o.status,coalesce(o.notes,''),o.source,coalesce(o.payment_proof_url,''),o.flow_type,o.custom_fields,o.created_at,coalesce(o.table_id::text,''),coalesce(t.name,''),o.reservation_at,coalesce(o.party_size,0),coalesce(o.branch_id::text,''),coalesce(b.name,'') FROM orders o LEFT JOIN store_tables t ON t.id=o.table_id LEFT JOIN store_branches b ON b.id=o.branch_id WHERE o.id=$1`, id).Scan(&sid, &customerID, &num, &name, &phone, &address, &deliveryType, &coupon, &promotionName, &subtotal, &discount, &shipping, &total, &pm, &ps, &cashChangeRequested, &cashTendered, &status, &notes, &source, &proof, &flowType, &customFieldsRaw, &cr, &tableID, &tableName, &reservationAt, &partySize, &branchID, &branchName)
 	if err != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
@@ -2417,7 +2433,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request) {
 			items = append(items, map[string]any{"id": iid, "product_id": pid, "product_name": pn, "variant_name": vn, "extras": ex, "unit_price": unit, "quantity": qty, "line_total": line})
 		}
 	}
-	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "coupon_code": coupon, "promotion_name": promotionName, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "flow_type": flowType, "custom_fields": customFields, "created_at": cr, "items": items})
+	jsonOut(w, 200, map[string]any{"id": id, "store_id": sid, "customer_id": customerID, "number": num, "customer_name": name, "customer_phone": phone, "delivery_address": address, "delivery_type": deliveryType, "table_id": tableID, "table_name": tableName, "reservation_at": reservationAt, "party_size": partySize, "branch_id": branchID, "branch_name": branchName, "coupon_code": coupon, "promotion_name": promotionName, "subtotal": subtotal, "discount": discount, "shipping": shipping, "total": total, "payment_method": pm, "payment_status": ps, "cash_change_requested": cashChangeRequested, "cash_tendered": cashTendered, "payment_proof_url": proof, "status": status, "notes": notes, "source": source, "flow_type": flowType, "custom_fields": customFields, "created_at": cr, "items": items})
 }
 func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -8619,15 +8635,19 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 	c := claims(r)
 	var in struct {
 		StoreID       string `json:"store_id"`
+		BranchID      string `json:"branch_id"`
+		CashSessionID string `json:"cash_session_id"`
+		SaleType      string `json:"sale_type"`
 		CustomerID    string `json:"customer_id"`
 		CustomerName  string `json:"customer_name"`
 		CustomerPhone string `json:"customer_phone"`
 		PaymentMethod string `json:"payment_method"`
 		Items         []struct {
-			ProductID   string           `json:"product_id"`
-			Quantity    float64          `json:"quantity"`
-			VariantName string           `json:"variant_name"`
-			Extras      []map[string]any `json:"extras"`
+			ProductID         string           `json:"product_id"`
+			Quantity          float64          `json:"quantity"`
+			VariantName       string           `json:"variant_name"`
+			Extras            []map[string]any `json:"extras"`
+			ModifierOptionIDs []string         `json:"modifier_option_ids"`
 		} `json:"items"`
 	}
 	if decode(r, &in) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, in.StoreID) || len(in.Items) == 0 {
@@ -8639,6 +8659,24 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
 	}
+
+	saleType := strings.TrimSpace(in.SaleType)
+	if saleType == "" {
+		saleType = "local"
+	}
+	if saleType != "local" && saleType != "phone" && saleType != "pickup" {
+		jsonErr(w, 400, "Tipo de venta no válido")
+		return
+	}
+	if strings.TrimSpace(in.BranchID) == "" {
+		_ = s.db.QueryRow(r.Context(), `SELECT id::text FROM store_branches WHERE store_id=$1 AND is_primary=true AND is_active=true LIMIT 1`, in.StoreID).Scan(&in.BranchID)
+	}
+	var branchName string
+	if s.db.QueryRow(r.Context(), `SELECT name FROM store_branches WHERE id=$1 AND store_id=$2 AND is_active=true`, in.BranchID, in.StoreID).Scan(&branchName) != nil {
+		jsonErr(w, 400, "Selecciona una sucursal activa")
+		return
+	}
+
 	var cashEnabled, terminalEnabled, transferEnabled, chequeEnabled bool
 	if s.db.QueryRow(r.Context(), `SELECT cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,cheque_enabled FROM stores WHERE id=$1`, in.StoreID).Scan(&cashEnabled, &terminalEnabled, &transferEnabled, &chequeEnabled) != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
@@ -8667,6 +8705,23 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		jsonErr(w, 400, accountErr.Error())
 		return
 	}
+
+	// Solo el efectivo cobrado físicamente en el mostrador debe pertenecer a
+	// una caja abierta. Los pedidos telefónicos o para recoger pueden quedar
+	// pendientes y cobrarse más tarde sin forzar una sesión de caja ahora.
+	if in.PaymentMethod == "cash" && saleType == "local" {
+		if strings.TrimSpace(in.CashSessionID) == "" {
+			jsonErr(w, 409, "Abre la caja de esta sucursal antes de cobrar en efectivo")
+			return
+		}
+		var valid int
+		_ = s.db.QueryRow(r.Context(), `SELECT count(*) FROM cash_sessions WHERE id=$1 AND store_id=$2 AND branch_id=$3 AND status='open'`, in.CashSessionID, in.StoreID, in.BranchID).Scan(&valid)
+		if valid == 0 {
+			jsonErr(w, 409, "La caja seleccionada ya no está abierta")
+			return
+		}
+	}
+
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
 		jsonErr(w, 500, "No se pudo iniciar la venta")
@@ -8676,6 +8731,10 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 
 	name := strings.TrimSpace(in.CustomerName)
 	phone := normalizePhone(in.CustomerPhone)
+	if saleType == "phone" && phone == "" {
+		jsonErr(w, 400, "El pedido telefónico requiere un número de WhatsApp o teléfono")
+		return
+	}
 	if phone != "" {
 		if blocked, reason := s.customerBlockedInStore(r.Context(), in.StoreID, "", phone); blocked {
 			jsonErr(w, http.StatusForbidden, blockedCustomerMessage(reason))
@@ -8714,9 +8773,11 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		Price float64 `json:"price"`
 	}
 	type line struct {
-		id, name, variant string
-		extras            []map[string]any
-		price, qty        float64
+		id, categoryID, name, variant string
+		extras                        []map[string]any
+		bundle                        []bundleResolvedComponent
+		price, qty, total             float64
+		track                         bool
 	}
 	lines := []line{}
 	var subtotal float64
@@ -8724,16 +8785,23 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 		if item.Quantity <= 0 || item.Quantity > 999 {
 			continue
 		}
-		var n string
+		var n, categoryID string
 		var base float64
 		var stock *float64
 		var track bool
 		var variantsRaw, extrasRaw []byte
-		err = tx.QueryRow(r.Context(), `SELECT name,price,stock,track_stock,variants,extras FROM products WHERE id=$1 AND store_id=$2 AND is_active=true FOR UPDATE`, item.ProductID, in.StoreID).Scan(&n, &base, &stock, &track, &variantsRaw, &extrasRaw)
+		err = tx.QueryRow(r.Context(), `SELECT name,coalesce(category_id::text,''),price,stock,track_stock,variants,extras FROM products WHERE id=$1 AND store_id=$2 AND is_active=true FOR UPDATE`, item.ProductID, in.StoreID).Scan(&n, &categoryID, &base, &stock, &track, &variantsRaw, &extrasRaw)
 		if err != nil {
 			jsonErr(w, 400, "Producto inválido")
 			return
 		}
+		var branchPrice float64
+		var available bool
+		if tx.QueryRow(r.Context(), `SELECT coalesce(bp.price_override,p.price),coalesce(bp.is_available,true) FROM products p JOIN store_branches b ON b.store_id=p.store_id LEFT JOIN store_branch_products bp ON bp.branch_id=b.id AND bp.product_id=p.id WHERE p.id=$1 AND p.store_id=$2 AND b.id=$3`, item.ProductID, in.StoreID, in.BranchID).Scan(&branchPrice, &available) != nil || !available {
+			jsonErr(w, 409, n+" no está disponible en "+branchName)
+			return
+		}
+		base = branchPrice
 		if track && stock != nil && *stock < item.Quantity {
 			jsonErr(w, 400, "Stock insuficiente para "+n)
 			return
@@ -8774,7 +8842,7 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 				if option.Name == reqName {
 					found = true
 					unit += option.Price
-					normalizedExtras = append(normalizedExtras, map[string]any{"name": option.Name, "price": option.Price})
+					normalizedExtras = append(normalizedExtras, map[string]any{"source": "legacy_extra", "name": option.Name, "price": option.Price})
 					break
 				}
 			}
@@ -8783,18 +8851,66 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		lines = append(lines, line{id: item.ProductID, name: n, variant: variantName, extras: normalizedExtras, price: unit, qty: item.Quantity})
-		subtotal += unit * item.Quantity
+		modifierExtras, modifierPrice, modifierErr := resolveModifierOptions(r.Context(), tx, in.StoreID, item.ProductID, item.ModifierOptionIDs)
+		if modifierErr != nil {
+			jsonErr(w, 400, modifierErr.Error())
+			return
+		}
+		unit += modifierPrice
+		normalizedExtras = append(normalizedExtras, modifierExtras...)
+		bundle, bundleErr := resolveBundleComponents(r.Context(), tx, in.StoreID, item.ProductID, item.Quantity)
+		if bundleErr != nil {
+			jsonErr(w, 400, bundleErr.Error())
+			return
+		}
+		normalizedExtras = append(normalizedExtras, bundleSnapshotExtras(bundle)...)
+		lineTotal := unit * item.Quantity
+		lines = append(lines, line{id: item.ProductID, categoryID: categoryID, name: n, variant: variantName, extras: normalizedExtras, bundle: bundle, price: unit, qty: item.Quantity, total: lineTotal, track: track})
+		subtotal += lineTotal
 	}
 	if len(lines) == 0 {
 		jsonErr(w, 400, "Agrega productos a la venta")
 		return
 	}
 
+	// Las promociones automáticas también aplican en caja/TPV.
+	promotionLines := make([]promotionCheckoutLine, 0, len(lines))
+	for _, item := range lines {
+		promotionLines = append(promotionLines, promotionCheckoutLine{ProductID: item.id, CategoryID: item.categoryID, LineTotal: item.total})
+	}
+	bestPromotion, promotionErr := bestPromotionForCheckout(r.Context(), tx, in.StoreID, subtotal, promotionLines)
+	if promotionErr != nil {
+		jsonErr(w, 500, "No se pudieron evaluar las promociones")
+		return
+	}
+	discount := bestPromotion.Discount
+	var promotionID any
+	promotionName := ""
+	if discount > 0 {
+		promotionID = bestPromotion.ID
+		promotionName = bestPromotion.Name
+		_, _ = tx.Exec(r.Context(), `UPDATE promotions SET used_count=used_count+1,updated_at=now() WHERE id=$1`, bestPromotion.ID)
+	}
+	total := math.Max(subtotal-discount, 0)
 	method := strings.TrimSpace(in.PaymentMethod)
+	paymentStatus := "paid"
+	orderStatus := "completed"
+	if saleType == "phone" || saleType == "pickup" {
+		paymentStatus = "pending"
+		orderStatus = "pending"
+	}
+	var cashSession any
+	if strings.TrimSpace(in.CashSessionID) != "" {
+		cashSession = in.CashSessionID
+	}
 	var orderID string
 	var num int64
-	if err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,customer_id,customer_name,customer_phone,subtotal,discount,shipping,total,payment_method,payment_account_id,payment_status,status,source,delivery_type) VALUES($1,$2,$3,$4,$5,0,0,$5,$6,NULLIF($7,'')::uuid,'paid','completed','pos','pickup') RETURNING id,order_number`, in.StoreID, customerID, name, phone, subtotal, method, paymentAccountID).Scan(&orderID, &num); err != nil {
+	if err = tx.QueryRow(r.Context(), `INSERT INTO orders(store_id,branch_id,cash_session_id,customer_id,customer_name,customer_phone,subtotal,discount,shipping,total,payment_method,payment_account_id,payment_status,status,source,delivery_type,promotion_id,promotion_name,collected_payment_method,payment_collected_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,NULLIF($11,'')::uuid,$12,$13,$14,$15,$16,$17,CASE WHEN $12='paid' THEN $10 ELSE NULL END,CASE WHEN $12='paid' THEN now() ELSE NULL END) RETURNING id,order_number`, in.StoreID, in.BranchID, cashSession, customerID, name, phone, subtotal, discount, total, method, paymentAccountID, paymentStatus, orderStatus, func() string {
+		if saleType == "phone" {
+			return "phone"
+		}
+		return "pos"
+	}(), saleType, promotionID, promotionName).Scan(&orderID, &num); err != nil {
 		jsonErr(w, 500, "No se pudo registrar la venta")
 		return
 	}
@@ -8803,11 +8919,24 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, ln := range lines {
 		extrasJSON, _ := json.Marshal(ln.extras)
-		if _, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,variant_name,extras,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, ln.id, ln.name, ln.variant, extrasJSON, ln.price, ln.qty, ln.price*ln.qty); err != nil {
+		if _, err = tx.Exec(r.Context(), `INSERT INTO order_items(order_id,product_id,product_name,variant_name,extras,unit_price,quantity,line_total) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`, orderID, ln.id, ln.name, ln.variant, extrasJSON, ln.price, ln.qty, ln.total); err != nil {
 			jsonErr(w, 500, "No se pudo guardar el detalle")
 			return
 		}
-		_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=CASE WHEN track_stock AND stock IS NOT NULL THEN greatest(stock-$1,0) ELSE stock END,updated_at=now() WHERE id=$2`, ln.qty, ln.id)
+		if ln.track {
+			_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=CASE WHEN track_stock AND stock IS NOT NULL THEN greatest(stock-$1,0) ELSE stock END,updated_at=now() WHERE id=$2`, ln.qty, ln.id)
+		}
+		for _, component := range ln.bundle {
+			if component.Track {
+				_, _ = tx.Exec(r.Context(), `UPDATE products SET stock=greatest(coalesce(stock,0)-$1,0),updated_at=now() WHERE id=$2`, component.Quantity*ln.qty, component.ProductID)
+			}
+		}
+	}
+	if method == "cash" && paymentStatus == "paid" {
+		if _, err = tx.Exec(r.Context(), `INSERT INTO cash_movements(cash_session_id,store_id,order_id,user_id,type,amount,description) VALUES($1,$2,$3,$4,'sale_cash',$5,$6)`, in.CashSessionID, in.StoreID, orderID, c.UserID, total, fmt.Sprintf("Venta TPV #%d", num)); err != nil {
+			jsonErr(w, 500, "No se pudo reflejar la venta en caja")
+			return
+		}
 	}
 	if err = tx.Commit(r.Context()); err != nil {
 		jsonErr(w, 500, "No se pudo confirmar la venta")
@@ -8816,8 +8945,8 @@ func (s *Server) createPOSSale(w http.ResponseWriter, r *http.Request) {
 	if cid, ok := customerID.(string); ok && cid != "" {
 		s.refreshCustomerStats(r.Context(), cid)
 	}
-	s.publishStoreEvent(r.Context(), in.StoreID, "order.created", map[string]any{"id": orderID, "number": num, "source": "pos"})
-	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "total": subtotal, "status": "completed"})
+	s.publishStoreEvent(r.Context(), in.StoreID, "order.created", map[string]any{"id": orderID, "number": num, "source": saleType})
+	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "subtotal": subtotal, "discount": discount, "promotion_name": promotionName, "total": total, "status": orderStatus, "payment_status": paymentStatus, "branch_id": in.BranchID, "branch_name": branchName, "sale_type": saleType})
 }
 
 func (s *Server) adminAuditLog(w http.ResponseWriter, r *http.Request) {

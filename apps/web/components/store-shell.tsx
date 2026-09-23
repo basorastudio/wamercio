@@ -6,7 +6,7 @@ import {api} from '@/lib/api'
 import {
   LayoutDashboard,Store,Boxes,Tags,ShoppingBag,Truck,LogOut,ShoppingCart,CreditCard,UserCog,
   Menu,X,ChevronDown,UserRound,UsersRound,SlidersHorizontal,MessageCircleMore,LifeBuoy,MoreHorizontal,
-  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed,BarChart3,TicketPercent,CalendarClock,ChefHat,WandSparkles,TriangleAlert,Star,Gift,Image as ImageIcon,Share2,FileText,BriefcaseBusiness,ListTodo,Workflow,AudioLines,PhoneCall
+  ChevronLeft,ChevronRight,ExternalLink,UtensilsCrossed,BarChart3,TicketPercent,CalendarClock,ChefHat,WandSparkles,TriangleAlert,Star,Gift,Image as ImageIcon,Share2,FileText,BriefcaseBusiness,ListTodo,Workflow,AudioLines,PhoneCall,WalletCards,Building2,PackagePlus
 } from 'lucide-react'
 
 const SIDEBAR_KEY='wamercio_sidebar_collapsed'
@@ -21,19 +21,23 @@ const core=[
 ]
 const sales=[
   {href:'/pos',label:'Punto de venta',icon:ShoppingCart},
+  {href:'/cash',label:'Caja',icon:WalletCards},
   {href:'/quotes',label:'Cotizaciones',icon:FileText},
 ]
 const catalog=[
   {href:'/catalog/products',label:'Productos',icon:Boxes},
+  {href:'/catalog/combos',label:'Combos',icon:PackagePlus},
   {href:'/media',label:'Galería',icon:ImageIcon},
-  {href:'/product-attributes',label:'Variantes y atributos',icon:TriangleAlert},
+  {href:'/product-attributes',label:'Opciones y extras',icon:TriangleAlert},
   {href:'/coupons',label:'Cupones',icon:TicketPercent},
   {href:'/promotions',label:'Promociones',icon:Tags},
 ]
+const businessOperations=[
+  {href:'/branches',label:'Sucursales',icon:Building2},
+  {href:'/delivery',label:'Entregas',icon:Truck},
+]
 const storefront=[
   {href:'/settings/store',label:'Tienda online',icon:Store},
-  {href:'/delivery',label:'Entrega y zonas',icon:Truck},
-  {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},
 ]
 const engage=[
   {href:'/conversations',label:'WhatsApp',icon:WhatsAppIcon},
@@ -55,6 +59,7 @@ const insights=[
 ]
 const settings=[
   {href:'/staff',label:'Usuarios',icon:UserCog},
+  {href:'/payment-methods',label:'Métodos de pago',icon:CreditCard},
 ]
 const reservationsNav={href:'/reservations',label:'Reservaciones',icon:CalendarClock}
 const kdsNav={href:'/kds',label:'KDS',icon:ChefHat}
@@ -100,13 +105,14 @@ export default function StoreShell({children,title,subtitle,actions,context,full
    ['Principal',core],
    ['Ventas',operations],
    ['Catálogo',catalog],
+   ['Operación',businessOperations],
    ['Tienda online',storefront],
    ['Interacción',engage],
    ['Relación con clientes',relationship],
    ['Informes',insights],
    ['Ajustes',accountSettings],
  ],[operations,accountSettings])
- const all=useMemo(()=>[...core,...operations,...catalog,...storefront,...engage,...relationship,...insights,...accountSettings],[operations,accountSettings])
+ const all=useMemo(()=>[...core,...operations,...catalog,...businessOperations,...storefront,...engage,...relationship,...insights,...accountSettings],[operations,accountSettings])
  return <div data-sidebar-collapsed={collapsed?'true':'false'} className="merchant-ui group/shell min-h-dvh bg-[#f7f9fc] pb-[calc(72px+env(safe-area-inset-bottom))] text-ink-900 lg:pb-0">
   {drawer&&<button aria-label="Cerrar menú" onClick={()=>setDrawer(false)} className="fixed inset-0 z-40 bg-[#2e3154]/25 lg:hidden"/>}
   <aside className={`merchant-sidebar fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#eceef4] bg-white transition-[width,transform] duration-200 lg:translate-x-0 ${collapsed?'w-[88px]':'w-[258px]'} ${drawer?'translate-x-0':'-translate-x-full'}`}>

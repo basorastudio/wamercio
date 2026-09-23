@@ -1,3 +1,19 @@
+# Actualización V4.4.0 — operación del negocio
+
+Para actualizar desde V4.3.5 a V4.4.0:
+
+1. Haz un backup de PostgreSQL.
+2. Publica el código V4.4.0.
+3. Reconstruye los servicios `api` y `web`.
+4. Confirma que las migraciones llegan a `000051_business_operations`.
+5. No elimines la base de datos ni los volúmenes existentes.
+6. El servicio `whatsapp` no cambia funcionalmente en esta versión.
+7. Valida, en este orden: **Sucursales → Caja → Punto de venta → Entregas/Liquidaciones**.
+
+La migración crea una sucursal **Principal** para cada negocio existente y configura el trigger para los nuevos negocios.
+
+---
+
 # WAMERCIO 4.1.12 — despliegue en Dokploy
 
 Si ya estás en **V4.1.11**, esta actualización no agrega migraciones ni variables nuevas.

@@ -15,7 +15,7 @@ func (s *Server) listDeliveryAssignments(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	rows, err := s.db.Query(r.Context(), `SELECT a.id::text,a.order_id::text,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.status,coalesce(a.courier_staff_id::text,''),coalesce(st.name,''),a.status,a.delivery_address,a.latitude,a.longitude,a.reference,a.notes,a.assigned_at,a.accepted_at,a.picked_up_at,a.delivered_at,a.created_at,a.updated_at,coalesce(a.route_id::text,'') FROM delivery_assignments a JOIN orders o ON o.id=a.order_id LEFT JOIN store_staff st ON st.id=a.courier_staff_id WHERE a.store_id=$1 ORDER BY CASE WHEN a.status IN ('delivered','failed','cancelled') THEN 1 ELSE 0 END,a.created_at DESC`, storeID)
+	rows, err := s.db.Query(r.Context(), `SELECT a.id::text,a.order_id::text,o.order_number,o.customer_name,o.customer_phone,o.total,o.payment_method,o.payment_status,o.status,coalesce(a.courier_staff_id::text,''),coalesce(st.name,''),a.status,a.delivery_address,a.latitude,a.longitude,a.reference,a.notes,a.assigned_at,a.accepted_at,a.picked_up_at,a.delivered_at,a.created_at,a.updated_at,coalesce(a.route_id::text,''),a.cash_collected_amount,coalesce(a.cash_collected_method,''),a.cash_collected_at,a.cash_remitted_amount,a.cash_remitted_at FROM delivery_assignments a JOIN orders o ON o.id=a.order_id LEFT JOIN store_staff st ON st.id=a.courier_staff_id WHERE a.store_id=$1 ORDER BY CASE WHEN a.status IN ('delivered','failed','cancelled') THEN 1 ELSE 0 END,a.created_at DESC`, storeID)
 	if err != nil {
 		jsonErr(w, 500, "No se pudieron cargar las entregas")
 		return
@@ -27,10 +27,12 @@ func (s *Server) listDeliveryAssignments(w http.ResponseWriter, r *http.Request)
 		var number int64
 		var total float64
 		var lat, lon *float64
-		var assignedAt, acceptedAt, pickedAt, deliveredAt *time.Time
+		var assignedAt, acceptedAt, pickedAt, deliveredAt, cashCollectedAt, cashRemittedAt *time.Time
 		var createdAt, updatedAt time.Time
-		if rows.Scan(&id, &orderID, &number, &name, &phone, &total, &paymentMethod, &paymentStatus, &orderStatus, &courierID, &courierName, &status, &address, &lat, &lon, &reference, &notes, &assignedAt, &acceptedAt, &pickedAt, &deliveredAt, &createdAt, &updatedAt, &routeID) == nil {
-			out = append(out, map[string]any{"id": id, "order_id": orderID, "order_number": number, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": paymentMethod, "payment_status": paymentStatus, "order_status": orderStatus, "courier_staff_id": courierID, "courier_name": courierName, "status": status, "delivery_address": address, "latitude": lat, "longitude": lon, "reference": reference, "notes": notes, "assigned_at": assignedAt, "accepted_at": acceptedAt, "picked_up_at": pickedAt, "delivered_at": deliveredAt, "route_id": routeID, "created_at": createdAt, "updated_at": updatedAt})
+		var cashCollected, cashRemitted float64
+		var cashCollectedMethod string
+		if rows.Scan(&id, &orderID, &number, &name, &phone, &total, &paymentMethod, &paymentStatus, &orderStatus, &courierID, &courierName, &status, &address, &lat, &lon, &reference, &notes, &assignedAt, &acceptedAt, &pickedAt, &deliveredAt, &createdAt, &updatedAt, &routeID, &cashCollected, &cashCollectedMethod, &cashCollectedAt, &cashRemitted, &cashRemittedAt) == nil {
+			out = append(out, map[string]any{"id": id, "order_id": orderID, "order_number": number, "customer_name": name, "customer_phone": phone, "total": total, "payment_method": paymentMethod, "payment_status": paymentStatus, "order_status": orderStatus, "courier_staff_id": courierID, "courier_name": courierName, "status": status, "delivery_address": address, "latitude": lat, "longitude": lon, "reference": reference, "notes": notes, "assigned_at": assignedAt, "accepted_at": acceptedAt, "picked_up_at": pickedAt, "delivered_at": deliveredAt, "route_id": routeID, "cash_collected_amount": cashCollected, "cash_collected_method": cashCollectedMethod, "cash_collected_at": cashCollectedAt, "cash_remitted_amount": cashRemitted, "cash_remitted_at": cashRemittedAt, "cash_pending_remittance": math.Max(cashCollected-cashRemitted, 0), "created_at": createdAt, "updated_at": updatedAt})
 		}
 	}
 	jsonOut(w, 200, out)
