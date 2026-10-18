@@ -1,3 +1,10 @@
+## v4.5.7 — Hotfix de compilación TypeScript en la landing
+- Se corrige el error de Dokploy/Next.js: `Parameter 'signal' implicitly has an 'any' type` en `apps/web/components/platform-landing.tsx:212`.
+- `templateTags()` ahora siempre devuelve `string[]`: valida las etiquetas editadas provenientes del JSON y utiliza las etiquetas predeterminadas cuando no se configuran.
+- Se actualiza la versión del frontend y la clave de caché PWA.
+- No se alteran esquemas, API, contenidos de la landing ni los módulos comerciales.
+- Referencia: `HOTFIX_V4.5.7_BUILD_TYPESCRIPT.md`.
+
 ## v4.5.6 — Landing y editor comercial sincronizados
 - Nueva portada comercial responsiva y minimalista.
 - Secciones reordenables y visibilidad configurable desde SuperAdmin.

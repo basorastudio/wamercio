@@ -183,7 +183,16 @@ export default function PlatformLanding(){
   const planOverrides=landing.plan_overrides||{}
   const displayTemplate=(item:LandingTemplate)=>({ ...item, name:templateOverrides[item.id]?.title??item.name, description:templateOverrides[item.id]?.description??item.description })
   const shownTemplate=activeTemplate?displayTemplate(activeTemplate):null
-  const templateTags=(item:LandingTemplate)=>typeof templateOverrides[item.id]?.tags==='string'&&templateOverrides[item.id].tags.trim()?templateOverrides[item.id].tags.split(',').map((s:string)=>s.trim()).filter(Boolean):templateSignals(item)
+  // Keep template labels strictly typed even when overrides arrive from JSON settings.
+  // Otherwise the result becomes `any` and Next.js strict build fails at `.map(signal => ...)`.
+  const templateTags=(item:LandingTemplate):string[]=>{
+    const customTags:unknown=templateOverrides[item.id]?.tags
+    if(typeof customTags==='string'&&customTags.trim().length>0){
+      const tags=customTags.split(',').map(tag=>tag.trim()).filter(Boolean)
+      if(tags.length>0)return tags
+    }
+    return templateSignals(item)
+  }
   const features:LandingFeature[]=[
     {icon:Boxes,title:t('feature_1_title'),copy:t('feature_1_text'),details:t('feature_1_details').split(',').map(s=>s.trim()).filter(Boolean)},
     {icon:MessageCircleMore,title:t('feature_2_title'),copy:t('feature_2_text'),details:t('feature_2_details').split(',').map(s=>s.trim()).filter(Boolean)},
