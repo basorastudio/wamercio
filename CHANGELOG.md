@@ -1,3 +1,10 @@
+## v4.5.6 — Landing y editor comercial sincronizados
+- Nueva portada comercial responsiva y minimalista.
+- Secciones reordenables y visibilidad configurable desde SuperAdmin.
+- Sincronización real de textos, beneficios, mockups, CTA, plantillas y planes con los campos editables.
+- QR adaptado al dominio actual y caché PWA actualizada.
+- Véase `HOTFIX_V4.5.6_LANDING_EDITOR_INTEGRAL.md` para detalle y despliegue.
+
 # WAMERCIO 4.5.4 — Corrección de build y tipado de navegación
 
 - Corrige el fallo de compilación de `apps/web/components/store-shell.tsx` causado por la inferencia de TypeScript después de aplicar `.filter()` directamente sobre un arreglo de tuplas.

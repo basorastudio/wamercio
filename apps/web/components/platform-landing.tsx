@@ -1,12 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import {useEffect,useMemo,useState} from 'react'
+import {useEffect,useMemo,useState,type ReactNode} from 'react'
 import {QRCodeSVG} from 'qrcode.react'
 import AccessModal from '@/components/access-modal'
 import WamercioLogo from '@/components/wamercio-logo'
 import {api,money} from '@/lib/api'
 import type {Plan} from '@/lib/types'
+import {landingDefaults,normalizeLandingSections,type LandingSectionId} from '@/lib/landing-config'
 import {
   ArrowRight,
   BarChart3,
@@ -14,18 +15,13 @@ import {
   Check,
   ChevronRight,
   ClipboardList,
-  Clock3,
   CreditCard,
   Link2,
   Menu,
   MessageCircleMore,
-  Package,
-  QrCode,
-  Search,
   Send,
   ShoppingBag,
   Smartphone,
-  Star,
   Store,
   Truck,
   UsersRound,
@@ -78,17 +74,6 @@ function templatePrimaryModules(template:LandingTemplate){
   return ['Productos','Clientes','Pedidos','Analítica','WhatsApp']
 }
 
-function templatePreviewHighlights(template:LandingTemplate){
-  const settings=template.settings||{}
-  if(settings.appointments)return ['Reserva desde WhatsApp','Agenda visible para el equipo','Seguimiento y reseñas después del servicio']
-  if(settings.quotation||template.engine==='quotation')return ['Consulta antes de vender','Ficha técnica + cotización','Seguimiento comercial por cliente']
-  if(settings.wholesale||template.engine==='wholesale')return ['Condiciones por volumen','Catálogo mayorista ordenado','Clientes y pedidos recurrentes']
-  if(settings.supports_dine_in)return ['Menú y pedidos rápidos','Mesas, delivery y caja','Operación pensada para rotación']
-  if(template.engine==='food')return ['Menú con extras y combos','Pedido por chat sin fricción','Entrega conectada a la conversación']
-  if(template.engine==='fashion')return ['Colección visual y stock','Variantes por talla y color','Promociones coherentes con la tienda']
-  return ['Catálogo ordenado','Pedidos y clientes conectados','Panel simple para operar']
-}
-
 function templateFitCopy(template:LandingTemplate){
   const settings=template.settings||{}
   if(settings.appointments)return 'La plataforma prioriza agenda, CRM y seguimiento para que el negocio vea solo lo que necesita para reservar y atender.'
@@ -100,112 +85,41 @@ function templateFitCopy(template:LandingTemplate){
   return 'El negocio conserva un panel limpio con catálogo, clientes, pedidos y conversación como núcleo operativo.'
 }
 
-function templateSectionHeading(template:LandingTemplate|null){
-  if(!template)return 'Todo lo que necesitas para operar. Nada de lo que no necesitas.'
-  const settings=template.settings||{}
-  if(settings.appointments)return `Todo lo que ${template.name.toLowerCase()} necesita para reservar, atender y dar seguimiento.`
-  if(settings.quotation||template.engine==='quotation')return `Todo lo que ${template.name.toLowerCase()} necesita para vender por consulta sin desorden.`
-  if(settings.wholesale||template.engine==='wholesale')return `Todo lo que ${template.name.toLowerCase()} necesita para vender por volumen con contexto.`
-  if(settings.supports_dine_in)return `Todo lo que ${template.name.toLowerCase()} necesita para operar salón, delivery y caja.`
-  if(template.engine==='food')return `Todo lo que ${template.name.toLowerCase()} necesita para vender más rápido por WhatsApp.`
-  if(template.engine==='fashion')return `Todo lo que ${template.name.toLowerCase()} necesita para vender visualmente y con orden.`
-  return `Todo lo que ${template.name.toLowerCase()} necesita para operar con coherencia.`
-}
-
-function templateSectionLead(template:LandingTemplate|null){
-  if(!template)return 'WAMERCIO conecta catálogo, pedidos, clientes, pagos y WhatsApp en una sola experiencia, con flujos diseñados para negocios dominicanos.'
-  const settings=template.settings||{}
-  if(settings.appointments)return 'La plantilla concentra agenda, CRM, recordatorios y reseñas para que el servicio fluya sin módulos innecesarios.'
-  if(settings.quotation||template.engine==='quotation')return 'La operación se centra en catálogo técnico, consultas, cotizaciones y seguimiento comercial; no en funciones que no aportan a este tipo de venta.'
-  if(settings.wholesale||template.engine==='wholesale')return 'La interfaz prioriza clientes, volumen, listas de precios, pedidos recurrentes y control comercial para trabajar con distribuidores y mayoreo.'
-  if(settings.supports_dine_in)return 'La experiencia conecta pedidos, mesas, caja y entrega para que el negocio vea un flujo real de operación y no solo una página bonita.'
-  if(template.engine==='food')return 'Se priorizan menú, productos, combos, pedidos, entrega y conversación para que el recorrido del cliente se sienta corto y natural.'
-  if(template.engine==='fashion')return 'Se resaltan colección, stock, variantes, galería y promociones para vender mejor desde la conversación y conservar una presentación cuidada.'
-  return 'Cada plantilla ordena el panel, la landing pública y la conversación para que el negocio vea menos ruido y más acciones útiles.'
-}
-
-function templateFeatureCards(template:LandingTemplate|null,fallback:LandingFeature[]):LandingFeature[]{
-  if(!template)return fallback
-  const settings=template.settings||{}
-  if(settings.appointments)return [
-    {icon:MessageCircleMore,title:'Reservas desde WhatsApp',copy:'Convierte conversaciones en reservas organizadas con contexto del cliente.',details:['Solicitud desde chat','Confirmación rápida','Seguimiento posterior']},
-    {icon:ClipboardList,title:'Agenda operativa',copy:'Tu equipo ve citas, disponibilidad y seguimiento en un mismo lugar.',details:['Vista del día','Reasignación simple','Historial por servicio']},
-    {icon:UsersRound,title:'CRM y seguimiento',copy:'Conserva notas, historial y próximas acciones por cliente.',details:['Ficha del cliente','Recordatorios','Observaciones']},
-    {icon:Star,title:'Reseñas y fidelización',copy:'Pide evaluación después del servicio y construye recurrencia real.',details:['Feedback post servicio','Satisfacción visible','Clientes recurrentes']},
-  ]
-  if(settings.quotation||template.engine==='quotation')return [
-    {icon:Boxes,title:'Catálogo técnico',copy:'Organiza productos, compatibilidades y datos clave para vender por consulta.',details:['Campos técnicos','Variantes útiles','Inventario opcional']},
-    {icon:ClipboardList,title:'Cotizaciones ordenadas',copy:'Prepara propuestas sin perder contexto entre mensajes, productos y precios.',details:['Resumen claro','Edición rápida','Estados comerciales']},
-    {icon:MessageCircleMore,title:'Consulta conectada',copy:'La conversación sigue siendo el centro, pero ahora deja estructura comercial.',details:['Chat con contexto','Respuestas rápidas','Notas internas']},
-    {icon:BarChart3,title:'Seguimiento comercial',copy:'Visualiza oportunidades abiertas, tareas y cierres sin moverte de la plataforma.',details:['Embudo simple','Pendientes visibles','Historial por cliente']},
-  ]
-  if(settings.wholesale||template.engine==='wholesale')return [
-    {icon:Boxes,title:'Catálogo mayorista',copy:'Presenta productos por volumen, líneas y condiciones comerciales.',details:['Listas por volumen','Precios escalados','Colecciones útiles']},
-    {icon:UsersRound,title:'Clientes y cuentas',copy:'Separa compradores frecuentes y conserva historial comercial por contacto.',details:['Clientes recurrentes','Notas comerciales','Relaciones activas']},
-    {icon:ClipboardList,title:'Pedidos recurrentes',copy:'Gestiona pedidos grandes con mejor trazabilidad desde el primer mensaje.',details:['Totales claros','Seguimiento operativo','Repetición sencilla']},
-    {icon:BarChart3,title:'Analítica comercial',copy:'Entiende ticket, frecuencia y movimiento por cliente o canal.',details:['Ingresos por cliente','Historial de compra','Visión del negocio']},
-  ]
-  if(settings.supports_dine_in)return [
-    {icon:ShoppingBag,title:'Pedidos desde conversación',copy:'El cliente pide por WhatsApp y el negocio conserva estructura comercial.',details:['Pedido por chat','Confirmación rápida','Menos fricción']},
-    {icon:Store,title:'Salón + delivery',copy:'El panel se adapta al trabajo mixto entre consumo en mesa y entrega.',details:['Mesas','Delivery','Retiro en tienda']},
-    {icon:CreditCard,title:'Caja conectada',copy:'Cobro, pedido y operación quedan alineados dentro del mismo flujo.',details:['Cobros visibles','Cierres simples','Menos pasos']},
-    {icon:Truck,title:'Entrega coordinada',copy:'Dirección, zonas y estado operativo se conectan con el pedido.',details:['Zonas','Despacho','Seguimiento']},
-  ]
-  if(template.engine==='food')return [
-    {icon:ShoppingBag,title:'Menú y combos',copy:'Productos, extras y combos preparados para vender rápido y sin explicaciones largas.',details:['Combos','Extras','Categorías claras']},
-    {icon:MessageCircleMore,title:'Pedido por WhatsApp',copy:'La conversación se convierte en pedido sin sacar al cliente del canal que ya usa.',details:['Chat con contexto','Menos abandono','Confirmación rápida']},
-    {icon:Truck,title:'Entrega y retiro',copy:'Coordina zonas, horarios y estados según el tipo de pedido.',details:['Delivery','Retiro','Estados']},
-    {icon:WalletCards,title:'Caja y cobro',copy:'Visualiza cobro y ticket promedio como parte de la operación diaria.',details:['Métodos de pago','Ticket medio','Resumen comercial']},
-  ]
-  if(template.engine==='fashion')return [
-    {icon:ShoppingBag,title:'Colección visual',copy:'La landing y el catálogo destacan imagen, identidad y presentación.',details:['Galería','Colecciones','Presentación cuidada']},
-    {icon:Boxes,title:'Tallas y colores',copy:'Variantes y stock se organizan para vender sin confusiones en el chat.',details:['Variantes','Inventario','Opciones claras']},
-    {icon:UsersRound,title:'Clientes y estilo',copy:'Conserva preferencias, compras previas y relación con cada comprador.',details:['Historial','CRM simple','Seguimiento']},
-    {icon:Star,title:'Promociones activas',copy:'Crea una operación más comercial con promos, lanzamientos y recurrencia.',details:['Promociones','Campañas','Temporadas']},
-  ]
-  return fallback
+function BrandIdentity({landing}:{landing:Record<string,any>}){
+  const logo=String(landing.brand_logo_url||'').trim()
+  return logo?<img src={logo} alt={String(landing.brand_name||'WAMERCIO')} className="h-9 max-w-[175px] object-contain"/>:<WamercioLogo mode="full"/>
 }
 
 function splitHeroTitle(title:string){
-  const parts=title.split(/(WhatsApp)/gi)
-  return parts.map((part,index)=>part.toLowerCase()==='whatsapp'?<span key={index} className="text-[#0e8347]">{part}</span>:<span key={index}>{part}</span>)
+  return title.split(/(WhatsApp)/gi).map((part,index)=>part.toLowerCase()==='whatsapp'?<span key={index} className="text-[#16865a]">{part}</span>:<span key={index}>{part}</span>)
 }
 
-function HeroPreview({template}:{template:LandingTemplate|null}){
-  const modules=template?templatePrimaryModules(template):['Pedidos','Productos','Clientes','WhatsApp','Analítica']
-  const highlights=template?templatePreviewHighlights(template):['Catálogo ordenado','Pedidos y clientes conectados','Panel simple para operar']
-  return <div className="relative overflow-hidden rounded-[30px] border border-[#e3dcd1] bg-white shadow-[0_28px_80px_rgba(25,22,17,.08)]">
-    <div className="flex items-center gap-3 border-b border-[#efe8dc] px-4 py-3 sm:px-5">
-      <img src="/brand/wamercio-logo-full.webp" alt="WAMERCIO" className="h-8 w-auto object-contain sm:h-9"/>
-      <div className="hidden flex-1 items-center gap-2 rounded-xl border border-[#e7e0d5] px-3 py-2 text-[11px] text-[#8b8375] lg:flex"><Search className="h-4 w-4"/>Buscar pedidos, productos, clientes <span className="ml-auto rounded-md border border-[#e7e0d5] px-2 py-0.5 text-[10px]">Ctrl K</span></div>
-      <span className="inline-flex items-center gap-2 rounded-xl bg-[#eef8f3] px-3 py-2 text-[11px] font-bold text-[#0b5d3b]"><Store className="h-4 w-4"/>Pizzería Freddy</span>
-    </div>
-    <div className="grid lg:grid-cols-[255px_1fr]">
-      <aside className="bg-[#0b5d3b] p-5 text-white">
-        <WamercioLogo mode="compact" light subtitle="Panel del comercio"/>
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-white/10 p-4">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-white/60">Plantilla activa</div>
-          <div className="mt-2 text-xl font-extrabold tracking-[-.03em]">{template?.name||'Comercio general'}</div>
-          <p className="mt-2 text-xs leading-5 text-white/72">{template?templateFitCopy(template):'Un panel que habla el mismo idioma que tu negocio.'}</p>
+function HeroPreview({landing}:{landing:Record<string,any>}){
+  const t=(key:string)=>String(landing[key]??landingDefaults[key]??'')
+  const metrics=[
+    [t('hero_mock_orders_label'),t('hero_mock_orders_value'),ClipboardList],
+    [t('hero_mock_sales_label'),t('hero_mock_sales_value'),BarChart3],
+    [t('hero_mock_customers_label'),t('hero_mock_customers_value'),UsersRound],
+  ] as const
+  return <div className="relative mx-auto w-full min-w-0 max-w-[620px] lg:ml-auto" aria-label={t('hero_mock_caption')}>
+    <div className="overflow-hidden rounded-[26px] border border-[#dce8df] bg-white shadow-[0_24px_65px_rgba(4,52,32,.10)] sm:rounded-[30px]">
+      <div className="flex min-h-14 items-center justify-between gap-3 border-b border-[#e8eee9] px-4 py-3 sm:px-5">
+        <div className="flex min-w-0 items-center gap-2.5"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#0b5d3b] text-white"><Store className="h-5 w-5"/></span><div className="min-w-0"><p className="truncate text-xs font-extrabold text-[#073e29]">{t('hero_mock_store_name')}</p><p className="mt-0.5 text-[10px] font-medium text-[#698273]">{t('hero_mock_side_label')}</p></div></div>
+        <div className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#e5f5ec] px-2.5 py-1.5 text-[10px] font-bold text-[#0b6941]"><span className="h-1.5 w-1.5 rounded-full bg-[#1eaa65]"/>{t('hero_mock_catalog_status')}</div>
+      </div>
+      <div className="grid min-w-0 sm:grid-cols-[148px_minmax(0,1fr)]">
+        <div className="hidden bg-[#075b3a] p-4 text-white sm:block">
+          <div className="rounded-xl bg-white/10 px-3 py-3"><div className="text-[10px] font-bold uppercase tracking-[.1em] text-white/70">{t('hero_mock_side_label')}</div><div className="mt-2 text-sm font-bold leading-5">{t('hero_mock_banner_title')}</div></div>
+          <div className="mt-5 space-y-2">{[t('hero_mock_menu_1'),t('hero_mock_menu_2'),t('hero_mock_menu_3'),t('hero_mock_menu_4')].map((item,index)=><div key={index} className={`rounded-lg px-3 py-2 text-[11px] font-semibold ${index===0?'bg-white text-[#075b3a]':'bg-white/10 text-white/80'}`}>{item}</div>)}</div>
         </div>
-        <div className="mt-5 space-y-2">
-          {modules.map((module,index)=><div key={module} className={`rounded-xl px-3 py-2 text-[12px] font-semibold ${index===0?'bg-white text-[#0b5d3b]':'bg-white/10 text-white/82'}`}>{module}</div>)}
-        </div>
-      </aside>
-      <div className="bg-[#fbf8f3] p-4 sm:p-5 lg:p-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[[template?.settings?.appointments?'Reservas hoy':'Pedidos hoy','24'],['Ventas','RD$ 12,480'],[template?.settings?.quotation?'Cotizaciones':'Clientes','8']].map(([label,value],index)=><div key={String(label)} className={`rounded-2xl border px-4 py-4 ${index===0?'border-[#d6ecdf] bg-[#eef8f3]':'border-[#e8e0d4] bg-white'}`}><div className="text-[10px] font-bold uppercase tracking-[.16em] text-[#7e7a72]">{label}</div><div className="mt-2 text-2xl font-extrabold tracking-[-.03em] text-[#0a3f2a]">{value}</div><div className="mt-1 text-[11px] text-[#718078]">Operación visible y conectada.</div></div>)}
-        </div>
-        <div className="mt-4 rounded-[24px] border border-[#e8e0d4] bg-white p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Vista pública + operación</div>
-              <h3 className="mt-2 text-xl font-extrabold tracking-[-.03em] text-[#0a3f2a]">La landing, el panel y el chat trabajan como un mismo producto.</h3>
-            </div>
-            <div className="flex flex-wrap gap-2">{highlights.map(item=><span key={item} className="rounded-full border border-[#e6ddd0] bg-[#fbf8f3] px-3 py-1.5 text-[10px] font-bold text-[#0a3f2a]">{item}</span>)}</div>
-          </div>
-          <div className="mt-5 grid gap-3 md:grid-cols-3">
-            {['Comparte el enlace','Recibe la orden en WhatsApp','Opera desde un panel coherente'].map((step,index)=><div key={step} className="rounded-2xl bg-[#f8f5ef] p-4"><div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#0e8347]">Paso {index+1}</div><div className="mt-2 text-sm font-bold text-[#0a3f2a]">{step}</div><p className="mt-1 text-[11px] leading-5 text-[#6e6759]">El flujo comercial se siente corto, claro y alineado con el tipo de negocio.</p></div>)}
+        <div className="min-w-0 bg-[#f8fbf8] p-3.5 sm:p-5">
+          <div className="grid grid-cols-3 gap-2 sm:gap-2.5">{metrics.map(([label,value,Icon],index)=><div key={index} className="min-w-0 rounded-2xl border border-[#e1ebe3] bg-white p-2.5 sm:p-3"><Icon className="h-4 w-4 text-[#128153]"/><p className="mt-2 text-[9px] font-semibold leading-4 text-[#597366] sm:text-[10px]">{label}</p><p className="mt-1 break-words text-[14px] font-extrabold tracking-tight text-[#08462f] sm:text-[17px]">{value}</p></div>)}</div>
+          <div className="mt-3.5 rounded-2xl border border-[#dce9de] bg-white p-4 sm:p-5">
+            <span className="text-[10px] font-bold uppercase tracking-[.14em] text-[#16865a]">{t('hero_mock_caption')}</span>
+            <h3 className="mt-2 text-lg font-extrabold leading-6 tracking-[-.025em] text-[#073e29] sm:text-xl">{t('hero_mock_banner_title')}</h3>
+            <p className="mt-2 text-xs leading-5 text-[#587466] sm:text-[13px]">{t('hero_mock_banner_text')}</p>
+            <div className="mt-4 grid grid-cols-3 gap-1.5 text-center">{[t('hero_mock_menu_2'),t('hero_mock_menu_4'),t('hero_mock_menu_1')].map((label,index)=><div key={index} className="min-w-0 rounded-xl bg-[#ecf7ef] px-1.5 py-3"><span className="mx-auto grid h-7 w-7 place-items-center rounded-full bg-white text-[#0b7046]">{index===0?<Boxes className="h-3.5 w-3.5"/>:index===1?<MessageCircleMore className="h-3.5 w-3.5"/>:<ShoppingBag className="h-3.5 w-3.5"/>}</span><span className="mt-1.5 block break-words text-[10px] font-semibold leading-4 text-[#0a5439]">{label}</span></div>)}</div>
+            <div className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-[#0b5d3b] px-3 py-2 text-[11px] font-bold text-white">{t('hero_mock_action_label')}<ChevronRight className="h-3.5 w-3.5"/></div>
           </div>
         </div>
       </div>
@@ -213,72 +127,33 @@ function HeroPreview({template}:{template:LandingTemplate|null}){
   </div>
 }
 
-function ChatCommerceMock(){
-  return <div className="overflow-hidden rounded-[28px] border border-[#dfd6ca] bg-white shadow-[0_24px_60px_rgba(25,22,17,.08)]">
-    <div className="flex items-center gap-3 bg-[#0b5d3b] px-4 py-3 text-white">
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-white/15 text-sm font-extrabold">PF</span>
-      <div>
-        <div className="text-sm font-bold">Pizzería Freddy</div>
-        <div className="text-[10px] text-white/65">Conectado a WAMERCIO</div>
-      </div>
-      <MessageCircleMore className="ml-auto h-4 w-4"/>
+function ChatCommerceMock({landing}:{landing:Record<string,any>}){
+  const t=(key:string)=>String(landing[key]??landingDefaults[key]??'')
+  return <div className="mx-auto w-full min-w-0 max-w-[590px] overflow-hidden rounded-[26px] border border-[#d8e6db] bg-white shadow-[0_16px_46px_rgba(5,62,36,.08)]">
+    <div className="flex items-center gap-3 bg-[#075b3a] px-4 py-3.5 text-white sm:px-5"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white/15"><Store className="h-5 w-5"/></div><div className="min-w-0 flex-1"><div className="truncate text-sm font-bold">{t('process_mock_store_title')}</div><div className="mt-0.5 truncate text-[11px] text-white/75">{t('process_mock_status')}</div></div><MessageCircleMore className="h-5 w-5 shrink-0 text-white/85"/></div>
+    <div className="space-y-3 bg-[#f4f8f3] p-4 sm:p-5">
+      <div className="mr-auto max-w-[86%] rounded-2xl rounded-tl-sm border border-[#ecf0e9] bg-white px-3.5 py-3 text-[13px] leading-[1.55] text-[#345a48] shadow-sm">{t('process_chat_1')}</div>
+      <div className="ml-auto max-w-[86%] rounded-2xl rounded-tr-sm bg-[#daf4e5] px-3.5 py-3 text-[13px] leading-[1.55] text-[#145638] shadow-sm">{t('process_chat_2')}</div>
+      <div className="mr-auto max-w-[80%] rounded-2xl rounded-tl-sm border border-[#ecf0e9] bg-white px-3.5 py-3 text-[13px] leading-[1.55] text-[#345a48] shadow-sm">{t('process_chat_3')}</div>
+      <div className="ml-auto w-[88%] max-w-[370px] rounded-2xl rounded-tr-sm bg-[#daf4e5] p-4 text-[#0b5034] shadow-sm"><div className="text-[10px] font-bold uppercase tracking-[.12em] text-[#0d7c4d]">{t('process_mock_order_title')}</div><div className="mt-2 text-[13px] font-semibold">{t('process_mock_products_title')}</div><div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-[#bee5cd] pt-3"><span className="text-[12px]">{t('process_mock_total_label')}</span><strong className="text-base">{t('process_mock_total_value')}</strong></div><p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold"><Check className="h-3.5 w-3.5"/>{t('process_mock_order_label')}</p></div>
     </div>
-    <div className="space-y-3 bg-[#f7f3ec] p-4 sm:p-5" style={{backgroundImage:"linear-gradient(rgba(247,243,236,.96),rgba(247,243,236,.96)),url('/wacatalog-inspired/chat-pattern.png')",backgroundSize:'290px'}}>
-      <div className="max-w-[82%] rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-[13px] leading-6 text-[#46584f] shadow-sm">Hola 👋 Vi el enlace de su tienda. Quiero una pizza pepperoni y una orden de pan de ajo.</div>
-      <div className="ml-auto max-w-[82%] rounded-2xl rounded-tr-sm bg-[#dff4e7] px-4 py-3 text-[13px] leading-6 text-[#0a3f2a] shadow-sm">Perfecto. Ya te armé el pedido. ¿Lo quieres para entrega o retiro?</div>
-      <div className="max-w-[86%] rounded-2xl rounded-tl-sm bg-white px-4 py-3 text-[13px] leading-6 text-[#46584f] shadow-sm">Entrega en Bonao, sector Los Jardines.</div>
-      <div className="ml-auto max-w-[88%] rounded-2xl rounded-tr-sm bg-[#dff4e7] p-4 shadow-sm"><div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#0e8347]">Resumen del pedido</div><div className="mt-3 space-y-2 text-[13px] text-[#0a3f2a]"><div className="flex items-center justify-between"><span>1 × Pizza Pepperoni</span><strong>RD$ 950</strong></div><div className="flex items-center justify-between"><span>1 × Pan de ajo</span><strong>RD$ 430</strong></div></div><div className="mt-3 border-t border-[#c7e7d2] pt-3 text-right text-lg font-extrabold text-[#0a3f2a]">RD$ 1,380</div></div>
-      <div className="ml-auto max-w-[76%] rounded-2xl rounded-tr-sm bg-[#dff4e7] px-4 py-3 text-[13px] font-semibold text-[#0a3f2a] shadow-sm">Listo ✅ Confirmado y visible en el panel.</div>
-    </div>
-    <div className="flex items-center gap-2 border-t border-[#ece5db] bg-white p-3">
-      <span className="grid h-9 w-9 place-items-center rounded-full bg-[#f3eee5] text-[#6e6759]"><Link2 className="h-4 w-4"/></span>
-      <div className="h-10 flex-1 rounded-full border border-[#e5ddd2] bg-[#fbfaf8]"/>
-      <span className="grid h-10 w-10 place-items-center rounded-full bg-[#0b5d3b] text-white"><Send className="h-4 w-4"/></span>
-    </div>
+    <div className="flex items-center gap-3 border-t border-[#e6eee7] bg-white p-3.5"><div className="flex h-10 min-w-0 flex-1 items-center rounded-full bg-[#f2f7f3] px-4 text-[11px] font-medium text-[#7f9889]">{t('process_mock_button_label')}</div><span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0b5d3b] text-white"><Send className="h-4 w-4"/></span></div>
   </div>
 }
 
-function TemplatePreview({template}:{template:LandingTemplate|null}){
+function TemplatePreview({template,landing}:{template:LandingTemplate|null;landing:Record<string,any>}){
+  const t=(key:string)=>String(landing[key]??landingDefaults[key]??'')
   const modules=template?templatePrimaryModules(template):['Productos','Clientes','Pedidos','Analítica','WhatsApp']
-  const signals=template?templateSignals(template):['Pedidos y catálogo']
-  const highlights=template?templatePreviewHighlights(template):['Catálogo ordenado','Pedidos y clientes conectados','Panel simple para operar']
-  return <div className="overflow-hidden rounded-[28px] border border-[#e3dcd1] bg-white shadow-[0_24px_60px_rgba(25,22,17,.08)]">
-    <div className="grid xl:grid-cols-[280px_1fr]">
-      <aside className="bg-[#0b5d3b] p-5 text-white">
-        <WamercioLogo mode="compact" light subtitle="Experiencia adaptativa"/>
-        <div className="mt-5 rounded-[22px] border border-white/10 bg-white/10 p-4">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-white/60">Plantilla</div>
-          <div className="mt-2 text-xl font-extrabold tracking-[-.03em]">{template?.name||'Comercio general'}</div>
-          <div className="mt-2 flex flex-wrap gap-2">{signals.map(signal=><span key={signal} className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[10px] font-bold text-white/85">{signal}</span>)}</div>
-          <p className="mt-4 text-xs leading-5 text-white/72">{template?templateFitCopy(template):'La plataforma se adapta al flujo de cada negocio.'}</p>
-        </div>
-        <div className="mt-5 space-y-2">{modules.map((module,index)=><div key={module} className={`rounded-xl px-3 py-2 text-[12px] font-semibold ${index===0?'bg-white text-[#0b5d3b]':'bg-white/10 text-white/82'}`}>{module}</div>)}</div>
-      </aside>
-      <div className="bg-[#fbf8f3] p-5 sm:p-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div>
-            <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Panel adaptado al negocio</div>
-            <h3 className="mt-2 text-2xl font-extrabold tracking-[-.03em] text-[#0a3f2a]">Tu operación ve lo que sí necesita.</h3>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-[#5c675f]">La plantilla elegida reorganiza la landing pública, el panel interno y el tipo de conversación que impulsa la venta o el servicio.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">{highlights.map(item=><span key={item} className="rounded-full border border-[#e5ddd2] bg-white px-3 py-1.5 text-[10px] font-bold text-[#0a3f2a]">{item}</span>)}</div>
-        </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          {[[template?.settings?.appointments?'Reservas hoy':'Pedidos hoy','24'],[template?.settings?.quotation?'Cotizaciones activas':'Ventas del día','RD$ 12,480'],['Clientes con contexto','18']].map(([label,value],index)=><div key={String(label)} className={`rounded-[20px] border px-4 py-4 ${index===0?'border-[#d6ecdf] bg-[#eef8f3]':'border-[#e5ddd2] bg-white'}`}><div className="text-[10px] font-bold uppercase tracking-[.14em] text-[#718078]">{label}</div><div className="mt-2 text-2xl font-extrabold tracking-[-.03em] text-[#0a3f2a]">{value}</div><div className="mt-1 text-[11px] text-[#718078]">Flujo real dentro del panel.</div></div>)}
-        </div>
-      </div>
-    </div>
+  const signals=template?templateSignals(template):['Catálogo','Pedidos']
+  return <div className="grid overflow-hidden rounded-[25px] border border-[#dfebe1] bg-white shadow-[0_16px_44px_rgba(4,52,32,.05)] md:grid-cols-[210px_minmax(0,1fr)]">
+    <div className="bg-[#0b5d3b] p-5 text-white"><div className="text-[10px] font-extrabold uppercase tracking-[.14em] text-white/65">{t('templates_selected_label')}</div><h3 className="mt-2 text-xl font-bold leading-tight">{template?.name||t('hero_mock_store_name')}</h3><p className="mt-3 text-[12px] leading-5 text-white/80">{template?.description||t('templates_preview_text')}</p><div className="mt-4 flex flex-wrap gap-1.5">{signals.slice(0,3).map(signal=><span key={signal} className="rounded-full border border-white/25 px-2 py-1 text-[10px] text-white/85">{signal}</span>)}</div></div>
+    <div className="min-w-0 bg-[#f7fbf8] p-4 sm:p-6"><div className="text-[10px] font-bold uppercase tracking-[.14em] text-[#16865a]">{t('templates_preview_badge')}</div><h3 className="mt-2 text-xl font-extrabold tracking-[-.025em] text-[#073e29] sm:text-2xl">{t('templates_preview_title')}</h3><p className="mt-2 max-w-xl text-sm leading-6 text-[#62766a]">{t('templates_preview_text')}</p><div className="mt-4 flex flex-wrap gap-2">{modules.map(module=><span key={module} className="rounded-full border border-[#dce9de] bg-white px-3 py-1.5 text-[11px] font-semibold text-[#195f3f]">{module}</span>)}</div><div className="mt-5 grid grid-cols-3 gap-2">{[1,2,3].map(n=><div key={n} className="min-w-0 rounded-xl border border-[#e1ebe3] bg-white px-3 py-3"><div className="text-[10px] leading-4 text-[#60796a]">{t(`templates_preview_metric_${n}`)}</div><strong className="mt-1 block break-words text-[14px] text-[#0b5135] sm:text-lg">{t(`templates_preview_metric_${n}_value`)}</strong></div>)}</div></div>
   </div>
 }
 
 function FeatureCard({feature}:{feature:LandingFeature}){
   const Icon=feature.icon
-  return <article className="rounded-[24px] border border-[#e3dcd1] bg-white p-5 shadow-[0_12px_30px_rgba(25,22,17,.04)]">
-    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#eef8f3] text-[#0e8347]"><Icon className="h-5 w-5"/></span>
-    <h3 className="mt-4 text-lg font-extrabold tracking-[-.02em] text-[#0a3f2a]">{feature.title}</h3>
-    <p className="mt-2 text-sm leading-6 text-[#6e6759]">{feature.copy}</p>
-    <div className="mt-4 flex flex-wrap gap-2">{feature.details.map(detail=><span key={detail} className="rounded-full bg-[#f6f2eb] px-2.5 py-1 text-[10px] font-bold text-[#506158]">{detail}</span>)}</div>
-  </article>
+  return <article className="flex h-full min-w-0 flex-col rounded-[22px] border border-[#e1eae3] bg-white p-5 shadow-[0_10px_28px_rgba(5,54,33,.035)] transition hover:-translate-y-0.5 hover:border-[#bcdac6] hover:shadow-[0_14px_36px_rgba(5,54,33,.07)] sm:p-6"><span className="grid h-11 w-11 place-items-center rounded-xl bg-[#e7f6ed] text-[#0d7b4d]"><Icon className="h-5 w-5"/></span><h3 className="mt-5 text-lg font-bold leading-snug tracking-[-.02em] text-[#073e29]">{feature.title}</h3><p className="mt-2 flex-1 text-sm leading-6 text-[#62766a]">{feature.copy}</p><div className="mt-4 flex flex-wrap gap-1.5">{feature.details.map(detail=><span key={detail} className="rounded-full bg-[#f0f7f1] px-2.5 py-1 text-[10px] font-semibold text-[#3e7156]">{detail}</span>)}</div></article>
 }
 
 export default function PlatformLanding(){
@@ -288,192 +163,62 @@ export default function PlatformLanding(){
   const[templates,setTemplates]=useState<LandingTemplate[]>([])
   const[activeTemplateId,setActiveTemplateId]=useState('')
   const[platform,setPlatform]=useState<any>(null)
-
+  const[origin,setOrigin]=useState('https://wamercio.com')
   useEffect(()=>{
     api<Plan[]>('/plans').then(setPlans).catch(()=>{})
     api<LandingTemplate[]>('/templates').then(setTemplates).catch(()=>{})
     api('/public/platform').then(setPlatform).catch(()=>{})
-    if(typeof window!=='undefined'&&new URLSearchParams(window.location.search).get('access')==='1')setAccessOpen(true)
+    if(typeof window!=='undefined'){
+      setOrigin(window.location.origin)
+      if(new URLSearchParams(window.location.search).get('access')==='1')setAccessOpen(true)
+    }
   },[])
-
-  const landing=platform?.landing||{}
-  const domain=typeof window!=='undefined'?window.location.hostname:'wamercio.com'
-  const text=(value:any,fallback:string)=>String(value||fallback).replaceAll('{domain}',domain)
+  const landing:Record<string,any>={...landingDefaults,...(platform?.landing||{})}
+  const t=(key:string)=>String(landing[key]??landingDefaults[key]??'').replaceAll('{domain}',origin.replace(/^https?:\/\//,''))
+  const visible=(id:string)=>landing[`show_${id}`]!==false
   const open=()=>{setMobileOpen(false);setAccessOpen(true)}
-
-  const defaultFeatures=useMemo<LandingFeature[]>(()=>[
-    {icon:Boxes,title:text(landing.feature_1_title,'Catálogo listo una sola vez'),copy:text(landing.feature_1_text,'Crea productos, precios, variantes e inventario desde un panel pensado para vender por conversación.'),details:['Variantes e inventario','Colecciones y categorías','Enlace y QR siempre actualizados']},
-    {icon:MessageCircleMore,title:text(landing.feature_2_title,'Toma el pedido en el chat'),copy:text(landing.feature_2_text,'Conecta WhatsApp y convierte conversaciones reales en pedidos organizados sin perder contexto.'),details:['Chat conectado al pedido','Respuestas rápidas','Historial por cliente']},
-    {icon:WalletCards,title:text(landing.feature_3_title,'Cobra como trabaja tu negocio'),copy:text(landing.feature_3_text,'Efectivo, transferencia, terminal y métodos locales, con el estado del cobro ligado al pedido.'),details:['Efectivo y transferencia','Pagos registrados','Resumen comercial']},
-    {icon:Truck,title:text(landing.feature_4_title,'Entrega sin romper la conversación'),copy:text(landing.feature_4_text,'Coordina entrega, dirección, zonas y seguimiento sin obligar al cliente a abandonar WhatsApp.'),details:['Zonas de entrega','Direcciones estructuradas','Seguimiento operativo']},
-  ],[landing,domain])
-
-  const templateShowcase=useMemo(()=>[...templates].sort((a,b)=>Number(!!b.is_featured)-Number(!!a.is_featured)||Number(a.sort_order||999)-Number(b.sort_order||999)).slice(0,9),[templates])
-  const activeTemplate=useMemo(()=>templateShowcase.find(template=>template.id===activeTemplateId)||templateShowcase[0]||null,[templateShowcase,activeTemplateId])
-  useEffect(()=>{
-    if(templateShowcase.length&&!templateShowcase.some(template=>template.id===activeTemplateId))setActiveTemplateId(templateShowcase[0].id)
-  },[templateShowcase,activeTemplateId])
-  const adaptiveFeatures=useMemo(()=>templateFeatureCards(activeTemplate,defaultFeatures),[activeTemplate,defaultFeatures])
-
-  if(landing.maintenance_mode){
-    return <main className="grid min-h-dvh place-items-center bg-[#fbf8f3] p-6 text-[#0a3f2a]">
-      <AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/>
-      <div className="w-full max-w-2xl rounded-[28px] border border-[#e6ded1] bg-white p-8 shadow-[0_30px_80px_rgba(25,22,17,.10)] sm:p-12">
-        <WamercioLogo/>
-        <div className="mt-8 inline-flex rounded-full bg-[#e3f6ea] px-3 py-1 text-[10px] font-bold uppercase tracking-[.14em] text-[#0e8347]">{text(landing.maintenance_badge,'Mantenimiento programado')}</div>
-        <h1 className="mt-5 text-3xl font-extrabold tracking-[-.035em] sm:text-4xl">{text(landing.maintenance_title,'Estamos realizando mejoras en la página principal')}</h1>
-        <p className="mt-4 text-sm leading-7 text-[#6e6759]">{text(landing.maintenance_text,'La página principal estará temporalmente en mantenimiento. Los negocios activos continúan operando desde sus enlaces públicos.')}</p>
-        <button onClick={open} className="mt-7 inline-flex items-center gap-2 rounded-2xl bg-[#bd431e] px-5 py-3 text-sm font-bold text-white">{text(landing.maintenance_button_label,'Entrar al panel de administración')}<ArrowRight className="h-4 w-4"/></button>
-      </div>
-    </main>
-  }
-
-  const heroTitle=text(landing.hero_title,'Toda tu tienda funciona dentro de WhatsApp.')
-  const nav=[
-    ['#como-funciona',text(landing.nav_features_label,'Cómo funciona')],
-    ['#plantillas',text(landing.nav_product_label,'Plantillas')],
-    ['#funciones',text(landing.nav_prices_label,'Funciones')],
-    ['#precios',text(landing.nav_prices_label,'Precios')],
-    ['#demo',text(landing.nav_demo_label,'Demo')],
+  const showcase=useMemo(()=>[...templates].sort((a,b)=>Number(!!b.is_featured)-Number(!!a.is_featured)||Number(a.sort_order||999)-Number(b.sort_order||999)).slice(0,9),[templates])
+  const activeTemplate=showcase.find(x=>x.id===activeTemplateId)||showcase[0]||null
+  const templateOverrides=landing.template_overrides||{}
+  const planOverrides=landing.plan_overrides||{}
+  const displayTemplate=(item:LandingTemplate)=>({ ...item, name:templateOverrides[item.id]?.title??item.name, description:templateOverrides[item.id]?.description??item.description })
+  const shownTemplate=activeTemplate?displayTemplate(activeTemplate):null
+  const templateTags=(item:LandingTemplate)=>typeof templateOverrides[item.id]?.tags==='string'&&templateOverrides[item.id].tags.trim()?templateOverrides[item.id].tags.split(',').map((s:string)=>s.trim()).filter(Boolean):templateSignals(item)
+  const features:LandingFeature[]=[
+    {icon:Boxes,title:t('feature_1_title'),copy:t('feature_1_text'),details:t('feature_1_details').split(',').map(s=>s.trim()).filter(Boolean)},
+    {icon:MessageCircleMore,title:t('feature_2_title'),copy:t('feature_2_text'),details:t('feature_2_details').split(',').map(s=>s.trim()).filter(Boolean)},
+    {icon:WalletCards,title:t('feature_3_title'),copy:t('feature_3_text'),details:t('feature_3_details').split(',').map(s=>s.trim()).filter(Boolean)},
+    {icon:Truck,title:t('feature_4_title'),copy:t('feature_4_text'),details:t('feature_4_details').split(',').map(s=>s.trim()).filter(Boolean)},
+    {icon:BarChart3,title:t('feature_5_title'),copy:t('feature_5_text'),details:t('feature_5_details').split(',').map(s=>s.trim()).filter(Boolean)},
+    {icon:UsersRound,title:t('feature_6_title'),copy:t('feature_6_text'),details:t('feature_6_details').split(',').map(s=>s.trim()).filter(Boolean)},
   ]
+  const navigation:[string,string,boolean][]=[
+    ['#como-funciona',t('nav_features_label'),visible('process')],
+    ['#plantillas',t('nav_templates_label'),visible('templates')],
+    ['#funciones',t('nav_product_label'),visible('features')],
+    ['#precios',t('nav_prices_label'),visible('plans')],
+    ['#demo',t('nav_demo_label'),visible('demo')],
+  ]
+  const badge='text-[11px] font-extrabold uppercase tracking-[.16em] text-[#148253]'
+  const heading='mt-3 max-w-[760px] text-[clamp(1.9rem,3.4vw,3rem)] font-extrabold leading-[1.11] tracking-[-.04em] text-[#073e29]'
+  const lead='mt-4 max-w-[680px] text-[15px] leading-7 text-[#5d7768]'
+  const wrap='mx-auto w-full max-w-[1200px] px-5 sm:px-8 lg:px-10'
 
-  return <main className="min-h-dvh overflow-x-hidden bg-[#fbf8f3] text-[#46584f]">
+  if(landing.maintenance_mode)return <main className="marketing-shell grid min-h-dvh place-items-center bg-[#f7faf6] p-6"><AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/><div className="w-full max-w-2xl rounded-3xl border border-[#e0e9e1] bg-white p-8 shadow-xl sm:p-12"><WamercioLogo mode="full"/><div className={`mt-8 ${badge}`}>{t('maintenance_badge')}</div><h1 className="mt-4 text-3xl font-extrabold tracking-tight text-[#073e29] sm:text-4xl">{t('maintenance_title')}</h1><p className="mt-4 text-base leading-7 text-[#5d7768]">{t('maintenance_text')}</p><button onClick={open} className="mt-7 inline-flex items-center gap-2 rounded-full bg-[#0b5d3b] px-6 py-3 text-sm font-bold text-white">{t('maintenance_button_label')}<ArrowRight className="h-4 w-4"/></button></div></main>
+
+  const sections:Record<LandingSectionId,ReactNode>={
+    hero:<section id="inicio" className="scroll-mt-24 border-b border-[#e5ece4] bg-[#f7faf6] py-14 sm:py-20 lg:py-24"><div className={`${wrap} grid items-center gap-10 lg:grid-cols-[minmax(0,1.03fr)_minmax(0,.97fr)] lg:gap-12`}><div className="min-w-0"><div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#d6e9dc] bg-white px-3.5 py-2 text-[10px] font-extrabold uppercase tracking-[.13em] text-[#13794e]"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#21aa67]"/>{t('hero_badge')}</div><p className="mt-6 text-[11px] font-bold uppercase tracking-[.12em] text-[#54866a]">{t('hero_kicker')}</p><h1 className="mt-3 max-w-[680px] break-words text-[clamp(2.45rem,4.7vw,4.45rem)] font-extrabold leading-[1.04] tracking-[-.055em] text-[#073e29]">{splitHeroTitle(t('hero_title'))}</h1><p className="mt-6 max-w-[550px] text-[15px] leading-7 text-[#5d7768] sm:text-base sm:leading-8">{t('hero_subtitle')}</p><div className="mt-7 flex flex-wrap gap-3"><button onClick={open} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#0b5d3b] px-6 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(11,93,59,.15)] transition hover:bg-[#07492e]">{t('access_label')}<ArrowRight className="h-4 w-4"/></button><a href={visible('process')?'#como-funciona':visible('demo')?'#demo':'#precios'} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full border border-[#bdd6c5] bg-white px-6 py-3 text-sm font-bold text-[#0b5d3b] transition hover:bg-[#eaf5ed]">{t('demo_label')}</a></div>{visible('hero_highlights')&&<div className="mt-10 grid gap-3 sm:grid-cols-3">{[Link2,MessageCircleMore,BarChart3].map((Icon,index)=><div key={index} className="rounded-2xl border border-[#e1ebe3] bg-white p-4"><Icon className="h-5 w-5 text-[#16865a]"/><h3 className="mt-3 text-[13px] font-bold text-[#0b5135]">{t(`hero_highlight_${index+1}_title`)}</h3><p className="mt-1 text-xs leading-5 text-[#698174]">{t(`hero_highlight_${index+1}_text`)}</p></div>)}</div>}</div>{visible('hero_preview')&&<HeroPreview landing={landing}/>}</div></section>,
+    process:<section id="como-funciona" className="scroll-mt-24 bg-white py-16 sm:py-24"><div className={wrap}><div className="mx-auto max-w-[790px] text-center"><div className={badge}>{t('process_badge')}</div><h2 className={`${heading} mx-auto`}>{t('process_title')}</h2><p className={`${lead} mx-auto`}>{t('process_subtitle')}</p></div><div className={`mt-12 grid min-w-0 gap-8 ${visible('process_chat')?'lg:grid-cols-[minmax(0,.82fr)_minmax(0,1.18fr)] lg:items-center':''}`}><div className="grid gap-3">{[Link2,Smartphone,ClipboardList].map((Icon,index)=><article key={index} className="flex min-w-0 items-start gap-4 rounded-2xl border border-[#e3ece4] bg-[#f9fbf8] p-4 sm:p-5"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#e5f6ea] text-[#148253]"><Icon className="h-5 w-5"/></span><div className="min-w-0"><div className="text-[10px] font-bold uppercase tracking-[.14em] text-[#148253]">Paso {index+1}</div><h3 className="mt-1 text-base font-bold text-[#073e29]">{t(`process_step_${index+1}_title`)}</h3><p className="mt-2 text-[13px] leading-6 text-[#647c6e]">{t(`process_step_${index+1}_text`)}</p></div></article>)}<div className="grid gap-3 sm:grid-cols-2">{[['process_customer_title','process_customer_text'],['process_business_title','process_business_text']].map(([key,copy])=><div key={key} className="rounded-2xl bg-[#eaf7ee] p-4"><h3 className="text-[13px] font-bold text-[#0a6b42]">{t(key)}</h3><p className="mt-1.5 text-xs leading-5 text-[#547363]">{t(copy)}</p></div>)}</div></div>{visible('process_chat')&&<ChatCommerceMock landing={landing}/>}</div></div></section>,
+    templates:<section id="plantillas" className="scroll-mt-24 border-y border-[#e8efe7] bg-[#f7faf6] py-16 sm:py-24"><div className={wrap}><div className={badge}>{t('templates_badge')}</div><h2 className={heading}>{t('templates_title')}</h2><p className={lead}>{t('templates_subtitle')}</p>{showcase.length===0?<div className="mt-9 rounded-2xl border border-[#dfe9e1] bg-white p-6 text-sm text-[#587466]">{t('templates_empty_text')}</div>:<><div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{showcase.map(template=>{const active=template.id===activeTemplate?.id;return <button type="button" key={template.id} aria-pressed={active} onClick={()=>setActiveTemplateId(template.id)} className={`group min-w-0 rounded-[20px] border bg-white p-4 text-left transition sm:p-5 ${active?'border-[#0b7b4b] shadow-[0_10px_28px_rgba(5,82,48,.09)] ring-1 ring-[#0b7b4b]/30':'border-[#e0e9e2] hover:border-[#92caa5]'}`}><div className="flex items-start gap-3"><span className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${active?'bg-[#e4f5eb] text-[#0b7b4b]':'bg-[#f1f7f1] text-[#6a8373]'}`}><Store className="h-4 w-4"/></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-1.5"><h3 className="text-[15px] font-bold leading-5 text-[#073e29]">{displayTemplate(template).name}</h3>{template.is_featured&&<span className="rounded-full bg-[#e5f5eb] px-2 py-1 text-[9px] font-bold text-[#0b784a]">{t('templates_featured_label')}</span>}</div><p className="mt-1.5 line-clamp-3 text-[12px] leading-5 text-[#667d6e]">{displayTemplate(template).description||templateFitCopy(template)}</p></div></div><div className="mt-3 flex flex-wrap gap-1.5">{templateTags(template).slice(0,3).map(signal=><span key={signal} className="rounded-full bg-[#f1f7f1] px-2 py-1 text-[10px] font-medium text-[#507660]">{signal}</span>)}</div></button>})}</div>{visible('template_preview')&&<div className="mt-7"><TemplatePreview template={shownTemplate} landing={landing}/></div>}</>}</div></section>,
+    features:<section id="funciones" className="scroll-mt-24 bg-white py-16 sm:py-24"><div className={wrap}><div className={badge}>{t('features_badge')}</div><h2 className={heading}>{t('features_title')}</h2><p className={lead}>{t('features_subtitle')}</p><div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{features.map((feature,index)=><FeatureCard key={index} feature={feature}/>)}</div>{visible('features_strip')&&<div className="mt-8 flex flex-col gap-2 rounded-2xl bg-[#eaf6ed] px-6 py-6 text-[#0c5536] sm:flex-row sm:items-center sm:justify-between sm:gap-6"><p className="text-base font-bold">{t('features_strip_primary')}</p><p className="text-[13px] leading-5 text-[#507964]">{t('features_strip_secondary')}</p></div>}</div></section>,
+    plans:<section id="precios" className="scroll-mt-24 border-y border-[#e4ece5] bg-[#f7faf6] py-16 sm:py-24"><div className={wrap}><div className="mx-auto max-w-[720px] text-center"><div className={badge}>{t('plans_badge')}</div><h2 className={`${heading} mx-auto`}>{t('plans_title')}</h2><p className={`${lead} mx-auto`}>{t('plans_subtitle')}</p></div><div className={`mx-auto mt-12 grid max-w-[1070px] gap-5 ${plans.length>=3?'lg:grid-cols-3':plans.length===2?'md:max-w-[720px] md:grid-cols-2':'max-w-[370px]'}`}>{plans.length===0?<div className="rounded-2xl border border-[#e3ebe4] bg-white p-7 text-center text-sm text-[#607768]">{t('plans_empty_text')}</div>:plans.map((plan,index)=><article key={plan.id} className={`relative flex min-w-0 flex-col rounded-3xl border bg-white p-6 ${index===1?'border-[#0b7c4e] shadow-[0_16px_42px_rgba(10,105,65,.11)]':'border-[#e0e9e2]'}`}>{index===1&&<span className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#0b5d3b] px-3 py-1 text-[10px] font-bold text-white">{t('plans_popular_label')}</span>}<h3 className="text-lg font-bold text-[#073e29]">{planOverrides[plan.id]?.title??plan.name}</h3><p className="mt-2 min-h-10 text-[13px] leading-6 text-[#617a6b]">{planOverrides[plan.id]?.description??plan.description??t('plan_default_description')}</p><div className="mt-5 break-words text-[clamp(1.4rem,2.4vw,2rem)] font-extrabold tracking-[-.04em] text-[#07482f]">{plan.price?money(plan.price):'RD$ 0'}<span className="ml-1 text-xs font-semibold tracking-normal text-[#839588]">/{plan.billing_period==='yearly'?t('plans_year_unit'):t('plans_month_unit')}</span></div><ul className="my-6 flex-1 space-y-3 text-[13px] text-[#587361]">{[`${plan.max_stores} ${t('plans_store_unit')}${plan.max_stores===1?'':'s'}`,`${plan.max_products.toLocaleString()} ${t('plans_products_unit')}`,t('plan_whatsapp_feature'),t('plan_orders_feature')].map((line,n)=><li key={n} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-[#128357]"/>{line}</li>)}</ul><button onClick={open} className={`min-h-11 rounded-full px-5 py-3 text-sm font-bold transition ${index===1?'bg-[#0b5d3b] text-white hover:bg-[#07492e]':'border border-[#0b5d3b] text-[#0b5d3b] hover:bg-[#eaf6ed]'}`}>{t('plans_button_label')}</button></article>)}</div></div></section>,
+    demo:<section id="demo" className="scroll-mt-24 bg-white py-14 sm:py-20"><div className={`${wrap} grid items-center gap-9 md:grid-cols-[minmax(0,1fr)_auto]`}><div><div className={badge}>{t('demo_badge')}</div><h2 className={heading}>{t('demo_title')}</h2><p className={lead}>{t('demo_text')}</p><button onClick={open} className="mt-6 inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0b5d3b] px-6 py-3 text-sm font-bold text-white hover:bg-[#07492e]">{t('demo_button_label')}<ArrowRight className="h-4 w-4"/></button></div>{visible('demo_qr')&&<div className="mx-auto rounded-[24px] border border-[#dce8dd] bg-[#f7faf6] p-5 text-center shadow-sm"><div className="rounded-xl bg-white p-3"><QRCodeSVG value={`${origin}/?access=1`} size={140} fgColor="#075b3a" bgColor="#ffffff"/></div><div className="mt-3 text-[11px] font-bold text-[#557d67]">{t('demo_qr_label')}</div></div>}</div></section>,
+    closing:<section id="empieza" className="scroll-mt-24 border-t border-[#e2ebe4] bg-[#e9f5ed] py-16 sm:py-20"><div className={wrap}><div className="mx-auto max-w-[750px] text-center"><div className={badge}>{t('closing_badge')}</div><h2 className={`${heading} mx-auto`}>{t('closing_title')}</h2><p className={`${lead} mx-auto`}>{t('closing_subtitle')}</p></div><div className="mt-9 grid gap-4 md:grid-cols-3">{[1,2,3].map((n)=><article key={n} className="rounded-2xl border border-[#d7e9dd] bg-white p-5 sm:p-6"><div className="grid h-10 w-10 place-items-center rounded-xl bg-[#e5f5ea] text-[#0b8050]">{n===1?<Store className="h-5 w-5"/>:n===2?<CreditCard className="h-5 w-5"/>:<UsersRound className="h-5 w-5"/>}</div><h3 className="mt-4 text-base font-bold text-[#073e29]">{t(`closing_${n}_title`)}</h3><p className="mt-2 text-sm leading-6 text-[#607768]">{t(`closing_${n}_text`)}</p></article>)}</div><div className="mt-8 text-center"><button onClick={open} className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#0b5d3b] px-7 py-3 text-sm font-bold text-white hover:bg-[#07492e]">{t('closing_button_label')}<ArrowRight className="h-4 w-4"/></button></div></div></section>,
+  }
+  return <main className="marketing-shell min-h-dvh overflow-x-clip bg-[#f7faf6] text-[#365b47]">
     <AccessModal open={accessOpen} onClose={()=>setAccessOpen(false)}/>
-
-    <header className="sticky top-0 z-50 border-b border-[#eee7dd]/90 bg-[#fbf8f3]/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-[78px] max-w-[1320px] items-center px-5 sm:px-8 lg:px-10">
-        <Link href="/" aria-label="WAMERCIO" className="shrink-0"><WamercioLogo mode="full"/></Link>
-        <nav className="ml-auto hidden items-center gap-7 text-[12px] font-semibold text-[#46584f] lg:flex">
-          {nav.map(([href,label])=><a key={href} href={href} className="transition hover:text-[#0b5d3b]">{label}</a>)}
-          <Link href="/terminos" className="transition hover:text-[#0b5d3b]">Términos</Link>
-        </nav>
-        <button onClick={open} className="ml-auto hidden rounded-xl border border-[#0b5d3b] px-4 py-2 text-[11px] font-bold text-[#0b5d3b] transition hover:bg-[#0b5d3b] hover:text-white lg:ml-7 lg:inline-flex">{text(landing.nav_access_label,'Iniciar sesión')}</button>
-        <button onClick={open} className="ml-3 hidden rounded-xl bg-[#bd431e] px-4 py-2 text-[11px] font-bold text-white transition hover:bg-[#9c3517] sm:inline-flex">Crear comercio</button>
-        <button aria-label="Abrir menú" onClick={()=>setMobileOpen(v=>!v)} className="ml-auto grid h-10 w-10 place-items-center rounded-xl border border-[#e6ded1] text-[#0a3f2a] lg:hidden">{mobileOpen?<X className="h-5 w-5"/>:<Menu className="h-5 w-5"/>}</button>
-      </div>
-      {mobileOpen&&<div className="border-t border-[#eee7dd] bg-[#fbf8f3] px-5 py-4 lg:hidden"><nav className="mx-auto flex max-w-[1320px] flex-col gap-1">{nav.map(([href,label])=><a key={href} href={href} onClick={()=>setMobileOpen(false)} className="rounded-xl px-3 py-3 text-sm font-semibold text-[#0a3f2a] hover:bg-[#f3eee5]">{label}</a>)}<button onClick={open} className="mt-2 rounded-xl bg-[#0b5d3b] px-4 py-3 text-sm font-bold text-white">Iniciar sesión</button></nav></div>}
-    </header>
-
-    <section className="py-14 sm:py-16 lg:py-20">
-      <div className="mx-auto grid max-w-[1320px] gap-12 px-5 sm:px-8 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] lg:px-10">
-        <div className="self-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-[#e4ddd1] bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.16em] text-[#0e8347]"><Star className="h-3.5 w-3.5 fill-current"/>Comercio conversacional para RD</div>
-          <h1 className="mt-6 max-w-[560px] text-4xl font-extrabold leading-[.95] tracking-[-.05em] text-[#0a3f2a] sm:text-5xl lg:text-[64px]">{splitHeroTitle(heroTitle)}</h1>
-          <p className="mt-5 max-w-[560px] text-base leading-8 text-[#6e6759]">{text(landing.hero_text,'Crea tu catálogo una sola vez. Tus clientes navegan, preguntan y piden sin salir de la conversación, mientras WAMERCIO mantiene pedidos, pagos y operación en orden.')}</p>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <button onClick={open} className="inline-flex items-center gap-2 rounded-2xl bg-[#bd431e] px-5 py-3 text-sm font-bold text-white shadow-[0_14px_28px_rgba(189,67,30,.18)]">Crear mi comercio<ArrowRight className="h-4 w-4"/></button>
-            <a href="#demo" className="inline-flex items-center gap-2 rounded-2xl border border-[#d9d0c3] bg-white px-5 py-3 text-sm font-bold text-[#0a3f2a]">Ver demo</a>
-          </div>
-          <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            {[[Link2,'Un enlace','Comparte una sola URL'],[MessageCircleMore,'Una conversación','El pedido vive en WhatsApp'],[BarChart3,'Una operación','Todo queda visible en el panel']].map(([Icon,label,copy]:any)=><div key={label} className="rounded-2xl border border-[#e5ddd2] bg-white p-4"><Icon className="h-4 w-4 text-[#0e8347]"/><div className="mt-3 text-sm font-extrabold text-[#0a3f2a]">{label}</div><p className="mt-1 text-xs leading-5 text-[#6e6759]">{copy}</p></div>)}
-          </div>
-        </div>
-        <HeroPreview template={activeTemplate}/>
-      </div>
-    </section>
-
-    <section id="como-funciona" className="border-y border-[#e8e0d4] bg-white py-20 sm:py-24">
-      <div className="mx-auto max-w-[1240px] px-5 sm:px-8 lg:px-10">
-        <div className="mx-auto max-w-[760px] text-center">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Cómo funciona</div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">Un toque en un enlace. Lo demás es una conversación.</h2>
-          <p className="mt-4 text-sm leading-6 text-[#6e6759]">La experiencia no termina en una landing. El negocio comparte su enlace, el cliente compra por WhatsApp y la operación se registra dentro del panel.</p>
-        </div>
-        <div className="mt-10 grid items-start gap-6 lg:grid-cols-[.92fr_1.08fr]">
-          <div className="grid gap-4">
-            {[[Link2,'Comparte tu enlace','Tu catálogo y tu experiencia pública quedan listos para enviarse por WhatsApp, redes o QR.'],[Smartphone,'El cliente compra dentro del chat','Pregunta, confirma y cierra el pedido en la conversación donde ya estaba.'],[ClipboardList,'La operación se organiza sola','Pedido, pago, entrega y cliente quedan visibles dentro del mismo flujo.']].map(([Icon,title,copy]:any,index)=><div key={title} className="rounded-[24px] border border-[#e3dcd1] bg-[#fbf8f3] p-5"><div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-[#eef8f3] text-[#0e8347]"><Icon className="h-5 w-5"/></span><div><div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-[#0e8347]">Paso {index+1}</div><h3 className="mt-1 text-lg font-extrabold tracking-[-.02em] text-[#0a3f2a]">{title}</h3></div></div><p className="mt-4 text-sm leading-6 text-[#6e6759]">{copy}</p></div>)}
-          </div>
-          <ChatCommerceMock/>
-        </div>
-      </div>
-    </section>
-
-    <section id="plantillas" className="py-20 sm:py-24">
-      <div className="mx-auto max-w-[1240px] px-5 sm:px-8 lg:px-10">
-        <div className="max-w-[860px]">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Plantillas adaptativas</div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">La página comercial y el panel cambian según el tipo de negocio.</h2>
-          <p className="mt-4 text-sm leading-6 text-[#6e6759]">WAMERCIO no muestra funciones incoherentes. Cada plantilla reorganiza la navegación y prioriza los módulos que sí hacen sentido para comida, servicios, cotizaciones, mayoreo, moda y más.</p>
-        </div>
-        <div className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {templateShowcase.map(template=>{
-            const active=template.id===activeTemplate?.id
-            return <button key={template.id} onClick={()=>setActiveTemplateId(template.id)} className={`rounded-[24px] border p-5 text-left transition ${active?'border-[#0b5d3b] bg-white shadow-[0_18px_45px_rgba(11,93,59,.10)]':'border-[#e4ddd1] bg-white hover:border-[#d5cab8]'}`}>
-              <div className="flex items-start gap-4">
-                <span className={`grid h-12 w-12 place-items-center rounded-2xl ${active?'bg-[#eef8f3] text-[#0e8347]':'bg-[#f6f2eb] text-[#6e6759]'}`}><Store className="h-5 w-5"/></span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2"><h3 className="text-lg font-extrabold tracking-[-.02em] text-[#0a3f2a]">{template.name}</h3>{template.is_featured&&<span className="rounded-full bg-[#eef8f3] px-2 py-1 text-[9px] font-extrabold uppercase tracking-[.14em] text-[#0e8347]">Destacada</span>}</div>
-                  <p className="mt-2 text-sm leading-6 text-[#6e6759]">{template.description||templateFitCopy(template)}</p>
-                  <div className="mt-3 flex flex-wrap gap-2">{templateSignals(template).map(signal=><span key={signal} className="rounded-full bg-[#f6f2eb] px-2.5 py-1 text-[10px] font-bold text-[#506158]">{signal}</span>)}</div>
-                </div>
-              </div>
-            </button>
-          })}
-        </div>
-        <div className="mt-8"><TemplatePreview template={activeTemplate}/></div>
-      </div>
-    </section>
-
-    <section id="funciones" className="border-y border-[#e8e0d4] bg-white py-20 sm:py-24">
-      <div className="mx-auto max-w-[1240px] px-5 sm:px-8 lg:px-10">
-        <div className="max-w-[860px]">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Funciones relevantes</div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">{templateSectionHeading(activeTemplate)}</h2>
-          <p className="mt-4 text-sm leading-6 text-[#6e6759]">{templateSectionLead(activeTemplate)}</p>
-        </div>
-        <div className="mt-10 grid gap-5 md:grid-cols-2 xl:grid-cols-4">{adaptiveFeatures.slice(0,4).map(feature=><FeatureCard key={feature.title} feature={feature}/>)}</div>
-      </div>
-    </section>
-
-    <section id="precios" className="py-20 sm:py-24">
-      <div className="mx-auto max-w-[1120px] px-5 sm:px-8 lg:px-10">
-        <div className="text-center">
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Planes simples</div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-[-.035em] text-[#0a3f2a] sm:text-4xl">{text(landing.plans_title,'Planes WAMERCIO')}</h2>
-          <p className="mx-auto mt-4 max-w-[560px] text-sm leading-6 text-[#6e6759]">{text(landing.plans_subtitle,'Empieza simple y crece cuando tu comercio lo necesite.')}</p>
-        </div>
-        <div className={`mx-auto mt-10 grid gap-5 ${plans.length>=3?'lg:grid-cols-3':plans.length===2?'md:grid-cols-2 max-w-3xl':'max-w-sm'}`}>
-          {plans.length===0?<div className="rounded-2xl border border-[#e2dbd0] bg-white p-8 text-center text-sm text-[#6e6759]">{text(landing.plans_empty_text,'Los planes estarán disponibles muy pronto.')}</div>:plans.map((p,index)=><article key={p.id} className={`relative rounded-[24px] border bg-white p-6 ${index===1?'border-[#0b5d3b] shadow-[0_22px_55px_rgba(11,93,59,.11)]':'border-[#e2dbd0]'}`}>{index===1&&<span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-[#0b5d3b] px-3 py-1 text-[9px] font-extrabold uppercase tracking-wide text-white">Más popular</span>}<h3 className="text-lg font-extrabold text-[#0a3f2a]">{p.name}</h3><p className="mt-2 min-h-10 text-xs leading-5 text-[#6e6759]">{p.description||text(landing.plan_default_description,'Todo lo necesario para operar tu comercio.')}</p><div className="mt-5 text-3xl font-extrabold tracking-[-.03em] text-[#0a3f2a]">{p.price?money(p.price):'RD$ 0'}<span className="ml-1 text-[10px] font-semibold tracking-normal text-[#98907f]">/{p.billing_period==='yearly'?'año':'mes'}</span></div><ul className="mt-6 space-y-3 text-xs text-[#5c675f]">{[`${p.max_stores} tienda${p.max_stores===1?'':'s'}`,`${p.max_products.toLocaleString()} productos`,text(landing.plan_whatsapp_feature,'WhatsApp incluido'),text(landing.plan_orders_feature,'Pedidos sin bloqueo')].map(x=><li key={x} className="flex items-center gap-2"><Check className="h-4 w-4 text-[#0e8347]"/>{x}</li>)}</ul><button onClick={open} className={`mt-7 w-full rounded-2xl px-5 py-3 text-sm font-bold ${index===1?'bg-[#0b5d3b] text-white':'border border-[#0b5d3b] text-[#0b5d3b] hover:bg-[#e3f6ea]'}`}>Empezar ahora</button></article>)}
-        </div>
-      </div>
-    </section>
-
-    <section id="demo" className="border-y border-[#e8e0d4] bg-[#f3eee5] py-16 sm:py-20">
-      <div className="mx-auto grid max-w-[980px] items-center gap-8 px-5 sm:px-8 md:grid-cols-[1fr_auto] lg:px-10">
-        <div>
-          <div className="text-[10px] font-extrabold uppercase tracking-[.18em] text-[#0e8347]">Demo</div>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-[-.035em] text-[#0a3f2a]">{text(landing.demo_title,'Prueba la experiencia desde tu celular')}</h2>
-          <p className="mt-4 max-w-[600px] text-sm leading-6 text-[#6e6759]">{text(landing.demo_text,'Escanea el QR para abrir WAMERCIO. No necesitas instalar nada; el panel también funciona como PWA.')}</p>
-          <button onClick={open} className="mt-6 inline-flex items-center gap-2 rounded-2xl bg-[#bd431e] px-5 py-3 text-sm font-bold text-white">{text(landing.demo_button_label,'Probar en la web')}<ArrowRight className="h-4 w-4"/></button>
-        </div>
-        <div className="rounded-[22px] border border-[#d9d0c3] bg-white p-4 shadow-sm"><QRCodeSVG value="https://wamercio.com/?access=1" size={132} fgColor="#0a3f2a" bgColor="#ffffff"/><div className="mt-2 flex items-center justify-center gap-2 text-center text-[9px] font-bold uppercase tracking-wide text-[#98907f]"><QrCode className="h-3.5 w-3.5"/>Escanear</div></div>
-      </div>
-    </section>
-
-    <footer className="bg-[#0b5d3b] text-white">
-      <div className="mx-auto max-w-[1320px] px-5 py-12 sm:px-8 lg:px-10">
-        <div className="grid gap-10 md:grid-cols-[1.4fr_.8fr_.8fr_1fr]">
-          <div>
-            <div className="inline-flex rounded-2xl bg-white px-3 py-2 shadow-[0_10px_24px_rgba(0,0,0,.08)]"><WamercioLogo mode="full"/></div>
-            <p className="mt-4 max-w-[340px] text-xs leading-6 text-white/65">{text(landing.footer_text,'Tu comercio, catálogo, pedidos y clientes conectados a la conversación donde ya están tus compradores.')}</p>
-            <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-[9px] font-bold text-white/75"><Clock3 className="h-3.5 w-3.5"/>Pensado para comercio conversacional en República Dominicana</div>
-          </div>
-          <div>
-            <div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-white/45">Producto</div>
-            <div className="mt-4 space-y-3 text-xs text-white/70"><a className="block hover:text-white" href="#como-funciona">Cómo funciona</a><a className="block hover:text-white" href="#plantillas">Plantillas</a><a className="block hover:text-white" href="#funciones">Funciones</a><a className="block hover:text-white" href="#precios">Precios</a></div>
-          </div>
-          <div>
-            <div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-white/45">Plataforma</div>
-            <div className="mt-4 space-y-3 text-xs text-white/70"><button className="block hover:text-white" onClick={open}>Acceder</button><Link className="block hover:text-white" href="/admin/login">SuperAdmin</Link><Link className="block hover:text-white" href="/privacidad">Privacidad</Link><Link className="block hover:text-white" href="/terminos">Términos</Link></div>
-          </div>
-          <div>
-            <div className="text-[10px] font-extrabold uppercase tracking-[.16em] text-white/45">Empieza hoy</div>
-            <p className="mt-4 text-xs leading-6 text-white/65">Crea tu comercio y empieza a operar con un panel coherente con tu tipo de negocio.</p>
-            <button onClick={open} className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-[#bd431e] px-4 py-2.5 text-xs font-bold text-white">Crear comercio</button>
-          </div>
-        </div>
-        <div className="mt-10 flex flex-col gap-3 border-t border-white/10 pt-6 text-[10px] text-white/45 sm:flex-row sm:items-center sm:justify-between"><span>© {new Date().getFullYear()} WAMERCIO. Todos los derechos reservados.</span><span>Landing alineada con la identidad visual de WAMERCIO.</span></div>
-      </div>
-    </footer>
+    <header className="sticky top-0 z-50 border-b border-[#e4ece4] bg-white/95 backdrop-blur-xl"><div className={`${wrap} flex h-[72px] items-center gap-4`}><Link href="/" aria-label={t('brand_name')} className="flex min-w-0 shrink-0 items-center gap-2.5"><BrandIdentity landing={landing}/><span className="hidden max-w-32 text-[10px] font-medium leading-4 text-[#698675] xl:inline">{t('brand_subtitle')}</span></Link><nav className="ml-auto hidden items-center gap-5 xl:flex">{navigation.filter(x=>x[2]).map(([href,label])=><a key={href} href={href} className="whitespace-nowrap text-[12px] font-semibold text-[#476c55] transition hover:text-[#0b5d3b]">{label}</a>)}<Link href="/terminos" className="whitespace-nowrap text-[12px] font-semibold text-[#476c55] hover:text-[#0b5d3b]">{t('nav_terms_label')}</Link></nav><div className="ml-auto hidden items-center gap-2 sm:flex xl:ml-3"><button onClick={open} className="min-h-9 whitespace-nowrap rounded-full border border-[#a8d4b8] px-4 py-2 text-xs font-bold text-[#0b5d3b] hover:bg-[#eaf6ee]">{t('nav_access_label')}</button><button onClick={open} className="min-h-9 whitespace-nowrap rounded-full bg-[#0b5d3b] px-4 py-2 text-xs font-bold text-white hover:bg-[#07492e]">{t('nav_register_label')}</button></div><button type="button" aria-expanded={mobileOpen} aria-controls="landing-mobile-menu" aria-label={mobileOpen?'Cerrar menú':'Abrir menú'} onClick={()=>setMobileOpen(v=>!v)} className="ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-[#dce8df] text-[#0b5d3b] xl:hidden sm:ml-1">{mobileOpen?<X className="h-5 w-5"/>:<Menu className="h-5 w-5"/>}</button></div>{mobileOpen&&<nav id="landing-mobile-menu" className="border-t border-[#e5eee6] bg-white px-5 py-3 shadow-lg xl:hidden"><div className="mx-auto flex max-w-[1200px] flex-col gap-1">{navigation.filter(x=>x[2]).map(([href,label])=><a key={href} href={href} onClick={()=>setMobileOpen(false)} className="rounded-xl px-3 py-3 text-sm font-semibold text-[#0c5436] hover:bg-[#eef7ef]">{label}</a>)}<Link href="/terminos" onClick={()=>setMobileOpen(false)} className="rounded-xl px-3 py-3 text-sm font-semibold text-[#0c5436]">{t('nav_terms_label')}</Link><button onClick={open} className="mt-2 rounded-full bg-[#0b5d3b] px-4 py-3 text-sm font-bold text-white">{t('nav_register_label')}</button></div></nav>}</header>
+    {normalizeLandingSections(landing.section_order).map(section=>visible(section)?<div key={section}>{sections[section]}</div>:null)}
+    {visible('footer')&&<footer className="bg-[#075b3a] text-white"><div className={`${wrap} py-12 sm:py-16`}><div className="grid gap-9 sm:grid-cols-2 lg:grid-cols-[1.45fr_.8fr_.8fr_1fr]"><div><div className="inline-flex rounded-xl bg-white px-3 py-2"><BrandIdentity landing={landing}/></div><p className="mt-4 max-w-[310px] text-sm leading-6 text-white/75">{t('footer_text')}</p><div className="mt-4 inline-flex rounded-full border border-white/20 px-3 py-1.5 text-[10px] text-white/80">{t('footer_trust_text')}</div></div><div><h3 className="text-[11px] font-bold uppercase tracking-[.15em] text-white/60">{t('footer_product_heading')}</h3><div className="mt-4 space-y-3 text-sm text-white/80">{visible('process')&&<a className="block hover:text-white" href="#como-funciona">{t('footer_process_label')}</a>}{visible('templates')&&<a className="block hover:text-white" href="#plantillas">{t('footer_templates_label')}</a>}{visible('features')&&<a className="block hover:text-white" href="#funciones">{t('footer_features_label')}</a>}{visible('plans')&&<a className="block hover:text-white" href="#precios">{t('footer_plans_label')}</a>}</div></div><div><h3 className="text-[11px] font-bold uppercase tracking-[.15em] text-white/60">{t('footer_platform_heading')}</h3><div className="mt-4 space-y-3 text-sm text-white/80"><button className="block hover:text-white" onClick={open}>{t('nav_access_label')}</button><Link className="block hover:text-white" href="/admin/login">{t('footer_admin_label')}</Link><Link className="block hover:text-white" href="/privacidad">{t('footer_privacy_label')}</Link><Link className="block hover:text-white" href="/terminos">{t('footer_terms_label')}</Link></div></div><div><h3 className="text-[11px] font-bold uppercase tracking-[.15em] text-white/60">{t('footer_cta_heading')}</h3><p className="mt-4 text-sm leading-6 text-white/75">{t('footer_cta_text')}</p><button onClick={open} className="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-white px-5 py-3 text-sm font-bold text-[#075b3a] transition hover:bg-[#e4f6eb]">{t('footer_access_label')}</button></div></div>{visible('footer_legal')&&<div className="mt-10 flex flex-col gap-2 border-t border-white/20 pt-6 text-[11px] text-white/60 sm:flex-row sm:items-center sm:justify-between"><span>© {new Date().getFullYear()} {t('footer_brand')}. {t('footer_copyright_label')}</span><span>{t('footer_bottom_text')}</span></div>}</div></footer>}
   </main>
 }
