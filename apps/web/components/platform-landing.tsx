@@ -1,5 +1,6 @@
 'use client'
 
+import {profileModuleSummary} from '@/lib/merchant-modules'
 import Link from 'next/link'
 import {useEffect,useMemo,useState,type ReactNode} from 'react'
 import {QRCodeSVG} from 'qrcode.react'
@@ -52,34 +53,29 @@ type LandingFeature={
 function templateSignals(template:LandingTemplate){
   const settings=template.settings||{}
   const signals:string[]=[]
-  if(settings.appointments)signals.push('Reservas')
+  if(settings.appointments)signals.push('Solicitudes de cita')
   if(settings.quotation||template.engine==='quotation')signals.push('Cotizaciones')
   if(settings.wholesale||template.engine==='wholesale')signals.push('Mayoreo')
   if(settings.delivery_enabled!==false&&template.engine!=='services')signals.push('Delivery')
   if(settings.supports_dine_in)signals.push('Mesas')
   if(settings.supports_variants)signals.push('Variantes')
   if(settings.track_stock_default)signals.push('Inventario')
-  if(signals.length===0)signals.push(template.engine==='services'?'Agenda y CRM':'Pedidos y catálogo')
+  if(signals.length===0)signals.push(template.engine==='services'?'Servicios por WhatsApp':'Pedidos y catálogo')
   return signals.slice(0,4)
 }
 
 function templatePrimaryModules(template:LandingTemplate){
-  const settings=template.settings||{}
-  if(settings.appointments)return ['WhatsApp','Agenda','CRM','Evaluaciones','Reseñas']
-  if(settings.quotation||template.engine==='quotation')return ['WhatsApp','Productos','Cotizaciones','CRM','Tareas']
-  if(settings.wholesale||template.engine==='wholesale')return ['Productos','Clientes','Pedidos','Cotizaciones','Analítica']
-  if(settings.supports_dine_in)return ['Pedidos','Punto de venta','Caja','Entregas','WhatsApp']
-  if(template.engine==='food')return ['Pedidos','Productos','Combos','Entregas','WhatsApp']
-  if(template.engine==='fashion')return ['Productos','Galería','Promociones','Clientes','WhatsApp']
-  return ['Productos','Clientes','Pedidos','Analítica','WhatsApp']
+  const modules=profileModuleSummary({business_engine:template.engine,template_slug:template.slug,template_config:template.settings})
+  // Vista de producto real: solo se anuncian módulos habilitados en la plantilla.
+  return ['WhatsApp','Pedidos','Catálogo',...modules].slice(0,5)
 }
 
 function templateFitCopy(template:LandingTemplate){
   const settings=template.settings||{}
-  if(settings.appointments)return 'La plataforma prioriza agenda, CRM y seguimiento para que el negocio vea solo lo que necesita para reservar y atender.'
+  if(settings.appointments)return 'El cliente solicita un turno con fecha y hora. El negocio organiza sus pedidos, clientes y conversaciones sin funciones de mesas.'
   if(settings.quotation||template.engine==='quotation')return 'La navegación pone al frente catálogo técnico, cotizaciones y seguimiento comercial.'
   if(settings.wholesale||template.engine==='wholesale')return 'La experiencia se orienta a volumen, clientes recurrentes y control comercial sin distraer con módulos irrelevantes.'
-  if(settings.supports_dine_in)return 'El panel combina pedidos, punto de venta, caja y mesas para que el flujo completo se sienta coherente.'
+  if(settings.supports_dine_in)return 'Pedidos, caja y cocina forman el núcleo. Si el negocio atiende en salón, puede activar mesas y reservaciones.'
   if(template.engine==='food')return 'La operación se enfoca en vender rápido: menú, combos, pedidos, entregas y conversación.'
   if(template.engine==='fashion')return 'La plantilla da más peso a colección, stock, promociones y clientes para vender visualmente sin ruido.'
   return 'El negocio conserva un panel limpio con catálogo, clientes, pedidos y conversación como núcleo operativo.'

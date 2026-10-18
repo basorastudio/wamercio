@@ -1,0 +1,1 @@
+-- No se eliminan preferencias de módulos al revertir para preservar personalizaciones del comercio.

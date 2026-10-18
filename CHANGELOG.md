@@ -1,3 +1,16 @@
+## 4.6.0 — Plantillas profesionales por naturaleza del negocio (2026-10-17)
+
+- Se revisan las 16 plantillas de negocio y se definen perfiles operativos de 26 módulos opcionales, separados del núcleo permanente (Inicio, Pedidos, Clientes, Catálogo, Tienda online y WhatsApp).
+- SuperAdmin → Plantillas → Editar ofrece módulos agrupados con switches, recomendaciones por giro y descripciones; la vista previa enseña módulos reales.
+- El panel lateral y la navegación móvil muestran únicamente las funciones compatibles y habilitadas; los enlaces directos a vistas desactivadas muestran un mensaje contextual sin borrar información.
+- El Dashboard oculta accesos operativos no incluidos en el perfil de la tienda.
+- Las reservaciones de mesas solo se ofrecen a restaurantes con consumo en salón habilitado; no se presentan como una agenda de profesionales de belleza o barbería.
+- La landing comercial anuncia los módulos realmente habilitados y evita promocionar la agenda de citas profesional, que todavía no existe como tal.
+- La migración 000052 agrega perfiles a las plantillas y a tiendas existentes solo cuando carecen de ellos; respeta las configuraciones ya personalizadas.
+- La caché PWA y el número de versión avanzan a 4.6.0. No se eliminan pedidos, comercios, tablas ni características del repositorio.
+
+**Nota:** Los módulos ocultos son una decisión de experiencia de usuario, no un sistema de autorización de API. Las citas de belleza se registran como solicitudes con fecha/hora en pedidos, sin calendario de disponibilidad por profesional. Los cambios posteriores de una plantilla se aplican a nuevas tiendas; las existentes conservan sus copias de configuración.
+
 ## 4.5.8 — Hotfix TypeScript / Dokploy
 
 - Se corrige `TS2802` en `apps/web/lib/landing-config.ts`: normalización de secciones de la landing con `Array.from(new Set(...))` en lugar de `[...]` sobre `Set`, compatible con `tsconfig.target = "es5"` sin activar `downlevelIteration`.

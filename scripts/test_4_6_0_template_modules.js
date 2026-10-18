@@ -1,0 +1,55 @@
+'use strict'
+// Ejecutar después de npm install de apps/web: node ../../scripts/test_4_6_0_template_modules.js
+const fs=require('node:fs')
+const path=require('node:path')
+const os=require('node:os')
+const assert=require('node:assert/strict')
+const {createRequire}=require('node:module')
+const root=path.join(__dirname,'..')
+const requireWeb=createRequire(path.join(root,'apps/web/package.json'))
+const ts=requireWeb('typescript')
+const source=fs.readFileSync(path.join(root,'apps/web/lib/merchant-modules.ts'),'utf8')
+const transpiled=ts.transpileModule(source,{fileName:'merchant-modules.ts',reportDiagnostics:true,compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES5}})
+assert.equal((transpiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error).length,0,'Archivo TypeScript inválido')
+const temp=fs.mkdtempSync(path.join(os.tmpdir(),'wam-templates-'))
+let mod
+try{
+ const file=path.join(temp,'merchant-modules.cjs')
+ fs.writeFileSync(file,transpiled.outputText)
+ mod=require(file)
+}finally{fs.rmSync(temp,{recursive:true,force:true})}
+const {merchantModuleCatalog,getMerchantModules}=mod
+const ids=merchantModuleCatalog.map(x=>x.id)
+assert.equal(ids.length,26)
+assert.equal(new Set(ids).size,ids.length)
+const sql=fs.readFileSync(path.join(root,'services/api/migrations/000052_template_module_profiles.up.sql'),'utf8')
+const seeds=[...sql.matchAll(/UPDATE business_templates SET settings=.*?WHERE slug='([^']+)';/g)]
+assert.equal(seeds.length,16,'Falta un perfil en la migración')
+const seed=fs.readFileSync(path.join(root,'services/api/migrations/000011_business_templates.up.sql'),'utf8')
+for(const [,sqlLine,slug] of seeds.map(match=>[null,match[0],match[1]])){
+ const fragment=sqlLine.match(/coalesce\(settings->'module_features','(\{.*?\})'::jsonb\)/)
+ assert.ok(fragment,'Falta el JSON de funciones: '+slug)
+ const expected=JSON.parse(fragment[1])
+ assert.deepEqual(Object.keys(expected).sort(),ids.slice().sort(),'Diferencia de funciones: '+slug)
+ const pattern=new RegExp("VALUES\\('"+slug+"','[^']+','[^']+','[^']*','[^']*','([^']+)'")
+ const engine=seed.match(pattern)?.[1]
+ assert.ok(engine,'No existe plantilla: '+slug)
+ assert.deepEqual(getMerchantModules({business_engine:engine,template_slug:slug}),expected,'Perfil inesperado: '+slug)
+}
+const salon=getMerchantModules({business_engine:'services',template_slug:'salon-belleza'})
+assert.equal(salon.kds,false)
+assert.equal(salon.reservations,false)
+assert.equal(salon.tables,false)
+assert.equal(salon.delivery,false)
+const food=getMerchantModules({business_engine:'food',template_slug:'pizzeria'})
+assert.equal(food.kds,true)
+assert.equal(food.combos,true)
+assert.equal(food.tables,true)
+const custom=getMerchantModules({business_engine:'services',template_slug:'barberia',template_config:{module_features:{cash:true,crm:false}}})
+assert.equal(custom.cash,true)
+assert.equal(custom.crm,false)
+assert.equal(custom.reservations,false)
+const nav=fs.readFileSync(path.join(root,'apps/web/components/store-shell.tsx'),'utf8')
+const mapArea=nav.slice(nav.indexOf('const moduleByPath'),nav.indexOf('function restrictedModuleFor'))
+for(const id of ids)assert.ok(mapArea.includes(`:'${id}'`),'Función no mapeada en navegación: '+id)
+console.log('OK — 16 perfiles de negocio, 26 módulos y reglas de compatibilidad y personalización verificadas.')

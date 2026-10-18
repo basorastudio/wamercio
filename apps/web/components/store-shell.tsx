@@ -4,6 +4,7 @@ import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useLayoutEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
 import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
+import {getMerchantModules,type MerchantModuleId} from '@/lib/merchant-modules'
 import type {Store as StoreModel} from '@/lib/types'
 import WamercioLogo from '@/components/wamercio-logo'
 import {
@@ -69,6 +70,22 @@ const kdsNav={href:'/kds',label:'KDS',icon:ChefHat}
 const tablesNav={href:'/tables',label:'Gestión de mesas',icon:UtensilsCrossed}
 const storesNav={href:'/stores',label:'Mis tiendas',icon:Store}
 type NavItem={href:string;label:string;icon:any}
+// Mapa único para menú lateral, navegación móvil y acceso a vistas del comercio.
+const moduleByPath:Record<string,MerchantModuleId>={
+ '/pos':'pos','/cash':'cash','/quotes':'quotes',
+ '/catalog/combos':'combos','/media':'media','/product-attributes':'attributes',
+ '/coupons':'coupons','/promotions':'promotions','/branches':'branches',
+ '/delivery':'delivery','/reservations':'reservations','/tables':'tables','/kds':'kds',
+ '/automations':'automations','/flows':'flows','/voice':'voice','/calls':'calls',
+ '/social-publishing':'social','/crm':'crm','/tasks':'tasks',
+ '/evaluations':'evaluations','/reviews':'reviews','/loyalty':'loyalty',
+ '/analytics':'analytics','/staff':'staff','/payment-methods':'payments'
+}
+function restrictedModuleFor(path:string):MerchantModuleId|undefined{
+ const key=Object.keys(moduleByPath).find(href=>path===href||path.startsWith(href+'/'))
+ return key?moduleByPath[key]:undefined
+}
+
 
 const cloneNav=(item:NavItem,patch:Partial<NavItem>={})=>({...item,...patch})
 const titleCase=(value:string)=>value?value.charAt(0).toUpperCase()+value.slice(1):value
@@ -80,8 +97,10 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
   const isService=caps.isService
   const isQuote=caps.quotation||engine==='quotation'
   const isWholesale=caps.wholesale||engine==='wholesale'
-  const dineInEnabled=!!store?.dine_in_enabled||caps.supportsDineIn
-  const deliveryEnabled=store?.delivery_enabled===undefined?caps.supportsDelivery:!!store?.delivery_enabled
+  const dineInEnabled=!!store?.dine_in_enabled&&caps.supportsDineIn
+  const deliveryEnabled=caps.supportsDelivery&&(store?.delivery_enabled===undefined?true:!!store.delivery_enabled)
+  const moduleFlags=getMerchantModules(store)
+  const onlyActive=(items:NavItem[])=>items.filter(item=>{const id=moduleByPath[item.href];return !id||moduleFlags[id]})
 
   const primaryCore=[
     cloneNav(core[0]),
@@ -89,19 +108,9 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
     cloneNav(core[2],{label:isWholesale?'Clientes':'Clientes'})
   ]
 
-  let salesNav=sales.map(item=>cloneNav(item))
-  if(isService)salesNav=salesNav.filter(item=>item.href!=='/pos')
-  if(isQuote)salesNav=salesNav.filter(item=>item.href==='/quotes')
-  if(isWholesale)salesNav=salesNav.filter(item=>item.href!=='/cash')
+  const salesNav=sales.map(item=>cloneNav(item))
 
   let catalogNav=catalog.map(item=>cloneNav(item,{label:item.href==='/catalog/products'?titleCase(caps.itemPlural):item.label}))
-  catalogNav=catalogNav.filter(item=>{
-    if(item.href==='/catalog/combos')return isFood
-    if(item.href==='/product-attributes')return !isService
-    if(item.href==='/coupons')return !isService&&!isQuote&&!isWholesale
-    if(item.href==='/promotions')return !isQuote
-    return true
-  })
   if(isService){
     catalogNav=catalogNav.map(item=>item.href==='/catalog/products'?{...item,label:'Servicios'}:item)
   }
@@ -111,11 +120,11 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
 
   const operationsNav=[
     ...salesNav,
-    ...(caps.appointments?[cloneNav(reservationsNav,{label:isService?'Agenda':'Reservaciones'})]:[]),
-    ...(dineInEnabled?[cloneNav(kdsNav),cloneNav(tablesNav)]:[])
+    ...(dineInEnabled?[cloneNav(reservationsNav),cloneNav(tablesNav)]:[]),
+    ...(isFood?[cloneNav(kdsNav)]:[])
   ]
   const businessOps=businessOperations.filter(item=>item.href==='/delivery'?deliveryEnabled:true).map(item=>cloneNav(item))
-  const relationshipNav=relationship.filter(item=>!(isQuote&&item.href==='/loyalty')).map(item=>cloneNav(item))
+  const relationshipNav=relationship.map(item=>cloneNav(item))
   const accountSettings=storeCount!==null&&storeCount>1?[...settings.map(item=>cloneNav(item)),cloneNav(storesNav)]:settings.map(item=>cloneNav(item))
 
   const groupCandidates:[string,NavItem[]][]= [
@@ -129,10 +138,10 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
     ['Informes',insights.map(item=>cloneNav(item))],
     ['Ajustes',accountSettings],
   ]
-  const groups=groupCandidates.filter(([,items])=>items.length>0)
+  const groups=groupCandidates.map(([name,items]):[string,NavItem[]]=>[name,onlyActive(items)]).filter(([,items])=>items.length>0)
 
   const all=groups.flatMap(([,items])=>items)
-  const bottom=[primaryCore[0],primaryCore[1],operationsNav[0]||engage[0],catalogNav[0]||storefront[0]].filter(Boolean) as NavItem[]
+  const bottom=['/dashboard','/orders','/conversations','/catalog/products'].map(href=>all.find(item=>item.href===href)).filter(Boolean) as NavItem[]
   return {groups,all,bottom}
 }
 
@@ -171,6 +180,9 @@ export default function StoreShell({children,title,subtitle,actions,context,full
  const groups=navigation.groups
  const all=navigation.all
  const bottom=navigation.bottom
+ const selectedFlags=useMemo(()=>getMerchantModules(selectedStore),[selectedStore])
+ const restrictedId=restrictedModuleFor(path)
+ const unsupported=!!selectedStore&&!!restrictedId&&!selectedFlags[restrictedId]
  const storeContextLabel=useMemo(()=>{
    if(!selectedStore)return 'Operación general'
    return selectedStore.template_name||selectedStore.business_engine||'Operación general'
@@ -191,7 +203,7 @@ export default function StoreShell({children,title,subtitle,actions,context,full
    </nav>
 
    <div className="merchant-sidebar-footer border-t border-[#f0f1f5] p-3">
-    <button type="button" onClick={launchSoftphone} title="Abrir softphone" aria-label="Abrir softphone" className={`mb-2 flex w-full items-center rounded-2xl border border-brand-100 bg-brand-50/70 text-brand-700 transition hover:border-brand-200 hover:bg-brand-50 ${collapsed?'justify-center p-2.5':'gap-3 px-3 py-2.5'}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-500 text-white shadow-sm"><PhoneCall className="h-4 w-4"/></span>{!collapsed&&<span className="min-w-0 flex-1 text-left"><span className="block text-xs font-semibold">Abrir softphone</span><span className="mt-0.5 block truncate text-[10px] font-medium text-brand-600/70">Llamadas WhatsApp</span></span>}</button>
+    {selectedFlags.calls&&<button type="button" onClick={launchSoftphone} title="Abrir softphone" aria-label="Abrir softphone" className={`mb-2 flex w-full items-center rounded-2xl border border-brand-100 bg-brand-50/70 text-brand-700 transition hover:border-brand-200 hover:bg-brand-50 ${collapsed?'justify-center p-2.5':'gap-3 px-3 py-2.5'}`}><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-500 text-white shadow-sm"><PhoneCall className="h-4 w-4"/></span>{!collapsed&&<span className="min-w-0 flex-1 text-left"><span className="block text-xs font-semibold">Abrir softphone</span><span className="mt-0.5 block truncate text-[10px] font-medium text-brand-600/70">Llamadas WhatsApp</span></span>}</button>}
     <div className={`bg-[#fafbfe] ${collapsed?'space-y-2 rounded-3xl p-2.5 text-center':'flex items-center gap-1 rounded-3xl p-1.5'}`}>
       <Link href="/settings/profile" title="Mi cuenta" aria-label="Abrir mi cuenta" onClick={()=>setDrawer(false)} className={`group/profile min-w-0 rounded-[20px] transition hover:bg-white ${collapsed?'mx-auto grid h-11 w-11 place-items-center':'flex flex-1 items-center gap-3 px-1.5 py-1.5'}`}>
         <div className="mx-auto grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-2xl bg-brand-50 text-brand-600 transition group-hover/profile:bg-brand-100">{me?.profile_picture_url?<img src={me.profile_picture_url} alt={me?.name||'Perfil'} className="h-full w-full object-cover"/>:<UserRound className="h-4 w-4"/>}</div>
@@ -211,7 +223,7 @@ export default function StoreShell({children,title,subtitle,actions,context,full
       <div className="min-w-0 flex-1"><h1 className="truncate text-lg font-semibold tracking-tight text-ink-900 sm:text-xl">{title}</h1>{subtitle&&<p className="hidden truncate text-xs text-[#9a9fb5] sm:block">{subtitle}</p>}</div>{context&&<div className="order-3 w-full md:order-none md:min-w-[210px] md:max-w-[300px] md:flex-1">{context}</div>}<div className="flex shrink-0 items-center gap-2">{primaryStore&&<a href={storeCount===1?(primaryStore.public_url||`https://${primaryStore.slug}.${process.env.NEXT_PUBLIC_TENANT_ROOT_DOMAIN||'ltd.do'}`):'/stores'} target={storeCount===1?'_blank':undefined} rel={storeCount===1?'noreferrer':undefined} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-brand-200 bg-white px-3 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 sm:px-3.5 sm:text-sm" title={storeCount===1?'Abrir tienda pública':'Elegir tienda'}><Store className="h-4 w-4"/><span>Ver tienda</span>{storeCount===1&&<ExternalLink className="hidden h-3.5 w-3.5 opacity-70 sm:block"/>}</a>}{actions}</div>
     </div>
    </header>}
-   <main className={`merchant-content mx-auto w-full max-w-[1700px] ${fullHeight?(hideHeader?'h-[calc(100dvh-72px)] overflow-hidden p-0 lg:h-dvh':'h-[calc(100dvh-188px)] overflow-hidden p-3 sm:p-4 md:h-[calc(100dvh-132px)] lg:h-[calc(100dvh-66px)] lg:p-4 xl:p-4'):'p-3 sm:p-5 lg:p-6 xl:p-7'}`}>{children}</main>
+   <main className={`merchant-content mx-auto w-full max-w-[1700px] ${fullHeight?(hideHeader?'h-[calc(100dvh-72px)] overflow-hidden p-0 lg:h-dvh':'h-[calc(100dvh-188px)] overflow-hidden p-3 sm:p-4 md:h-[calc(100dvh-132px)] lg:h-[calc(100dvh-66px)] lg:p-4 xl:p-4'):'p-3 sm:p-5 lg:p-6 xl:p-7'}`}>{unsupported?<section className="mx-auto mt-7 max-w-xl rounded-3xl border border-[#d8eade] bg-white p-7 text-center shadow-sm"><div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-[#ebf7ef] text-[#087748]"><SlidersHorizontal className="h-6 w-6"/></div><h2 className="mt-4 text-lg font-bold text-[#0b4932]">Función no incluida en este negocio</h2><p className="mt-2 text-sm leading-6 text-[#6b7c73]">La plantilla activa prioriza las herramientas necesarias para su operación. El administrador de WAMERCIO puede habilitar este módulo desde Plantillas.</p><Link href="/dashboard" className="mt-5 inline-flex rounded-xl bg-[#0b6944] px-5 py-3 text-sm font-bold text-white">Ir al inicio</Link></section>:children}</main>
   </div>
 
   <nav className="merchant-mobile-nav fixed inset-x-0 bottom-0 z-40 border-t border-[#e9ebf1] bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"><div className="grid h-[66px] grid-cols-5">{bottom.map(n=>{const I=n.icon;const active=path===n.href||path.startsWith(n.href+'/');return <Link key={n.href} href={n.href} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${active?'text-brand-600':'text-[#8d92a9]'}`}><I className="h-5 w-5"/><span>{n.label}</span></Link>})}<button onClick={()=>setMore(true)} className={`flex flex-col items-center justify-center gap-1 text-[10px] font-medium ${more?'text-brand-600':'text-[#8d92a9]'}`}><MoreHorizontal className="h-5 w-5"/><span>Más</span></button></div></nav>
