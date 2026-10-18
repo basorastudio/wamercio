@@ -1,3 +1,11 @@
+## 4.5.8 — Hotfix TypeScript / Dokploy
+
+- Se corrige `TS2802` en `apps/web/lib/landing-config.ts`: normalización de secciones de la landing con `Array.from(new Set(...))` en lugar de `[...]` sobre `Set`, compatible con `tsconfig.target = "es5"` sin activar `downlevelIteration`.
+- Se preservan el orden, la eliminación de duplicados y la visibilidad configurable desde Página comercial.
+- Se sincroniza la versión web/PWA.
+- Sin migraciones ni cambios a `.env`.
+- Verificación de la unidad TypeScript con el compilador local; build completo pendiente de ejecución en un entorno con acceso a NPM.
+
 ## v4.5.7 — Hotfix de compilación TypeScript en la landing
 - Se corrige el error de Dokploy/Next.js: `Parameter 'signal' implicitly has an 'any' type` en `apps/web/components/platform-landing.tsx:212`.
 - `templateTags()` ahora siempre devuelve `string[]`: valida las etiquetas editadas provenientes del JSON y utiliza las etiquetas predeterminadas cuando no se configuran.

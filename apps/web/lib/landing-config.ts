@@ -13,7 +13,7 @@ export const defaultSectionOrder: LandingSectionId[] = landingSections.map(s=>s.
 export function normalizeLandingSections(candidate:unknown): LandingSectionId[]{
   const allowed = new Set<string>(defaultSectionOrder)
   const list = Array.isArray(candidate) ? candidate.filter((key):key is LandingSectionId=>typeof key==='string'&&allowed.has(key)) : []
-  return [...new Set<LandingSectionId>([...list,...defaultSectionOrder])]
+  return Array.from(new Set<LandingSectionId>([...list, ...defaultSectionOrder]))
 }
 export const landingDefaults:Record<string,any> = {
   brand_name:'WAMERCIO',brand_subtitle:'Comercio conversacional',brand_logo_url:'',
