@@ -3,6 +3,7 @@ import {useEffect,useMemo,useState} from 'react'
 import SuperAdminShell from '@/components/superadmin-shell'
 import {getMerchantModules,merchantModuleCatalog,merchantModuleGroups,profileModuleSummary,type MerchantModuleId} from '@/lib/merchant-modules'
 import {api} from '@/lib/api'
+import {businessCopyFields,getBusinessCopy} from '@/lib/business-language'
 import {Alert,Loading,Modal,SearchBox,Status,Switch} from '@/components/ui'
 import {Copy,Eye,LayoutTemplate,Plus,Pencil,Sparkles,Store,Tag,MessageCircleMore,Boxes,Settings2,Trash2,SlidersHorizontal} from 'lucide-react'
 
@@ -41,6 +42,8 @@ export default function AdminTemplates(){
  const setCheckoutFields=(fields:any[])=>setTemplateSetting('checkout_fields',fields)
  const activeProfile={business_engine:form.engine,template_slug:form.slug,template_config:form.settings}
  const activeModuleFlags=getMerchantModules(activeProfile)
+ const activeCopy=getBusinessCopy(activeProfile)
+ const setInterfaceCopy=(key:string,value:string)=>setTemplateSetting('interface_copy',{...(form.settings?.interface_copy||{}),[key]:value})
  const updateModule=(module:MerchantModuleId,enabled:boolean)=>{
    setForm((old:any)=>{
      const base=getMerchantModules({business_engine:old.engine,template_slug:old.slug,template_config:old.settings})
@@ -84,7 +87,15 @@ export default function AdminTemplates(){
      <div className="sm:col-span-2"><label className="label">Acción principal</label><input className="field" value={form.settings?.primary_action||''} onChange={e=>setTemplateSetting('primary_action',e.target.value)} placeholder="Comprar / Reservar / Cotizar"/></div>
     </div>
 
-    <div className="mt-6 border-t border-slate-100 pt-5"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-50 text-brand-700"><SlidersHorizontal className="h-5 w-5"/></span><div><h3 className="font-semibold text-ink-900">Funciones de esta plantilla</h3><p className="mt-1 text-xs leading-5 text-[#8d92aa]">Estas capacidades controlan catálogo, configuración y checkout. Así WAMERCIO no muestra funciones que no aplican al negocio.</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{capabilitySwitches.map(([key,label,detail])=><Switch key={key} checked={!!form.settings?.[key]} onChange={v=>setTemplateSetting(key,v)} label={label} detail={detail}/>)}</div></div>
+    <section className="mt-6 border-t border-[#e0eae3] pt-6">
+      <p className="section-kicker">Lenguaje por actividad</p>
+      <h3 className="mt-1 text-base font-bold text-[#0a5136]">Interfaz, botones y avisos del negocio</h3>
+      <p className="mt-1 max-w-2xl text-xs leading-6 text-[#718076]">El texto recomendado se genera por plantilla. Puedes ajustarlo para nuevas tiendas sin cambiar los estados internos de pedidos ni prometer citas confirmadas automáticamente. Los valores vacíos conservan el texto recomendado.</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">{businessCopyFields.map(field=><label key={field.key} className="block min-w-0"><span className="mb-1 block text-[11px] font-semibold text-[#456454]">{field.label}</span><input className="field w-full" maxLength={350} value={form.settings?.interface_copy?.[field.key]??''} placeholder={activeCopy[field.key]} onChange={e=>setInterfaceCopy(field.key,e.target.value)}/></label>)}</div>
+      <p className="mt-3 rounded-xl bg-[#f2f8f3] p-3 text-[11px] text-[#627b69]">Las notificaciones sugeridas son textos de referencia para configurar mensajes; no activan envíos automáticos ni sustituyen las reglas de automatización configuradas.</p>
+    </section>
+
+    <div className="mt-6 border-t border-slate-100 pt-5"><div className="flex items-start gap-3"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-brand-50 text-brand-700"><SlidersHorizontal className="h-5 w-5"/></span><div><h3 className="font-semibold text-ink-900">Funciones de esta plantilla</h3><p className="mt-1 text-xs leading-5 text-[#8d92aa]">Estas capacidades controlan catálogo, configuración y checkout. Así WAMERCIO no muestra funciones que no aplican al negocio.</p></div></div><div className="mt-4 grid gap-3 md:grid-cols-2">{capabilitySwitches.filter(([key])=>(key!=='appointments'||form.engine==='services')&&(key!=='supports_dine_in'||form.engine==='food')).map(([key,label,detail])=><Switch key={key} checked={!!form.settings?.[key]} onChange={v=>setTemplateSetting(key,v)} label={label} detail={detail}/>)}</div></div>
 
     <section className="mt-6 border-t border-[#e0eae3] pt-6">
       <div className="flex flex-wrap items-start justify-between gap-3">

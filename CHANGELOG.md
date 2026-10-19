@@ -1,3 +1,16 @@
+## v4.6.1 — Lenguaje comercial, solicitudes y UI contextual (17-10-2026)
+
+- Perfiles de lenguaje por las 16 plantillas: 15 textos comerciales configurables en el editor de SuperAdmin.
+- Etiquetas contextuales en storefront, checkout, menú comercial, Dashboard, categorías y productos, órdenes, portal de clientes y analítica.
+- Diferenciación estricta entre citas solicitadas y confirmadas, cotizaciones y ventas; pantallas sin módulos ajenos al perfil, sin eliminar configuraciones previas.
+- La API publica `template_slug` para selección de textos; validación de flujos compatible con motores de negocio.
+- Solicitudes de citas (sin confirmación de agenda) registradas con pago por definir; se evita pedir un pago durante la solicitud.
+- Avisos por WhatsApp al actualizar estados adaptados por flujo; un cambio solo de pago no reenvía el aviso operativo.
+- Reetiquetado de analítica: suma de operaciones no canceladas, no dinero cobrado necesariamente.
+- Prueba automatizada de perfiles en GitHub Actions. Sin nuevas migraciones.
+
+**Validación pendiente:** build de Next.js/Go en CI, pruebas integrales con PostgreSQL, Redis y WhatsApp; los controles de módulos siguen siendo de interfaz, no permisos de API.
+
 ## 4.6.0 — Plantillas profesionales por naturaleza del negocio (2026-10-17)
 
 - Se revisan las 16 plantillas de negocio y se definen perfiles operativos de 26 módulos opcionales, separados del núcleo permanente (Inicio, Pedidos, Clientes, Catálogo, Tienda online y WhatsApp).

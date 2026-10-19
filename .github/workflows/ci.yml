@@ -19,6 +19,7 @@ jobs:
           node-version: '20'
       - run: npm install --no-audit --no-fund
       - run: node ../../scripts/test_4_6_0_template_modules.js
+      - run: node ../../scripts/test_4_6_1_business_context.js
       - run: npm run build
 
   api:

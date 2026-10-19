@@ -4,6 +4,7 @@ import {usePathname,useRouter} from 'next/navigation'
 import {useEffect,useLayoutEffect,useMemo,useState} from 'react'
 import {api} from '@/lib/api'
 import {resolveBusinessCapabilities} from '@/lib/business-capabilities'
+import {getBusinessCopy} from '@/lib/business-language'
 import {getMerchantModules,type MerchantModuleId} from '@/lib/merchant-modules'
 import type {Store as StoreModel} from '@/lib/types'
 import WamercioLogo from '@/components/wamercio-logo'
@@ -92,6 +93,7 @@ const titleCase=(value:string)=>value?value.charAt(0).toUpperCase()+value.slice(
 
 function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:number|null){
   const caps=resolveBusinessCapabilities(store)
+  const copy=getBusinessCopy(store)
   const engine=caps.engine
   const isFood=engine==='food'
   const isService=caps.isService
@@ -104,19 +106,13 @@ function buildMerchantNavigation(store:StoreModel|null|undefined,storeCount:numb
 
   const primaryCore=[
     cloneNav(core[0]),
-    cloneNav(core[1],{label:caps.appointments?'Reservas':isQuote?'Solicitudes':'Pedidos'}),
-    cloneNav(core[2],{label:isWholesale?'Clientes':'Clientes'})
+    cloneNav(core[1],{label:copy.operations_title}),
+    cloneNav(core[2],{label:isWholesale?'Clientes empresariales':'Clientes'})
   ]
 
   const salesNav=sales.map(item=>cloneNav(item))
 
-  let catalogNav=catalog.map(item=>cloneNav(item,{label:item.href==='/catalog/products'?titleCase(caps.itemPlural):item.label}))
-  if(isService){
-    catalogNav=catalogNav.map(item=>item.href==='/catalog/products'?{...item,label:'Servicios'}:item)
-  }
-  if(isQuote){
-    catalogNav=catalogNav.map(item=>item.href==='/catalog/products'?{...item,label:'Catálogo'}:item)
-  }
+  let catalogNav=catalog.map(item=>cloneNav(item,{label:item.href==='/catalog/products'?copy.catalog_title:item.label}))
 
   const operationsNav=[
     ...salesNav,

@@ -2446,10 +2446,11 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	c := claims(r)
-	var sid, phone, currentStatus, customerID, customerName, storeName string
+	var sid, phone, currentStatus, customerID, customerName, storeName, flowType, businessEngine string
+	var templateConfigRaw []byte
 	var num int64
 	var total float64
-	if s.db.QueryRow(r.Context(), `SELECT o.store_id,o.customer_phone,o.order_number,o.status,coalesce(o.customer_id::text,''),o.customer_name,o.total,st.name FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.id=$1`, id).Scan(&sid, &phone, &num, &currentStatus, &customerID, &customerName, &total, &storeName) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
+	if s.db.QueryRow(r.Context(), `SELECT o.store_id,o.customer_phone,o.order_number,o.status,coalesce(o.customer_id::text,''),o.customer_name,o.total,st.name,o.flow_type,st.business_engine,st.template_config FROM orders o JOIN stores st ON st.id=o.store_id WHERE o.id=$1`, id).Scan(&sid, &phone, &num, &currentStatus, &customerID, &customerName, &total, &storeName, &flowType, &businessEngine, &templateConfigRaw) != nil || !queryStoreOwned(r.Context(), s.db, c.UserID, c.Role, sid) {
 		jsonErr(w, 404, "Pedido no encontrado")
 		return
 	}
@@ -2515,45 +2516,74 @@ func (s *Server) updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	s.refreshCustomerStats(r.Context(), customerID)
 	s.publishStoreEvent(r.Context(), sid, "order_status", map[string]any{"id": id, "number": num, "status": in.Status})
-	key := ""
-	switch in.Status {
-	case "confirmed":
-		key = "order_confirmed"
-	case "ready":
-		key = "order_ready"
-	case "out_for_delivery":
-		key = "order_on_the_way"
-	case "delivered", "picked_up":
-		key = "order_delivered"
-	}
-	message := fmt.Sprintf("Actualización de tu pedido #%d: %s", num, spanishStatus(in.Status))
-	if key != "" {
-		message = s.renderPlatformNotification(r.Context(), key, message, map[string]string{
-			"cliente": customerName,
-			"negocio": storeName,
-			"pedido":  fmt.Sprint(num),
-			"total":   fmt.Sprintf("RD$ %.2f", total),
-		})
-	}
-	go s.trySendWhatsApp(context.Background(), sid, phone, message)
-	automationEvent := ""
-	switch in.Status {
-	case "confirmed":
-		automationEvent = automationOrderConfirmed
-	case "ready":
-		automationEvent = automationOrderReady
-	case "delivered", "picked_up":
-		automationEvent = automationOrderCompleted
-	}
-	if automationEvent != "" {
-		data := map[string]string{"entity_id": id, "telefono": phone, "cliente": customerName, "negocio": storeName, "pedido": fmt.Sprint(num), "total": fmt.Sprintf("RD$ %.2f", total), "estado": spanishStatus(in.Status)}
-		go s.triggerAutomationEvent(context.Background(), sid, automationEvent, data)
-		if automationEvent == automationOrderCompleted {
-			go s.triggerAutomationEvent(context.Background(), sid, automationReviewRequest, data)
-			go s.awardOrderLoyalty(context.Background(), id)
+	// Cambio de pago sin cambio de estado: no reenviar una notificación operativa.
+	if currentStatus != in.Status {
+		key := ""
+		switch in.Status {
+		case "confirmed":
+			key = "order_confirmed"
+		case "ready":
+			key = "order_ready"
+		case "out_for_delivery":
+			key = "order_on_the_way"
+		case "delivered", "picked_up":
+			key = "order_delivered"
 		}
+		flowNoun := "pedido"
+		if flowType == "quote" {
+			flowNoun = "solicitud de cotización"
+		}
+		if flowType == "reservation" && businessEngine == "services" {
+			flowNoun = "solicitud de cita"
+		}
+		if flowType == "reservation" && businessEngine != "services" {
+			flowNoun = "reserva de mesa"
+		}
+		message := fmt.Sprintf("Actualización de tu %s #%d: %s", flowNoun, num, spanishStatus(in.Status))
+		// En cotizaciones y solicitudes de cita no usar avisos de venta o reserva confirmada.
+		if key != "" && flowType != "quote" && !(flowType == "reservation" && businessEngine == "services") {
+			message = s.renderPlatformNotification(r.Context(), key, message, map[string]string{
+				"cliente": customerName,
+				"negocio": storeName,
+				"pedido":  fmt.Sprint(num),
+				"total":   fmt.Sprintf("RD$ %.2f", total),
+			})
+		}
+		// El administrador puede personalizar el aviso en la plantilla.
+		if flowType == "quote" || (flowType == "reservation" && businessEngine == "services") {
+			var cfg map[string]any
+			_ = json.Unmarshal(templateConfigRaw, &cfg)
+			copy, _ := cfg["interface_copy"].(map[string]any)
+			if in.Status == "confirmed" {
+				if custom, ok := copy["notification_confirmed"].(string); ok && len(custom) > 0 && len(custom) <= 350 {
+					message = fmt.Sprintf("%s (#%d)", strings.TrimSpace(custom), num)
+				} else if flowType == "reservation" {
+					message = fmt.Sprintf("Tu solicitud de cita #%d fue confirmada por %s. Comprueba la fecha y hora acordadas.", num, storeName)
+				} else {
+					message = fmt.Sprintf("Tu solicitud de cotización #%d está siendo atendida por %s; el precio final y pago aún deben acordarse.", num, storeName)
+				}
+			}
+		}
+		go s.trySendWhatsApp(context.Background(), sid, phone, message)
+		automationEvent := ""
+		switch in.Status {
+		case "confirmed":
+			automationEvent = automationOrderConfirmed
+		case "ready":
+			automationEvent = automationOrderReady
+		case "delivered", "picked_up":
+			automationEvent = automationOrderCompleted
+		}
+		if automationEvent != "" && flowType != "quote" {
+			data := map[string]string{"entity_id": id, "telefono": phone, "cliente": customerName, "negocio": storeName, "pedido": fmt.Sprint(num), "total": fmt.Sprintf("RD$ %.2f", total), "estado": spanishStatus(in.Status)}
+			go s.triggerAutomationEvent(context.Background(), sid, automationEvent, data)
+			if automationEvent == automationOrderCompleted {
+				go s.triggerAutomationEvent(context.Background(), sid, automationReviewRequest, data)
+				go s.awardOrderLoyalty(context.Background(), id)
+			}
+		}
+		go s.triggerVisualFlows(context.Background(), sid, "order_status", id, "", map[string]string{"order_id": id, "telefono": phone, "cliente": customerName, "pedido": fmt.Sprint(num), "status": in.Status, "estado": spanishStatus(in.Status)})
 	}
-	go s.triggerVisualFlows(context.Background(), sid, "order_status", id, "", map[string]string{"order_id": id, "telefono": phone, "cliente": customerName, "pedido": fmt.Sprint(num), "status": in.Status, "estado": spanishStatus(in.Status)})
 	jsonOut(w, 200, map[string]bool{"ok": true})
 }
 
@@ -3227,14 +3257,14 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	slug := resolved.Slug
-	var sid, name, desc, logo, banner, wa, address, currency, color, timezone, businessEngine, visualTheme string
+	var sid, name, desc, logo, banner, wa, address, currency, color, timezone, businessEngine, visualTheme, templateSlug string
 	var bankName, accountName, accountNumber, accountType, orderNotice, checkoutMessage string
 	var serviceScope, provinceCode, province, cityID, municipality, neighborhoodID, neighborhood string
 	var minimum float64
 	var pickup, delivery, dineIn, cash, cod, transfer, cheque, acceptingOrders bool
 	var reservationDuration int
 	var hoursRaw, templateConfigRaw, themeConfigRaw, paymentRulesRaw []byte
-	err = s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,dine_in_enabled,reservation_duration_minutes,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),business_engine,template_config,visual_theme,theme_config,coalesce(service_scope,'national'),coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),payment_methods_by_fulfillment,cheque_enabled FROM stores WHERE id=$1 AND is_active=true`, resolved.StoreID).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &dineIn, &reservationDuration, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw, &serviceScope, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &paymentRulesRaw, &cheque)
+	err = s.db.QueryRow(r.Context(), `SELECT id,name,coalesce(description,''),coalesce(logo_url,''),coalesce(banner_url,''),coalesce(whatsapp,''),coalesce(address,''),currency,primary_color,timezone,minimum_order,pickup_enabled,delivery_enabled,dine_in_enabled,reservation_duration_minutes,cash_enabled,cash_on_delivery_enabled,bank_transfer_enabled,accepting_orders,coalesce(bank_name,''),coalesce(bank_account_name,''),coalesce(bank_account_number,''),coalesce(bank_account_type,''),business_hours,coalesce(order_notice,''),coalesce(checkout_message,''),business_engine,template_config,visual_theme,theme_config,coalesce(service_scope,'national'),coalesce(province_code,''),coalesce(province,''),coalesce(city_id,''),coalesce(municipality,''),coalesce(neighborhood_id,''),coalesce(neighborhood,''),payment_methods_by_fulfillment,cheque_enabled,coalesce((SELECT bt.slug FROM business_templates bt WHERE bt.id=stores.template_id),'') FROM stores WHERE id=$1 AND is_active=true`, resolved.StoreID).Scan(&sid, &name, &desc, &logo, &banner, &wa, &address, &currency, &color, &timezone, &minimum, &pickup, &delivery, &dineIn, &reservationDuration, &cash, &cod, &transfer, &acceptingOrders, &bankName, &accountName, &accountNumber, &accountType, &hoursRaw, &orderNotice, &checkoutMessage, &businessEngine, &templateConfigRaw, &visualTheme, &themeConfigRaw, &serviceScope, &provinceCode, &province, &cityID, &municipality, &neighborhoodID, &neighborhood, &paymentRulesRaw, &cheque, &templateSlug)
 	if err != nil {
 		jsonErr(w, 404, "Tienda no encontrada")
 		return
@@ -3300,7 +3330,7 @@ func (s *Server) publicStore(w http.ResponseWriter, r *http.Request) {
 		"store": map[string]any{
 			"id": sid, "name": name, "slug": slug, "hostname": resolved.Hostname, "public_url": s.storePublicURL(r.Context(), sid, slug), "description": desc, "logo_url": logo, "banner_url": banner,
 			"whatsapp": wa, "address": address, "currency": currency, "primary_color": color, "minimum_order": minimum,
-			"business_engine": businessEngine, "template_config": templateConfig, "visual_theme": visualTheme, "theme_config": themeConfig,
+			"business_engine": businessEngine, "template_slug": templateSlug, "template_config": templateConfig, "visual_theme": visualTheme, "theme_config": themeConfig,
 			"service_scope": normalizeStoreServiceScope(serviceScope), "province_code": provinceCode, "province": province, "city_id": cityID, "municipality": municipality, "neighborhood_id": neighborhoodID, "neighborhood": neighborhood,
 			"pickup_enabled": pickup, "delivery_enabled": delivery, "dine_in_enabled": dineIn, "reservation_duration_minutes": reservationDuration, "business_hours": hours, "order_notice": orderNotice, "checkout_message": checkoutMessage, "accepting_orders": acceptingOrders, "open_now": openNow,
 			"payment_methods":                map[string]bool{"cash": cash, "cash_on_delivery": cod, "bank_transfer": transfer, "cheque": cheque},
@@ -3415,10 +3445,10 @@ func businessCapabilityFlagsFromRaw(engine string, raw []byte) businessCapabilit
 	return businessCapabilityFlags{
 		SupportsVariants: templateBoolDefault(config, "supports_variants", !isService),
 		SupportsExtras:   templateBoolDefault(config, "supports_extras", engine == "food"),
-		SupportsDineIn:   templateBoolDefault(config, "supports_dine_in", engine == "food" && !requiresLeadTime),
+		SupportsDineIn:   engine == "food" && templateBoolDefault(config, "supports_dine_in", !requiresLeadTime),
 		SupportsDelivery: templateBoolDefault(config, "delivery_enabled", !isService),
 		SupportsPickup:   templateBoolDefault(config, "pickup_enabled", true),
-		RequiresPayment:  !templateBoolDefault(config, "quotation", engine == "quotation"),
+		RequiresPayment:  !(templateBoolDefault(config, "quotation", engine == "quotation") || (isService && templateBoolDefault(config, "appointments", true))),
 	}
 }
 
@@ -3431,13 +3461,13 @@ func (s *Server) businessCapabilityFlagsForStore(ctx context.Context, storeID st
 	return businessCapabilityFlagsFromRaw(engine, raw), true
 }
 
-func contextualCheckoutData(templateConfigRaw []byte, submitted map[string]any, deliveryType string) (map[string]any, string, error) {
+func contextualCheckoutData(templateConfigRaw []byte, submitted map[string]any, deliveryType, businessEngine string) (map[string]any, string, error) {
 	config := map[string]any{}
 	if len(templateConfigRaw) > 0 {
 		_ = json.Unmarshal(templateConfigRaw, &config)
 	}
 	flowType := "order"
-	if templateBool(config, "appointments") || deliveryType == "dine_in" {
+	if (businessEngine == "services" && templateBoolDefault(config, "appointments", true)) || deliveryType == "dine_in" {
 		flowType = "reservation"
 	}
 	if templateBool(config, "quotation") {
@@ -3682,7 +3712,7 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 		jsonErr(w, 400, "Recogida no disponible")
 		return
 	}
-	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType)
+	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType, businessEngine)
 	if customFieldErr != nil {
 		jsonErr(w, 400, customFieldErr.Error())
 		return
@@ -3879,7 +3909,12 @@ func (s *Server) createConversationOrder(w http.ResponseWriter, r *http.Request)
 	}
 	flowNoun := "pedido"
 	if flowType == "reservation" {
-		flowNoun = "reserva"
+		flowNoun = "reserva de mesa"
+		var config map[string]any
+		_ = json.Unmarshal(templateConfigRaw, &config)
+		if templateBool(config, "appointments") {
+			flowNoun = "solicitud de cita"
+		}
 	} else if flowType == "quote" {
 		flowNoun = "solicitud"
 	}
@@ -4026,7 +4061,7 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		deliveryAddress = strings.TrimSpace(storeAddress)
 	}
 
-	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType)
+	customFields, flowType, customFieldErr := contextualCheckoutData(templateConfigRaw, in.CustomFields, in.DeliveryType, businessEngine)
 	if customFieldErr != nil {
 		jsonErr(w, 400, customFieldErr.Error())
 		return
@@ -4345,7 +4380,18 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 	for _, item := range resolvedItems {
 		lines = append(lines, fmt.Sprintf("• %sx %s — RD$ %.2f", formatOrderQuantity(item.qty), item.name, item.line))
 	}
-	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu pedido #{pedido} en {negocio}.\n{detalle}\n\nTotal: {total}\nSeguimiento: {seguimiento}", map[string]string{
+	flowNoun := "pedido"
+	if flowType == "quote" {
+		flowNoun = "solicitud de cotización"
+	}
+	if flowType == "reservation" && in.DeliveryType != "dine_in" {
+		flowNoun = "solicitud de cita"
+	}
+	if flowType == "reservation" && in.DeliveryType == "dine_in" {
+		flowNoun = "reserva de mesa"
+	}
+	message := s.renderPlatformNotification(r.Context(), "order_new", "Hola {cliente}, recibimos tu {tipo} #{pedido} en {negocio}.\n{detalle}\n\nTotal estimado: {total}\nSeguimiento: {seguimiento}", map[string]string{
+		"tipo":        flowNoun,
 		"cliente":     customerName,
 		"negocio":     storeName,
 		"pedido":      fmt.Sprint(num),
@@ -4353,6 +4399,15 @@ func (s *Server) checkout(w http.ResponseWriter, r *http.Request) {
 		"detalle":     strings.Join(lines, "\n"),
 		"seguimiento": trackingURL,
 	})
+	if flowType == "quote" || (flowType == "reservation" && in.DeliveryType != "dine_in") {
+		message = fmt.Sprintf("Hola %s, recibimos tu %s #%d en %s. Estamos revisando tu solicitud; no significa que esté confirmada.\n%s\nSeguimiento: %s", customerName, flowNoun, num, storeName, strings.Join(lines, "\n"), trackingURL)
+		var cfg map[string]any
+		_ = json.Unmarshal(templateConfigRaw, &cfg)
+		copy, _ := cfg["interface_copy"].(map[string]any)
+		if custom, ok := copy["notification_pending"].(string); ok && len(custom) > 0 && len(custom) <= 350 {
+			message = fmt.Sprintf("Hola %s, %s (#%d)\nSeguimiento: %s", customerName, strings.TrimSpace(custom), num, trackingURL)
+		}
+	}
 	_ = s.queueWhatsApp(context.Background(), sid, "", customerPhone, message, "order")
 	jsonOut(w, 201, map[string]any{"id": orderID, "number": num, "public_token": publicToken, "tracking_url": trackingURL, "subtotal": subtotal, "discount": discount, "promotion_name": appliedPromotionName, "coupon_code": appliedCouponCode, "shipping": shipping, "total": total, "status": "pending", "payment_method": in.PaymentMethod, "delivery_type": in.DeliveryType, "table_id": reservedTableID, "reservation_at": reservationAt, "party_size": func() any {
 		if in.DeliveryType == "dine_in" {

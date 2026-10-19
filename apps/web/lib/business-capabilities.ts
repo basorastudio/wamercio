@@ -1,3 +1,4 @@
+import {getBusinessCopy} from './business-language'
 export type CheckoutFieldType='text'|'number'|'date'|'time'|'textarea'|'select'
 export type CheckoutField={
   key:string
@@ -39,27 +40,28 @@ export function resolveBusinessCapabilities(store:StoreLike|null|undefined){
   const engine=text(store?.business_engine,'retail').toLowerCase()
   const config=store?.template_config||{}
   const isService=engine==='services'
+  const copy=getBusinessCopy(store)
   const quotation=bool(config.quotation,engine==='quotation')
   const wholesale=bool(config.wholesale,engine==='wholesale')
   const personalization=bool(config.personalization,false)
-  const appointments=bool(config.appointments,isService)
-  const itemLabel=text(config.item_label,isService?'servicio':engine==='fashion'?'prenda':engine==='catalog'?'artículo':'producto')
-  const itemPlural=text(config.item_label_plural,itemLabel==='servicio'?'servicios':itemLabel==='prenda'?'prendas':itemLabel==='artículo'?'artículos':'productos')
+  const appointments=isService&&bool(config.appointments,true)
+  const itemLabel=text(config.item_label,copy.catalog_item)
+  const itemPlural=text(config.item_label_plural,copy.catalog_items)
   const supportsVariants=bool(config.supports_variants,!isService)
   const supportsExtras=bool(config.supports_extras,engine==='food')
-  const supportsDineIn=bool(config.supports_dine_in,engine==='food'&&!bool(config.requires_lead_time,false))
+  const supportsDineIn=engine==='food'&&bool(config.supports_dine_in,!bool(config.requires_lead_time,false))
   const checkoutFields=normalizeCheckoutFields(config)
-  const configuredAction=text(config.primary_action,appointments?'Reservar':quotation||wholesale?'Cotizar':'Comprar')
-  const primaryAction=appointments||quotation||personalization||wholesale?configuredAction:'Comprar'
-  const orderNoun=appointments?'reserva':quotation?'solicitud':'pedido'
-  const orderNounPlural=orderNoun==='reserva'?'reservas':orderNoun==='solicitud'?'solicitudes':'pedidos'
+  const configuredAction=text(config.primary_action,appointments?'Solicitar cita':quotation||wholesale?'Solicitar cotización':'Comprar')
+  const primaryAction=copy.checkout_action||configuredAction
+  const orderNoun=copy.operations_singular
+  const orderNounPlural=copy.operations_plural
   const pickupLabel=isService?'En el negocio':'Recoger'
   const pickupDetail=isService?'Atención en el negocio':'Retiro en el negocio'
   const heroLabel=engine==='food'?'MENÚ Y PEDIDOS':engine==='fashion'?'COLECCIÓN':isService?'SERVICIOS':quotation?'CATÁLOGO Y COTIZACIÓN':wholesale?'CATÁLOGO MAYORISTA':'CATÁLOGO'
-  const headerSubtitle=engine==='food'?'Menú y pedidos en línea':isService?'Servicios y reservas':quotation?'Catálogo y solicitudes':'Catálogo y pedidos en línea'
+  const headerSubtitle=engine==='food'?'Menú y pedidos en línea':isService?'Servicios y solicitudes de cita':quotation?'Catálogo y solicitudes':'Catálogo y pedidos en línea'
   return {
     engine,config,isService,quotation,wholesale,personalization,appointments,
-    itemLabel,itemPlural,primaryAction,orderNoun,orderNounPlural,requiresPayment:!quotation,
+    itemLabel,itemPlural,primaryAction,orderNoun,orderNounPlural,copy,requiresPayment:!quotation&&!appointments,
     supportsVariants,supportsExtras,supportsDineIn,
     trackStockDefault:bool(config.track_stock_default,engine==='fashion'||engine==='retail'||engine==='catalog'||engine==='wholesale'),
     supportsDelivery:bool(config.delivery_enabled,!isService),
